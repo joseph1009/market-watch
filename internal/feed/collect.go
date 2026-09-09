@@ -95,8 +95,11 @@ func Match(articles []model.Article, groups []model.Group) []model.Article {
 				}
 			}
 			if !matched {
-				for _, kw := range g.Keywords {
-					if mentionsWord(lower, strings.ToLower(strings.TrimSpace(kw))) {
+				// Names and keywords match the same way; they are separate
+				// fields so a watchlist reads as "these companies, plus these
+				// themes" when someone edits prefs.yaml by hand.
+				for _, term := range append(append([]string{}, g.Names...), g.Keywords...) {
+					if mentionsWord(lower, strings.ToLower(strings.TrimSpace(term))) {
 						matched = true
 						break
 					}

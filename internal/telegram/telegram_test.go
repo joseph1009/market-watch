@@ -82,6 +82,146 @@ func TestRenderUsesTheDisplayTimezone(t *testing.T) {
 	}
 }
 
+// The unlabelled link list read as stray text, and "+3 more" looked like part
+// of the brief rather than a note about the sources.
+func TestRenderLabelsTheSourceList(t *testing.T) {
+	out := strings.Join(Render(testReport(), time.UTC), "\n")
+	if !strings.Contains(out, "<i>Sources</i>") {
+		t.Errorf("the link list is unlabelled:\n%s", out)
+	}
+}
+
+func TestRenderTurnsModelListsIntoBullets(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "Three moves stood out:\n- Meta rose on Muse\n- Qualcomm gained 9%\n- Apple slipped"
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if strings.Contains(out, "\n- Meta") {
+		t.Errorf("raw list markers survived:\n%s", out)
+	}
+	if got := strings.Count(out, "• "); got < 3 {
+		t.Errorf("got %d bullets, want the 3 list items rendered:\n%s", got, out)
+	}
+}
+
+func TestRenderBoldsTopicLabels(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "Oil - Brent topped $100 for the first time since July.\n\n" +
+		"Fed — the committee is split three ways going into September."
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	for _, want := range []string{"<b>Oil</b> - Brent topped", "<b>Fed</b> — the committee"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+// Bolding a fragment of a sentence reads worse than no label at all, so an
+// ambiguous block is left exactly as written.
+func TestRenderLeavesSentencesWithDashesAlone(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "The Dow fell 350 points - its worst session in weeks - as crude climbed.\n\n" +
+		"Investors who had positioned for a cut, and were caught out - are now rethinking."
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if strings.Contains(out, "<b>The Dow fell 350 points</b>") {
+		t.Errorf("bolded a sentence clause:\n%s", out)
+	}
+	if strings.Contains(out, "<b>") && strings.Contains(out, "caught out</b>") {
+		t.Errorf("bolded a long fragment:\n%s", out)
+	}
+}
+
+func TestRenderDoesNotLabelListItems(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "- Waller - comfortable holding steady\n- Hammack - wants to act now"
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if strings.Contains(out, "<b>") && strings.Contains(out, "• <b>") {
+		t.Errorf("a bullet was given a bold label:\n%s", out)
+	}
+	if !strings.Contains(out, "• Waller - comfortable") {
+		t.Errorf("bullet lost its shape:\n%s", out)
+	}
+}
+
+func TestIsLabelRejectsProse(t *testing.T) {
+	labels := []string{"Oil", "Fed", "Big Tech", "Treasury and the yen"}
+	for _, s := range labels {
+		if !isLabel(s) {
+			t.Errorf("isLabel(%q) = false, want true", s)
+		}
+	}
+	prose := []string{
+		"",
+		"The Dow fell 350 points",                // determiner, digits, too many words
+		"Dow fell 350 points",                    // a figure means a sentence is under way
+		"The oil trade",                          // opens with a determiner
+		"Investors, having positioned for a cut", // comma
+		"One thing mattered today:",              // colon
+		strings.Repeat("x", maxLabelRunes+1),     // too long
+		"Brent topped $100 for the first time since July this year", // too long and too many words
+	}
+	for _, s := range prose {
+		if isLabel(s) {
+			t.Errorf("isLabel(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestRenderSeparatesSections(t *testing.T) {
+	out := strings.Join(Render(testReport(), time.UTC), "\n")
+	if !strings.Contains(out, divider) {
+		t.Errorf("no visual break between sections:\n%s", out)
+	}
+	if !strings.Contains(out, "<b>Overview</b>") {
+		t.Errorf("the overview is unlabelled:\n%s", out)
+	}
+}
+
+func TestRenderShowsTokenUsageAndCost(t *testing.T) {
+	rep := testReport()
+	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204, EstimatedUSD: 0.187}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	for _, want := range []string{"21,450 in", "3,204 out", "~$0.187"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("footer is missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+// An unpriced model must not render a "$0.000" that reads as free.
+func TestRenderOmitsCostWhenUnpriced(t *testing.T) {
+	rep := testReport()
+	rep.Usage = model.Usage{InputTokens: 100, OutputTokens: 50}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if strings.Contains(out, "$") {
+		t.Errorf("rendered a price with no estimate available:\n%s", out)
+	}
+	if !strings.Contains(out, "100 in") {
+		t.Errorf("token counts were dropped along with the price:\n%s", out)
+	}
+}
+
+func TestRenderOmitsUsageEntirelyWhenUnrecorded(t *testing.T) {
+	out := strings.Join(Render(testReport(), time.UTC), "\n")
+	if strings.Contains(out, " in · ") {
+		t.Errorf("rendered a usage line with no usage recorded:\n%s", out)
+	}
+}
+
+func TestThousandsGroupsDigits(t *testing.T) {
+	tests := map[int64]string{0: "0", 42: "42", 999: "999", 1000: "1,000", 21450: "21,450", 1234567: "1,234,567"}
+	for in, want := range tests {
+		if got := thousands(in); got != want {
+			t.Errorf("thousands(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestRenderCapsLinksPerSection(t *testing.T) {
 	rep := testReport()
 	for i := 0; i < 9; i++ {

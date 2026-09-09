@@ -66,8 +66,56 @@ func TestDedupeLeavesDistinctStoriesAlone(t *testing.T) {
 
 func testGroups() []model.Group {
 	return []model.Group{
-		{ID: "semis-ai", Name: "Semiconductors & AI", Tickers: []string{"NVDA", "ARM"}, Keywords: []string{"AI chip", "foundry"}},
+		{ID: "semis-ai", Name: "Semiconductors & AI", Tickers: []string{"NVDA", "ARM"},
+			Names: []string{"Nvidia"}, Keywords: []string{"AI chip", "foundry"}},
 		{ID: "macro-rates", Name: "Macro & Rates", Keywords: []string{"CPI", "rate cut", "Federal Reserve"}},
+	}
+}
+
+// Headlines name the company and quote the symbol. Matching only symbols left
+// whole watchlists empty against real feeds, so names carry equal weight.
+func TestMatchFindsCompaniesByNameNotJustTicker(t *testing.T) {
+	articles := []model.Article{
+		{Title: "Nvidia beats on data center revenue"},
+		{Title: "nvidia extends its rally", Summary: "Shares rose again."},
+		{Title: "Analysts raise targets", Summary: "Nvidia's guidance impressed."},
+	}
+	for _, a := range Match(articles, testGroups()) {
+		if !a.InGroup("semis-ai") {
+			t.Errorf("%q did not match semis-ai by name", a.Title)
+		}
+	}
+}
+
+// Name matching is case-insensitive, which is exactly why it must still respect
+// word boundaries -- otherwise "Intel" tags every story mentioning intelligence.
+func TestMatchNamesRespectWordBoundaries(t *testing.T) {
+	groups := []model.Group{{ID: "semis-ai", Name: "Semis", Names: []string{"Intel"}}}
+	for _, title := range []string{
+		"Artificial intelligence spending accelerates",
+		"Intelligence agencies warn on cyber risk",
+	} {
+		got := Match([]model.Article{{Title: title}}, groups)
+		if len(got[0].GroupIDs) != 0 {
+			t.Errorf("%q matched %v, want no match", title, got[0].GroupIDs)
+		}
+	}
+
+	got := Match([]model.Article{{Title: "Intel ships a new foundry process"}}, groups)
+	if !got[0].InGroup("semis-ai") {
+		t.Error("the real company name did not match")
+	}
+}
+
+// A name match is a group match, but it is not a ticker sighting -- only an
+// actual symbol should populate Tickers.
+func TestMatchDoesNotInventTickersFromNames(t *testing.T) {
+	got := Match([]model.Article{{Title: "Nvidia extends its rally"}}, testGroups())
+	if !got[0].InGroup("semis-ai") {
+		t.Fatal("name did not match the group")
+	}
+	if len(got[0].Tickers) != 0 {
+		t.Errorf("Tickers = %v, want none from a name-only match", got[0].Tickers)
 	}
 }
 

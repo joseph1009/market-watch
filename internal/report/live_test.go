@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,11 @@ func TestLiveEndToEndBrief(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 	t.Logf("generated in %s", time.Since(started).Round(time.Second))
+	t.Logf("usage: %d in, %d out, cache read %d, estimated $%.4f",
+		rep.Usage.InputTokens, rep.Usage.OutputTokens, rep.Usage.CacheReadTokens, rep.Usage.EstimatedUSD)
+	if rep.Usage.Total() == 0 {
+		t.Error("no usage was recorded; the footer would silently omit it")
+	}
 
 	t.Logf("\n===== OVERVIEW =====\n%s", rep.Overview)
 	for _, s := range rep.Sections {
@@ -80,6 +86,22 @@ func TestLiveEndToEndBrief(t *testing.T) {
 		lengths[i] = len([]rune(m))
 	}
 	t.Logf("rendered into %d telegram message(s), lengths %v", len(messages), lengths)
+
+	// Delivery is the last link in the chain, and the only one whose failures
+	// are invisible from here. It runs only with a chat configured, so the
+	// check stays useful for anyone without one.
+	chatID, err := strconv.ParseInt(os.Getenv("TELEGRAM_CHAT_ID"), 10, 64)
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	switch {
+	case token == "" || err != nil:
+		t.Log("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unset; skipping delivery")
+	default:
+		bot := telegram.New(token, &http.Client{Timeout: 30 * time.Second})
+		if err := bot.SendReport(ctx, chatID, messages); err != nil {
+			t.Fatalf("SendReport: %v", err)
+		}
+		t.Logf("delivered %d message(s) to chat %d", len(messages), chatID)
+	}
 
 	if rep.Overview == "" {
 		t.Error("the brief has no overview")

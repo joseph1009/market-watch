@@ -30,15 +30,25 @@ func DefaultPrefs() *Prefs {
 		},
 		Groups: []model.Group{
 			{
-				ID:       "semis-ai",
-				Name:     "Semiconductors & AI",
-				Tickers:  []string{"NVDA", "AMD", "AVGO", "TSM", "ASML", "MU", "INTC", "ARM"},
+				ID:      "semis-ai",
+				Name:    "Semiconductors & AI",
+				Tickers: []string{"NVDA", "AMD", "AVGO", "TSM", "ASML", "MU", "INTC", "ARM"},
+				// "Arm" is deliberately absent: as a name it matches the body
+				// part in ordinary prose, which the uppercase ticker does not.
+				Names: []string{
+					"Nvidia", "Broadcom", "TSMC", "Taiwan Semiconductor",
+					"Micron", "Intel", "GlobalFoundries", "Qualcomm", "OpenAI",
+				},
 				Keywords: []string{"semiconductor", "chipmaker", "AI chip", "GPU", "foundry", "data center"},
 			},
 			{
-				ID:       "big-tech",
-				Name:     "Big Tech",
-				Tickers:  []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NFLX"},
+				ID:      "big-tech",
+				Name:    "Big Tech",
+				Tickers: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NFLX"},
+				Names: []string{
+					"Apple", "Microsoft", "Alphabet", "Google", "Amazon",
+					"Meta", "Facebook", "Instagram", "Tesla", "Netflix",
+				},
 				Keywords: []string{"antitrust", "cloud revenue", "earnings guidance"},
 			},
 			{

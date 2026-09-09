@@ -7,6 +7,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 // defaultMaxTokens is generous on purpose. A brief runs well under this, and
@@ -37,7 +39,7 @@ func NewClaude(apiKey, model string) *Claude {
 // thinking is on -- deciding what actually mattered in a day of market news is
 // exactly the kind of judgment it helps with -- and the reasoning itself is not
 // requested back, since only the brief is ever shown.
-func (c *Claude) Complete(ctx context.Context, system, prompt string) (string, error) {
+func (c *Claude) Complete(ctx context.Context, system, prompt string) (Completion, error) {
 	adaptive := anthropic.ThinkingConfigAdaptiveParam{}
 
 	stream := c.Client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
@@ -53,21 +55,21 @@ func (c *Claude) Complete(ctx context.Context, system, prompt string) (string, e
 	var message anthropic.Message
 	for stream.Next() {
 		if err := message.Accumulate(stream.Current()); err != nil {
-			return "", fmt.Errorf("accumulate response: %w", err)
+			return Completion{}, fmt.Errorf("accumulate response: %w", err)
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return "", err
+		return Completion{}, err
 	}
 
 	switch message.StopReason {
 	case anthropic.StopReasonRefusal:
 		// Surfaced rather than retried: a refusal on market news means the input
 		// was not what we think it is, and a second attempt would not fix that.
-		return "", fmt.Errorf("model declined the request (%s): %s",
+		return Completion{}, fmt.Errorf("model declined the request (%s): %s",
 			message.StopDetails.Category, message.StopDetails.Explanation)
 	case anthropic.StopReasonMaxTokens:
-		return "", fmt.Errorf("response hit the %d token cap and would be cut mid-sentence", c.maxTokens())
+		return Completion{}, fmt.Errorf("response hit the %d token cap and would be cut mid-sentence", c.maxTokens())
 	}
 
 	var b strings.Builder
@@ -79,9 +81,20 @@ func (c *Claude) Complete(ctx context.Context, system, prompt string) (string, e
 
 	out := strings.TrimSpace(b.String())
 	if out == "" {
-		return "", fmt.Errorf("model returned no text (stop reason %q)", message.StopReason)
+		return Completion{}, fmt.Errorf("model returned no text (stop reason %q)", message.StopReason)
 	}
-	return out, nil
+
+	// Thinking tokens are billed as output and are already counted in
+	// OutputTokens, so the cost estimate needs no separate term for them.
+	return Completion{
+		Text:  out,
+		Model: c.Model,
+		Usage: model.Usage{
+			InputTokens:     message.Usage.InputTokens,
+			OutputTokens:    message.Usage.OutputTokens,
+			CacheReadTokens: message.Usage.CacheReadInputTokens,
+		},
+	}, nil
 }
 
 func (c *Claude) maxTokens() int64 {

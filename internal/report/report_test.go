@@ -13,16 +13,21 @@ import (
 // fakeCompleter records what it was asked and replies with a canned response.
 type fakeCompleter struct {
 	reply  string
+	usage  model.Usage
+	model  string
 	err    error
 	system string
 	prompt string
 	calls  int
 }
 
-func (f *fakeCompleter) Complete(ctx context.Context, system, prompt string) (string, error) {
+func (f *fakeCompleter) Complete(ctx context.Context, system, prompt string) (Completion, error) {
 	f.calls++
 	f.system, f.prompt = system, prompt
-	return f.reply, f.err
+	if f.err != nil {
+		return Completion{}, f.err
+	}
+	return Completion{Text: f.reply, Usage: f.usage, Model: f.model}, nil
 }
 
 func testTime() time.Time { return time.Date(2026, 9, 9, 20, 30, 0, 0, time.UTC) }
@@ -203,6 +208,49 @@ func TestGeneratePropagatesCompleterFailure(t *testing.T) {
 	_, err := g.Generate(context.Background(), testArticles(), reportGroups())
 	if !errors.Is(err, sentinel) {
 		t.Errorf("err = %v, want it to wrap %v", err, sentinel)
+	}
+}
+
+func TestGenerateRecordsUsageAndPricesIt(t *testing.T) {
+	fake := &fakeCompleter{
+		reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates.",
+		model: "claude-opus-5",
+		usage: model.Usage{InputTokens: 20_000, OutputTokens: 4_000},
+	}
+
+	g := &Generator{Completer: fake, Now: testTime}
+	rep, err := g.Generate(context.Background(), testArticles(), reportGroups())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if rep.Usage.InputTokens != 20_000 || rep.Usage.OutputTokens != 4_000 {
+		t.Errorf("Usage = %+v, want the completer's counts", rep.Usage)
+	}
+	// 20k input at $5/M plus 4k output at $25/M.
+	if want := 0.20; rep.Usage.EstimatedUSD != want {
+		t.Errorf("EstimatedUSD = %v, want %v", rep.Usage.EstimatedUSD, want)
+	}
+}
+
+// A cost of zero reads as "not known"; a guessed one would be taken as fact.
+func TestGenerateLeavesCostUnpricedForAnUnknownModel(t *testing.T) {
+	fake := &fakeCompleter{
+		reply: "## OVERVIEW\nBody.",
+		model: "some-model-shipped-after-this-table",
+		usage: model.Usage{InputTokens: 1000, OutputTokens: 500},
+	}
+
+	g := &Generator{Completer: fake, Now: testTime}
+	rep, err := g.Generate(context.Background(), testArticles(), reportGroups())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if rep.Usage.EstimatedUSD != 0 {
+		t.Errorf("EstimatedUSD = %v, want 0 for an unpriced model", rep.Usage.EstimatedUSD)
+	}
+	if rep.Usage.InputTokens != 1000 {
+		t.Errorf("token counts were lost along with the price: %+v", rep.Usage)
 	}
 }
 

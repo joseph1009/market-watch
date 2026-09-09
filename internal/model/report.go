@@ -9,7 +9,27 @@ type Report struct {
 	Sections     []Section `json:"sections"`
 	ArticleCount int       `json:"article_count"`
 	SourceCount  int       `json:"source_count"`
+	Usage        Usage     `json:"usage"`
 }
+
+// Usage is what one brief cost to generate.
+//
+// It is per-run only. The Messages API reports the tokens a request spent and
+// has no notion of an account balance, so nothing here can say how much credit
+// remains -- that lives in the Anthropic Console. What this does give is the
+// burn rate: multiply by thirty for a month of daily briefs.
+type Usage struct {
+	InputTokens     int64 `json:"input_tokens"`
+	OutputTokens    int64 `json:"output_tokens"`
+	CacheReadTokens int64 `json:"cache_read_tokens,omitempty"`
+
+	// EstimatedUSD is priced from a table compiled into the binary, not quoted
+	// by the API, so it is an estimate and drifts if rates change.
+	EstimatedUSD float64 `json:"estimated_usd"`
+}
+
+// Total is the token count a reader thinks of as "how big was this run".
+func (u Usage) Total() int64 { return u.InputTokens + u.OutputTokens }
 
 // Section is the per-watchlist part of a report. Articles are the ones the
 // summarizer was given, kept so the rendered report can link its sources.

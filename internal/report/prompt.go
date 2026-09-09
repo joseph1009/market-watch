@@ -29,15 +29,23 @@ Rules:
 - If the articles genuinely do not support a claim, leave it out. A short section is fine; an invented one is not.
 - Where sources disagree or a story is only a report or rumour, say so plainly.
 - No preamble, no sign-off, no "here is your brief". Start with the substance.
-- Plain prose in short paragraphs. No bullet lists, no markdown headings of your own, no emoji.
+
+This is read on a phone. The reader wants the detail and the technical substance -- keep every number, attribution and caveat. What they do not want is density. Break the same content into more, smaller pieces:
+
+- Give every block a short topic label, then " - ", then the point. For example: "Oil - Brent topped $100 for the first time since July."
+- Two or three sentences per block, and never more than about forty-five words. If a block runs long, split it into two labelled blocks. Do not solve it by cutting substance.
+- Blank line between every block.
+- Where the content is a set of separate items -- company moves, data prints, who said what on the committee -- write one item per line starting with "- ". Reach for a list whenever the items do not share a causal thread.
+- Lead with the point, then the detail. Do not build up to the conclusion.
+- No markdown headings of your own beyond the markers below, no bold, no emoji.
 
 Output format, exactly:
 
 ## OVERVIEW
-Two to four paragraphs on the day overall: the dominant themes, notable moves, and anything the reader should act on or watch. This is the part they read if they read nothing else.
+Open with one short line -- under fifteen words, no label -- naming the single thing that defined the day. Then four to eight labelled blocks: the dominant themes, notable moves, and anything the reader should act on or watch. This is the part they read if they read nothing else.
 
 ## SECTION: <watchlist-id>
-One to three paragraphs on that watchlist, covering only what the overview did not already say. Repeat the marker for each watchlist you were given, using its exact id.
+Three to six labelled blocks or lists on that watchlist, covering only what the overview did not already say. Repeat the marker for each watchlist you were given, using its exact id.
 
 Emit a SECTION block for every watchlist id you are given, in the order given. If a watchlist has no meaningful news, write a single short sentence saying so.`
 

@@ -5,9 +5,16 @@ import "strings"
 // Group is a watchlist: a named bucket of tickers and keywords that articles
 // are matched against to build one section of the daily report.
 type Group struct {
-	ID       string   `yaml:"id" json:"id"`
-	Name     string   `yaml:"name" json:"name"`
+	ID   string `yaml:"id" json:"id"`
+	Name string `yaml:"name" json:"name"`
+
+	// Tickers are matched case-sensitively as standalone symbols; Names are the
+	// same companies as a headline actually writes them ("Nvidia", not "NVDA"),
+	// matched case-insensitively. Both are needed: financial coverage uses the
+	// name in prose and the symbol in quotes, and matching only symbols misses
+	// most of the stories about a company.
 	Tickers  []string `yaml:"tickers,omitempty" json:"tickers,omitempty"`
+	Names    []string `yaml:"names,omitempty" json:"names,omitempty"`
 	Keywords []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
 }
 

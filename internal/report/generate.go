@@ -14,11 +14,18 @@ import (
 // empty day only invites it to invent one.
 var ErrNoArticles = errors.New("report: no articles to summarize")
 
+// Completion is one model response: the prose, and what it cost to produce.
+type Completion struct {
+	Text  string
+	Usage model.Usage
+	Model string
+}
+
 // Completer is the single model call a report needs. The interface exists so
 // prompt assembly and response parsing are testable without the network, and so
 // the Anthropic client stays replaceable.
 type Completer interface {
-	Complete(ctx context.Context, system, prompt string) (string, error)
+	Complete(ctx context.Context, system, prompt string) (Completion, error)
 }
 
 // Generator turns collected articles into a written brief.
@@ -43,17 +50,21 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	now := g.now()
 	prompt := buildPrompt(articles, groups, now, g.display())
 
-	raw, err := g.Completer.Complete(ctx, systemPrompt, prompt)
+	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
 	if err != nil {
 		return model.Report{}, fmt.Errorf("summarize %d articles: %w", len(articles), err)
 	}
 
-	got := parseResponse(raw)
+	usage := completion.Usage
+	usage.EstimatedUSD = estimateCost(completion.Model, usage)
+
+	got := parseResponse(completion.Text)
 	rep := model.Report{
 		GeneratedAt:  now,
 		Overview:     got.Overview,
 		ArticleCount: len(articles),
 		SourceCount:  countSources(articles),
+		Usage:        usage,
 	}
 
 	for _, grp := range groups {
