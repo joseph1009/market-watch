@@ -4,7 +4,9 @@ package feed
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -33,7 +35,58 @@ type Item struct {
 // vocabularies do not collide, so whichever element set the document uses
 // populates its half of the struct and the other half stays empty.
 func Parse(r io.Reader) ([]Item, error) {
-	dec := xml.NewDecoder(r)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read feed: %w", err)
+	}
+
+	doc, err := decodeFeed(raw)
+	if err == nil {
+		return doc.items(), nil
+	}
+
+	// A URL that serves a web page instead of a feed fails with whatever XML
+	// error the page's markup happens to trigger, which sends you looking for a
+	// parser bug. Say what actually happened instead.
+	if looksLikeHTML(raw) {
+		return nil, ErrNotAFeed
+	}
+
+	// Second chance. Strict mode off still rejects a malformed comment -- a
+	// "--" inside one is illegal XML and Go enforces it -- which throws away an
+	// entire feed over a stray dash in markup nobody reads. Stripping comments
+	// is only worth the risk once the alternative is losing the source.
+	if cleaned, changed := stripComments(raw); changed {
+		if doc, retryErr := decodeFeed(cleaned); retryErr == nil {
+			return doc.items(), nil
+		}
+	}
+	return nil, err
+}
+
+// ErrNotAFeed means the URL served a web page. It is almost always a wrong
+// address rather than a broken feed, so it reads differently in the logs.
+var ErrNotAFeed = errors.New("not a feed: the response is an HTML page")
+
+// looksLikeHTML sniffs the opening bytes. Content-Type is not trustworthy here:
+// plenty of valid feeds are served as text/html.
+func looksLikeHTML(raw []byte) bool {
+	head := raw
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	lower := bytes.ToLower(head)
+	if i := bytes.Index(lower, []byte("<rss")); i >= 0 {
+		return false
+	}
+	if i := bytes.Index(lower, []byte("<feed")); i >= 0 {
+		return false
+	}
+	return bytes.Contains(lower, []byte("<!doctype html")) || bytes.Contains(lower, []byte("<html"))
+}
+
+func decodeFeed(raw []byte) (rawFeed, error) {
+	dec := xml.NewDecoder(bytes.NewReader(raw))
 	dec.CharsetReader = charsetReader
 	// Real feeds carry undefined entities and bare ampersands. Strict mode
 	// rejects the whole document over one of them, losing a source for the day.
@@ -41,9 +94,53 @@ func Parse(r io.Reader) ([]Item, error) {
 
 	var doc rawFeed
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("decode feed: %w", err)
+		return rawFeed{}, fmt.Errorf("decode feed: %w", err)
 	}
+	return doc, nil
+}
 
+// stripComments removes XML comments, leaving CDATA untouched -- feed prose is
+// routinely wrapped in CDATA and may contain the comment markers as text.
+// It reports whether anything was removed, so a failure with no comments in
+// sight is not retried pointlessly.
+func stripComments(data []byte) ([]byte, bool) {
+	var (
+		out       = make([]byte, 0, len(data))
+		cdataOpen = []byte("<![CDATA[")
+		cdataEnd  = []byte("]]>")
+		open      = []byte("<!--")
+		closing   = []byte("-->")
+		changed   bool
+	)
+
+	for i := 0; i < len(data); {
+		switch {
+		case bytes.HasPrefix(data[i:], cdataOpen):
+			end := bytes.Index(data[i:], cdataEnd)
+			if end < 0 {
+				out = append(out, data[i:]...)
+				i = len(data)
+				continue
+			}
+			out = append(out, data[i:i+end+len(cdataEnd)]...)
+			i += end + len(cdataEnd)
+		case bytes.HasPrefix(data[i:], open):
+			changed = true
+			end := bytes.Index(data[i+len(open):], closing)
+			if end < 0 {
+				i = len(data) // unterminated comment swallows the remainder
+				continue
+			}
+			i += len(open) + end + len(closing)
+		default:
+			out = append(out, data[i])
+			i++
+		}
+	}
+	return out, changed
+}
+
+func (doc rawFeed) items() []Item {
 	items := make([]Item, 0, len(doc.Items)+len(doc.Entries))
 	for _, it := range doc.Items {
 		items = append(items, Item{
@@ -61,7 +158,7 @@ func Parse(r io.Reader) ([]Item, error) {
 			Published: parseTime(firstNonEmpty(e.Published, e.Updated)),
 		})
 	}
-	return items, nil
+	return items
 }
 
 // rawFeed holds both vocabularies at once: RSS items hang off <channel>, Atom

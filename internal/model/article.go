@@ -20,6 +20,11 @@ type Article struct {
 	Fetched    time.Time `json:"fetched"`
 	Tickers    []string  `json:"tickers,omitempty"`
 	GroupIDs   []string  `json:"group_ids,omitempty"`
+
+	// Corroborations counts the other outlets that carried the same story,
+	// after near-duplicates were collapsed into this one. Several independent
+	// outlets covering something is itself evidence that it mattered.
+	Corroborations int `json:"corroborations,omitempty"`
 }
 
 // InGroup reports whether the article was matched to the given watchlist group.

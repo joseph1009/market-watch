@@ -50,7 +50,7 @@ func TestLiveEndToEndBrief(t *testing.T) {
 	if collected.AllFailed() {
 		t.Fatal("every source failed; nothing to summarize")
 	}
-	t.Logf("collected %d articles (%d before dedupe)", len(collected.Articles), collected.Fetched)
+	t.Logf("collected %d articles (%d fetched, %d after dedupe)", len(collected.Articles), collected.Fetched, collected.Deduped)
 
 	display, err := time.LoadLocation(config.DefaultDisplayTZ)
 	if err != nil {
