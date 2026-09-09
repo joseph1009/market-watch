@@ -1,0 +1,134 @@
+// Package report turns collected articles into a written market brief using
+// the Claude API.
+package report
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/joseph1009/market-watch/internal/model"
+)
+
+// The response is delimited rather than JSON: the sections are prose that goes
+// straight to the reader, so plain text avoids a round trip through JSON
+// escaping, and a malformed marker costs one section instead of the whole run.
+const (
+	overviewMarker = "## OVERVIEW"
+	sectionMarker  = "## SECTION:"
+)
+
+const systemPrompt = `You write a daily stock-market brief for a single reader who follows the US market from Singapore. They have already missed the trading day by the time they read this: it lands the next morning, local time. Write what a well-informed colleague would tell them over coffee.
+
+You will be given the day's news articles, already matched to the reader's watchlists. Write from those articles and nothing else.
+
+Rules:
+- Use only what the articles state. Do not add prices, percentages, dates or events that are not in the text you were given.
+- Prefer what changed and why it matters over a list of headlines. Group related stories into a single thread rather than repeating each one.
+- If the articles genuinely do not support a claim, leave it out. A short section is fine; an invented one is not.
+- Where sources disagree or a story is only a report or rumour, say so plainly.
+- No preamble, no sign-off, no "here is your brief". Start with the substance.
+- Plain prose in short paragraphs. No bullet lists, no markdown headings of your own, no emoji.
+
+Output format, exactly:
+
+## OVERVIEW
+Two to four paragraphs on the day overall: the dominant themes, notable moves, and anything the reader should act on or watch. This is the part they read if they read nothing else.
+
+## SECTION: <watchlist-id>
+One to three paragraphs on that watchlist, covering only what the overview did not already say. Repeat the marker for each watchlist you were given, using its exact id.
+
+Emit a SECTION block for every watchlist id you are given, in the order given. If a watchlist has no meaningful news, write a single short sentence saying so.`
+
+// buildPrompt renders the articles into the user turn. Articles are ordered by
+// watchlist so related stories sit together, which reads better than the
+// recency order the collector produces.
+func buildPrompt(articles []model.Article, groups []model.Group, now time.Time, display *time.Location) string {
+	if display == nil {
+		display = time.UTC
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Date: %s\n", now.In(display).Format("Monday, 2 January 2006"))
+	fmt.Fprintf(&b, "Articles: %d from %d sources\n\n", len(articles), countSources(articles))
+
+	b.WriteString("Watchlists, in the order their sections must appear:\n")
+	if len(groups) == 0 {
+		b.WriteString("(none -- write the overview only)\n")
+	}
+	for _, g := range groups {
+		fmt.Fprintf(&b, "- %s: %s", g.ID, g.Name)
+		if len(g.Tickers) > 0 {
+			fmt.Fprintf(&b, " (%s)", strings.Join(g.Tickers, ", "))
+		}
+		b.WriteString("\n")
+	}
+
+	for _, g := range groups {
+		matched := articlesInGroup(articles, g.ID)
+		fmt.Fprintf(&b, "\n=== %s (%s) -- %d articles ===\n", g.Name, g.ID, len(matched))
+		if len(matched) == 0 {
+			b.WriteString("(no articles matched this watchlist today)\n")
+			continue
+		}
+		writeArticles(&b, matched, display)
+	}
+
+	// Everything the watchlists did not claim still informs the overview, so it
+	// is offered separately rather than dropped.
+	if general := unmatched(articles); len(general) > 0 {
+		fmt.Fprintf(&b, "\n=== General market news -- %d articles ===\n", len(general))
+		writeArticles(&b, general, display)
+	}
+
+	return b.String()
+}
+
+func writeArticles(b *strings.Builder, articles []model.Article, display *time.Location) {
+	for _, a := range articles {
+		fmt.Fprintf(b, "\n- %s\n  %s, %s\n", a.Title, a.SourceName, a.Published.In(display).Format("15:04 on 2 Jan"))
+		if a.Summary != "" {
+			fmt.Fprintf(b, "  %s\n", a.Summary)
+		}
+	}
+}
+
+func articlesInGroup(articles []model.Article, groupID string) []model.Article {
+	out := make([]model.Article, 0, len(articles))
+	for _, a := range articles {
+		if a.InGroup(groupID) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func unmatched(articles []model.Article) []model.Article {
+	out := make([]model.Article, 0, len(articles))
+	for _, a := range articles {
+		if len(a.GroupIDs) == 0 {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func countSources(articles []model.Article) int {
+	seen := make(map[string]struct{}, len(articles))
+	for _, a := range articles {
+		seen[a.SourceID] = struct{}{}
+	}
+	return len(seen)
+}
+
+// sortedGroupIDs is used only in errors and logs, where a stable order makes
+// two runs comparable.
+func sortedGroupIDs(groups []model.Group) []string {
+	ids := make([]string, len(groups))
+	for i, g := range groups {
+		ids[i] = g.ID
+	}
+	sort.Strings(ids)
+	return ids
+}

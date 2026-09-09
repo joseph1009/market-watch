@@ -1,0 +1,98 @@
+package config
+
+import (
+	"testing"
+	"time"
+)
+
+// The report is scheduled in US Eastern time so it stays fixed relative to the
+// US close. This asserts the consequence the schedule actually exists for: a
+// Singapore reader gets it at 09:30 while New York is on EST and 08:30 while it
+// is on EDT, with the shift coming from the US transition alone.
+func TestReportArrivesAt0930SGTUnderESTAnd0830UnderEDT(t *testing.T) {
+	schedule, err := time.LoadLocation(DefaultScheduleTZ)
+	if err != nil {
+		t.Fatalf("load schedule timezone: %v", err)
+	}
+	display, err := time.LoadLocation(DefaultDisplayTZ)
+	if err != nil {
+		t.Fatalf("load display timezone: %v", err)
+	}
+
+	reportAt, err := ParseClockTime(DefaultReportAt)
+	if err != nil {
+		t.Fatalf("parse default report time: %v", err)
+	}
+	cfg := &Config{ScheduleLocation: schedule, DisplayLocation: display, ReportAt: reportAt}
+
+	tests := []struct {
+		name string
+		from time.Time
+		want string
+	}{
+		{
+			name: "New York on EST",
+			from: time.Date(2027, time.January, 15, 12, 0, 0, 0, schedule),
+			want: "2027-01-16 09:30 +0800",
+		},
+		{
+			name: "New York on EDT",
+			from: time.Date(2027, time.July, 15, 12, 0, 0, 0, schedule),
+			want: "2027-07-16 08:30 +0800",
+		},
+		{
+			// The Sunday the US springs forward; the following report is the
+			// first to land an hour earlier in Singapore.
+			name: "day US DST begins",
+			from: time.Date(2027, time.March, 14, 12, 0, 0, 0, schedule),
+			want: "2027-03-15 08:30 +0800",
+		},
+		{
+			// The Sunday the US falls back, shifting Singapore delivery later.
+			name: "day US DST ends",
+			from: time.Date(2027, time.November, 7, 12, 0, 0, 0, schedule),
+			want: "2027-11-08 09:30 +0800",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cfg.NextRun(tt.from).In(display).Format("2006-01-02 15:04 -0700")
+			if got != tt.want {
+				t.Errorf("delivery in Singapore = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNextRunRollsToTomorrowOnceTodaysTimeHasPassed(t *testing.T) {
+	schedule := time.FixedZone("TEST", 0)
+	at := ClockTime{Hour: 20, Minute: 30}
+
+	// Exactly at the scheduled time counts as passed: the run firing now must
+	// not immediately reschedule itself for the same instant.
+	from := time.Date(2027, time.January, 15, 20, 30, 0, 0, schedule)
+	got := at.Next(from, schedule)
+	want := time.Date(2027, time.January, 16, 20, 30, 0, 0, schedule)
+	if !got.Equal(want) {
+		t.Errorf("Next(%s) = %s, want %s", from, got, want)
+	}
+
+	from = time.Date(2027, time.January, 15, 20, 29, 59, 0, schedule)
+	got = at.Next(from, schedule)
+	want = time.Date(2027, time.January, 15, 20, 30, 0, 0, schedule)
+	if !got.Equal(want) {
+		t.Errorf("Next(%s) = %s, want %s", from, got, want)
+	}
+}
+
+func TestParseClockTimeRejectsGarbage(t *testing.T) {
+	for _, in := range []string{"", "9:30am", "25:00", "07-30", "half past eight"} {
+		if _, err := ParseClockTime(in); err == nil {
+			t.Errorf("ParseClockTime(%q) succeeded, want an error", in)
+		}
+	}
+	if got, err := ParseClockTime(" 08:05 "); err != nil || got.String() != "08:05" {
+		t.Errorf("ParseClockTime(\" 08:05 \") = %v, %v; want 08:05, nil", got, err)
+	}
+}

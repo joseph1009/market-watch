@@ -1,0 +1,14 @@
+# Normalize every text file to LF, in the repository and in the working tree,
+# on every platform. The `eol=lf` is the part that matters: Git for Windows
+# ships core.autocrlf=true in its system config, which would otherwise check
+# these files out as CRLF. A stray CR is untidy in Go source but fatal in a
+# shell script or Dockerfile once it runs in the Linux container this deploys to.
+* text=auto eol=lf
+
+# Insurance against text/binary misdetection on files that are mostly ASCII.
+*.db  binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
