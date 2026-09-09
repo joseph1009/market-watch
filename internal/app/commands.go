@@ -1,0 +1,312 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/telegram"
+)
+
+const helpText = `<b>📊 Market Watch</b>
+
+/now — build and send a brief right now
+/watchlist — show your watchlists
+/watchlist add &lt;group&gt; &lt;ticker or name&gt; — track something
+/watchlist remove &lt;group&gt; &lt;ticker or name&gt; — stop tracking it
+/sources — show the news feeds
+/sources on|off &lt;id&gt; — enable or disable a feed
+/schedule — when the next brief is due
+/help — this message
+
+The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
+
+// HandleMessage routes one incoming message. Failures are reported into the
+// chat rather than returned: the sender is the only person who can act on them,
+// and the polling loop has to keep running either way.
+func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
+	command, args := splitCommand(msg.Text)
+	if command == "" {
+		return // ordinary chatter, not addressed to the bot
+	}
+
+	a.Log.Info("command", "command", command, "chat", msg.Chat.ID)
+
+	var err error
+	switch command {
+	case "start":
+		err = a.handleStart(ctx, msg)
+	case "help":
+		err = a.Bot.SendMessage(ctx, msg.Chat.ID, helpText)
+	case "now":
+		err = a.handleNow(ctx, msg)
+	case "watchlist":
+		err = a.handleWatchlist(ctx, msg, args)
+	case "sources":
+		err = a.handleSources(ctx, msg, args)
+	case "schedule":
+		err = a.handleSchedule(ctx, msg)
+	default:
+		err = a.Bot.SendMessage(ctx, msg.Chat.ID,
+			fmt.Sprintf("Unknown command %s. Try /help.", escape("/"+command)))
+	}
+
+	if err != nil {
+		a.Log.Error("command failed", "command", command, "error", err)
+		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(err.Error()))
+	}
+}
+
+// splitCommand parses "/watchlist add semis-ai NVDA" into its parts. Telegram
+// appends "@botname" to commands used in a group chat.
+func splitCommand(text string) (command string, args []string) {
+	fields := strings.Fields(strings.TrimSpace(text))
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		return "", nil
+	}
+
+	command = strings.ToLower(strings.TrimPrefix(fields[0], "/"))
+	if at := strings.IndexByte(command, '@'); at >= 0 {
+		command = command[:at]
+	}
+	return command, fields[1:]
+}
+
+// handleStart records where to deliver. This is the whole reason the chat id
+// need never be configured by hand.
+func (a *App) handleStart(ctx context.Context, msg telegram.Message) error {
+	if a.Prefs().ChatID == msg.Chat.ID {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID,
+			"Already set up — the daily brief comes here.\n\nSend /help to see what else I can do.")
+	}
+
+	if err := a.UpdatePrefs(func(p *config.Prefs) error {
+		p.ChatID = msg.Chat.ID
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	a.Log.Info("chat registered", "chat", msg.Chat.ID)
+	when := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
+		"<b>📊 Market Watch</b>\n\nSet up. The daily brief will arrive here, next at %s.\n\nSend /now for one immediately, or /help for everything else.",
+		escape(when.Format("Mon 2 Jan at 15:04 MST"))))
+}
+
+func (a *App) handleNow(ctx context.Context, msg telegram.Message) error {
+	// Collecting and writing takes about a minute. Saying so beats silence and
+	// confirms the command was heard.
+	if err := a.Bot.SendMessage(ctx, msg.Chat.ID, "Collecting and writing your brief — about a minute."); err != nil {
+		return err
+	}
+
+	// Asking for a brief in a chat the bot does not know is an implicit /start.
+	if a.Prefs().ChatID == 0 {
+		if err := a.UpdatePrefs(func(p *config.Prefs) error {
+			p.ChatID = msg.Chat.ID
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	return a.SendReport(ctx)
+}
+
+func (a *App) handleSchedule(ctx context.Context, msg telegram.Message) error {
+	next := a.Cfg.NextRun(a.now())
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
+		"<b>Schedule</b>\nDaily at %s %s, which is %s where you are.\n\nNext: %s, in %s.",
+		escape(a.Cfg.ReportAt.String()),
+		escape(a.Cfg.ScheduleLocation.String()),
+		escape(next.In(a.Cfg.DisplayLocation).Format("15:04 MST")),
+		escape(next.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan, 15:04")),
+		escape(next.Sub(a.now()).Round(time.Minute).String())))
+}
+
+func (a *App) handleWatchlist(ctx context.Context, msg telegram.Message, args []string) error {
+	if len(args) == 0 {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderWatchlists(a.Prefs().Groups))
+	}
+
+	action := strings.ToLower(args[0])
+	if len(args) < 3 || (action != "add" && action != "remove") {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID,
+			"Usage: /watchlist add &lt;group&gt; &lt;ticker or name&gt;\n\nGroups: "+escape(groupIDs(a.Prefs().Groups)))
+	}
+
+	groupID := model.GroupID(args[1])
+	term := strings.Join(args[2:], " ")
+
+	var outcome string
+	err := a.UpdatePrefs(func(p *config.Prefs) error {
+		for i := range p.Groups {
+			if p.Groups[i].ID != groupID {
+				continue
+			}
+			if action == "add" {
+				outcome = addTerm(&p.Groups[i], term)
+			} else {
+				outcome = removeTerm(&p.Groups[i], term)
+			}
+			return nil
+		}
+		return fmt.Errorf("no watchlist called %q; try one of: %s", groupID, groupIDs(p.Groups))
+	})
+	if err != nil {
+		return err
+	}
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(outcome))
+}
+
+// addTerm decides from its shape whether the term is a ticker or a company
+// name. The two are matched differently -- symbols case-sensitively so "ARM"
+// does not match an arm, names case-insensitively so "Nvidia" matches "nvidia".
+func addTerm(g *model.Group, term string) string {
+	if isTicker(term) {
+		symbol := strings.ToUpper(term)
+		for _, t := range g.Tickers {
+			if t == symbol {
+				return fmt.Sprintf("%s already tracks %s.", g.Name, symbol)
+			}
+		}
+		g.Tickers = append(g.Tickers, symbol)
+		return fmt.Sprintf("Added %s to %s.", symbol, g.Name)
+	}
+
+	for _, n := range g.Names {
+		if strings.EqualFold(n, term) {
+			return fmt.Sprintf("%s already tracks %s.", g.Name, term)
+		}
+	}
+	g.Names = append(g.Names, term)
+	return fmt.Sprintf("Added %s to %s as a name.", term, g.Name)
+}
+
+func removeTerm(g *model.Group, term string) string {
+	before := len(g.Tickers) + len(g.Names) + len(g.Keywords)
+	g.Tickers = withoutFold(g.Tickers, term)
+	g.Names = withoutFold(g.Names, term)
+	g.Keywords = withoutFold(g.Keywords, term)
+
+	if before == len(g.Tickers)+len(g.Names)+len(g.Keywords) {
+		return fmt.Sprintf("%s was not tracking %s.", g.Name, term)
+	}
+	return fmt.Sprintf("Removed %s from %s.", term, g.Name)
+}
+
+func withoutFold(list []string, term string) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		if !strings.EqualFold(v, term) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// isTicker treats a short all-caps token as a symbol. Deliberately narrow: a
+// wrong guess only decides which matcher runs, and a name is the safer default
+// because case-insensitive matching finds more.
+func isTicker(s string) bool {
+	if s == "" || len(s) > 5 {
+		return false
+	}
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *App) handleSources(ctx context.Context, msg telegram.Message, args []string) error {
+	if len(args) == 0 {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderSources(a.Prefs().Sources))
+	}
+
+	action := strings.ToLower(args[0])
+	if len(args) != 2 || (action != "on" && action != "off") {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, "Usage: /sources on|off &lt;id&gt;")
+	}
+
+	id := args[1]
+	var outcome string
+	err := a.UpdatePrefs(func(p *config.Prefs) error {
+		for i := range p.Sources {
+			if p.Sources[i].ID != id {
+				continue
+			}
+			p.Sources[i].Enabled = action == "on"
+			state := "off"
+			if p.Sources[i].Enabled {
+				state = "on"
+			}
+			outcome = fmt.Sprintf("%s is now %s.", p.Sources[i].Name, state)
+			return nil
+		}
+		return fmt.Errorf("no source called %q; send /sources to list them", id)
+	})
+	if err != nil {
+		return err
+	}
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(outcome))
+}
+
+func renderWatchlists(groups []model.Group) string {
+	if len(groups) == 0 {
+		return "No watchlists configured."
+	}
+
+	var b strings.Builder
+	b.WriteString("<b>Watchlists</b>\n")
+	for _, g := range groups {
+		fmt.Fprintf(&b, "\n<b>%s</b> <i>(%s)</i>\n", escape(g.Name), escape(g.ID))
+		if len(g.Tickers) > 0 {
+			fmt.Fprintf(&b, "%s\n", escape(strings.Join(g.Tickers, " ")))
+		}
+		if len(g.Names) > 0 {
+			fmt.Fprintf(&b, "<i>%s</i>\n", escape(strings.Join(g.Names, ", ")))
+		}
+		if len(g.Keywords) > 0 {
+			fmt.Fprintf(&b, "<i>%d keywords</i>\n", len(g.Keywords))
+		}
+	}
+	b.WriteString("\n<i>Change with /watchlist add|remove &lt;group&gt; &lt;term&gt;</i>")
+	return b.String()
+}
+
+func renderSources(sources []model.Source) string {
+	if len(sources) == 0 {
+		return "No sources configured."
+	}
+
+	var b strings.Builder
+	b.WriteString("<b>Sources</b>\n")
+	for _, s := range sources {
+		mark := "○"
+		if s.Enabled {
+			mark = "●"
+		}
+		fmt.Fprintf(&b, "\n%s <b>%s</b> <i>(%s, weight %d)</i>", mark, escape(s.Name), escape(s.ID), s.Weight)
+	}
+	b.WriteString("\n\n<i>● on, ○ off — change with /sources on|off &lt;id&gt;</i>")
+	return b.String()
+}
+
+func groupIDs(groups []model.Group) string {
+	ids := make([]string, len(groups))
+	for i, g := range groups {
+		ids[i] = g.ID
+	}
+	return strings.Join(ids, ", ")
+}
+
+// escape mirrors the renderer's escaping for text assembled here. Watchlist
+// terms come from the user, so they are markup until proven otherwise.
+var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
+
+func escape(s string) string { return escaper.Replace(s) }
