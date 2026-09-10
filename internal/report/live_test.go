@@ -43,7 +43,7 @@ func TestLiveEndToEndBrief(t *testing.T) {
 		UserAgent: os.Getenv("USER_AGENT"),
 	}
 
-	collected := feed.Collect(ctx, fetcher, prefs.EnabledSources(), prefs.Groups, 250)
+	collected := feed.Collect(ctx, fetcher, feed.Options{Sources: prefs.EnabledSources(), Groups: prefs.Groups, Max: 250})
 	for _, e := range collected.Errors {
 		t.Logf("source %s failed: %v", e.SourceID, e.Err)
 	}

@@ -50,6 +50,10 @@ type Config struct {
 	// answers that with 403, so a real deployment sets this.
 	UserAgent string
 
+	// FREDAPIKey enables the market-levels block. Free to obtain, but not
+	// universal, so an empty key omits the block rather than failing the run.
+	FREDAPIKey string
+
 	DataDir string
 
 	// ScheduleLocation and ReportAt together fix when the daily report fires.
@@ -83,6 +87,7 @@ func Load() (*Config, error) {
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
 		Model:            envOr("CLAUDE_MODEL", DefaultModel),
 		UserAgent:        envOr("USER_AGENT", ""),
+		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 

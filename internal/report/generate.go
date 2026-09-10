@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
@@ -36,6 +37,10 @@ type Generator struct {
 	// told the local date so "today" means the reader's today.
 	DisplayLocation *time.Location
 
+	// Levels are market readings shown to the model as measured values rather
+	// than as news. Empty omits the block entirely.
+	Levels []marketdata.Reading
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -55,7 +60,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// articles produces filler -- "the watchlist was thin today" -- rather than
 	// anything worth the space.
 	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
-	prompt := buildPrompt(articles, active, now, g.display())
+	prompt := buildPrompt(articles, active, g.Levels, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
 	if err != nil {

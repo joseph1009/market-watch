@@ -1,0 +1,357 @@
+// Package sec turns SEC filings into articles, using the submissions API
+// rather than an RSS feed.
+//
+// The RSS route was tried and abandoned. EDGAR's feeds title an entry with the
+// form type and nothing else -- literally "8-K - Current report" -- so the
+// summarizer receives a label with no content and writes filler around it. The
+// item codes that say what a filing is about live in the submissions JSON, not
+// in any feed, which is why this is an API client and not another source URL.
+package sec
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/joseph1009/market-watch/internal/model"
+)
+
+const (
+	tickerIndexURL = "https://www.sec.gov/files/company_tickers.json"
+	submissionsURL = "https://data.sec.gov/submissions/CIK%010d.json"
+
+	// SEC publishes a 10 requests/second limit and enforces it: per-company
+	// requests timed out at concurrency 4 and succeeded at 1. Two with a pause
+	// between them stays well inside the limit and still finishes in seconds.
+	defaultConcurrency = 2
+	requestPause       = 120 * time.Millisecond
+
+	maxBodyBytes = 32 << 20 // a large issuer's submissions file is a few MB
+)
+
+// materialItems are the 8-K item codes worth a reader's attention, with the
+// plain-English name that goes into the headline.
+//
+// The exclusions matter as much as the inclusions. 7.01 (Regulation FD) and
+// 8.01 (Other Events) cover most 8-K volume and say nothing about what
+// happened -- they are what produced "Analog Devices also filed a Reg FD 8-K
+// the same day" in an earlier brief, a line that cost space and told the reader
+// nothing.
+var materialItems = map[string]string{
+	"1.01": "entered a material agreement",
+	"1.03": "filed for bankruptcy or receivership",
+	"2.01": "completed an acquisition or disposition",
+	"2.02": "reported results",
+	"2.05": "announced restructuring costs",
+	"2.06": "recorded a material impairment",
+	"4.02": "said previously issued financials should not be relied upon",
+	"5.02": "announced a change of directors or officers",
+}
+
+// Filing is one 8-K worth reporting.
+type Filing struct {
+	Ticker    string
+	Company   string
+	Items     []string
+	Filed     time.Time
+	URL       string
+	Accession string
+}
+
+// Client reads the SEC submissions API.
+type Client struct {
+	HTTP        *http.Client
+	UserAgent   string
+	Concurrency int
+
+	// BaseURL fields exist so the tests can point at a stub. Empty means the
+	// real SEC endpoints.
+	TickerIndexURL string
+	SubmissionsURL string
+
+	// tickers caches the ticker-to-CIK index for the process lifetime. It is a
+	// ~1MB file that changes rarely, and refetching it per run would be the
+	// largest request we make.
+	once    sync.Once
+	tickers map[string]company
+	initErr error
+}
+
+type company struct {
+	CIK  int
+	Name string
+}
+
+// Collect returns articles for the material filings of the given tickers.
+//
+// Errors are returned alongside the articles rather than instead of them: one
+// company's submissions being unavailable is not a reason to lose the rest.
+func (c *Client) Collect(ctx context.Context, tickers []string, since time.Time) ([]model.Article, []error) {
+	index, err := c.tickerIndex(ctx)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	// Resolve first so unknown tickers are reported once, not chased over the
+	// network. A watchlist naming a symbol SEC does not list -- a foreign
+	// issuer, or a typo -- is worth knowing about.
+	type target struct {
+		ticker string
+		co     company
+	}
+	var targets []target
+	var errs []error
+	for _, t := range tickers {
+		co, ok := index[strings.ToUpper(t)]
+		if !ok {
+			continue // not a US registrant; silence rather than noise
+		}
+		targets = append(targets, target{ticker: strings.ToUpper(t), co: co})
+	}
+
+	results := make([][]model.Article, len(targets))
+	failures := make([]error, len(targets))
+
+	sem := make(chan struct{}, c.concurrency())
+	var wg sync.WaitGroup
+	for i, tgt := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				failures[i] = ctx.Err()
+				return
+			}
+
+			filings, err := c.recent(ctx, tgt.co, since)
+			if err != nil {
+				failures[i] = fmt.Errorf("%s: %w", tgt.ticker, err)
+				return
+			}
+			for _, f := range filings {
+				f.Ticker = tgt.ticker
+				results[i] = append(results[i], f.article())
+			}
+		}()
+	}
+	wg.Wait()
+
+	var articles []model.Article
+	for i := range targets {
+		if failures[i] != nil {
+			errs = append(errs, failures[i])
+			continue
+		}
+		articles = append(articles, results[i]...)
+	}
+	return articles, errs
+}
+
+// article renders a filing as something the summarizer can read. The headline
+// states what happened, which is the whole reason for going past the RSS feed.
+func (f Filing) article() model.Article {
+	var what []string
+	for _, item := range f.Items {
+		if name, ok := materialItems[item]; ok {
+			what = append(what, name)
+		}
+	}
+
+	title := fmt.Sprintf("%s (%s) %s", f.Company, f.Ticker, strings.Join(what, "; "))
+	summary := fmt.Sprintf("SEC Form 8-K filed %s, item %s.",
+		f.Filed.Format("2 January 2006"), strings.Join(f.Items, ", "))
+
+	return model.Article{
+		ID:         model.ArticleID(f.URL),
+		Title:      title,
+		URL:        f.URL,
+		SourceID:   SourceID,
+		SourceName: SourceName,
+		Summary:    summary,
+		Published:  f.Filed,
+		Fetched:    time.Now().UTC(),
+		Tickers:    []string{f.Ticker},
+	}
+}
+
+// SourceID and SourceName identify these articles in the pipeline. They are
+// weighted like a filing rather than like news, which is what they are.
+const (
+	SourceID     = "sec-filings"
+	SourceName   = "SEC Filings"
+	SourceWeight = 10
+)
+
+type submissions struct {
+	Name    string `json:"name"`
+	Filings struct {
+		Recent struct {
+			AccessionNumber []string `json:"accessionNumber"`
+			FilingDate      []string `json:"filingDate"`
+			Form            []string `json:"form"`
+			Items           []string `json:"items"`
+			PrimaryDocument []string `json:"primaryDocument"`
+		} `json:"recent"`
+	} `json:"filings"`
+}
+
+func (c *Client) recent(ctx context.Context, co company, since time.Time) ([]Filing, error) {
+	var doc submissions
+	if err := c.getJSON(ctx, fmt.Sprintf(c.submissionsURL(), co.CIK), &doc); err != nil {
+		return nil, err
+	}
+
+	r := doc.Filings.Recent
+	n := len(r.Form)
+	// The arrays are parallel by contract. A short one means the shape changed,
+	// and reading past it would pair a form with another filing's date.
+	if len(r.FilingDate) < n || len(r.AccessionNumber) < n || len(r.Items) < n {
+		return nil, fmt.Errorf("submissions arrays are ragged for CIK %d", co.CIK)
+	}
+
+	var out []Filing
+	for i := 0; i < n; i++ {
+		if r.Form[i] != "8-K" {
+			continue
+		}
+		filed, err := time.Parse("2006-01-02", r.FilingDate[i])
+		if err != nil || filed.Before(since) {
+			continue
+		}
+
+		items := materialCodes(r.Items[i])
+		if len(items) == 0 {
+			continue // routine disclosure with no market read
+		}
+
+		primary := ""
+		if i < len(r.PrimaryDocument) {
+			primary = r.PrimaryDocument[i]
+		}
+		out = append(out, Filing{
+			Company:   doc.Name,
+			Items:     items,
+			Filed:     filed,
+			Accession: r.AccessionNumber[i],
+			URL:       filingURL(co.CIK, r.AccessionNumber[i], primary),
+		})
+	}
+	return out, nil
+}
+
+// materialCodes keeps only the item codes worth reporting. The field is a
+// comma-separated list, and a single filing routinely carries several.
+func materialCodes(raw string) []string {
+	var out []string
+	for _, code := range strings.Split(raw, ",") {
+		code = strings.TrimSpace(code)
+		if _, ok := materialItems[code]; ok {
+			out = append(out, code)
+		}
+	}
+	return out
+}
+
+func filingURL(cik int, accession, primary string) string {
+	bare := strings.ReplaceAll(accession, "-", "")
+	if primary == "" {
+		return fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%d/%s/", cik, bare)
+	}
+	return fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%d/%s/%s", cik, bare, primary)
+}
+
+// tickerIndex maps symbols to CIKs, fetched once per process.
+func (c *Client) tickerIndex(ctx context.Context) (map[string]company, error) {
+	c.once.Do(func() {
+		// The file is a JSON object keyed by row number, not an array.
+		var raw map[string]struct {
+			CIK    int    `json:"cik_str"`
+			Ticker string `json:"ticker"`
+			Title  string `json:"title"`
+		}
+		if err := c.getJSON(ctx, c.tickerIndexURL(), &raw); err != nil {
+			c.initErr = fmt.Errorf("load SEC ticker index: %w", err)
+			return
+		}
+
+		c.tickers = make(map[string]company, len(raw))
+		for _, row := range raw {
+			c.tickers[strings.ToUpper(row.Ticker)] = company{CIK: row.CIK, Name: row.Title}
+		}
+	})
+	return c.tickers, c.initErr
+}
+
+func (c *Client) getJSON(ctx context.Context, url string, into any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	// SEC answers Go's default User-Agent with 403 and requires a contact
+	// address; the same string the feed fetcher uses applies here.
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, into); err != nil {
+		return fmt.Errorf("decode %s: %w", url, err)
+	}
+
+	// Pacing lives here rather than at the call site so every request through
+	// this client is spaced, including the index fetch.
+	select {
+	case <-time.After(requestPause):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return http.DefaultClient
+}
+
+func (c *Client) concurrency() int {
+	if c.Concurrency > 0 {
+		return c.Concurrency
+	}
+	return defaultConcurrency
+}
+
+func (c *Client) tickerIndexURL() string {
+	if c.TickerIndexURL != "" {
+		return c.TickerIndexURL
+	}
+	return tickerIndexURL
+}
+
+func (c *Client) submissionsURL() string {
+	if c.SubmissionsURL != "" {
+		return c.SubmissionsURL
+	}
+	return submissionsURL
+}

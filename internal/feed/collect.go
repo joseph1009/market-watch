@@ -38,10 +38,39 @@ func (r Result) AllFailed() bool {
 	return len(r.Articles) == 0 && len(r.Errors) > 0
 }
 
+// Options configures one collection run.
+//
+// A struct rather than more positional arguments: Extra was the fifth thing to
+// pass, and the SEC filings it carries will not be the last source that is not
+// an RSS feed.
+type Options struct {
+	Sources []model.Source
+	Groups  []model.Group
+	Max     int
+
+	// Extra are articles gathered outside the feed fetcher -- currently SEC
+	// filings from the submissions API. They join before dedupe and scoring, so
+	// a filing competes for a place on the same terms as everything else.
+	Extra []model.Article
+}
+
 // Collect runs the full pipeline: fetch every source, collapse duplicates, tag
-// articles against the watchlists, and keep the most useful max of them.
-func Collect(ctx context.Context, f *Fetcher, sources []model.Source, groups []model.Group, max int) Result {
-	articles, errs := f.Fetch(ctx, sources)
+// articles against the watchlists, and keep the most useful Max of them.
+func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
+	sources, groups, max := opts.Sources, opts.Groups, opts.Max
+
+	// A source with no URL is not a feed -- SEC filings arrive through their own
+	// API -- but it still needs a weight, so it stays in sources for scoring and
+	// is skipped for fetching.
+	fetchable := make([]model.Source, 0, len(sources))
+	for _, s := range sources {
+		if s.URL != "" {
+			fetchable = append(fetchable, s)
+		}
+	}
+
+	articles, errs := f.Fetch(ctx, fetchable)
+	articles = append(articles, opts.Extra...)
 
 	fetched := len(articles)
 	articles = DropStale(articles, f.now(), MaxArticleAge)

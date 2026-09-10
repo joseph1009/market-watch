@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
@@ -379,4 +380,61 @@ func equalStringSlices(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+// Levels are measured values, not claims by an outlet. The prompt has to say so,
+// or the model will attribute a yield to whichever article sat nearest it.
+func TestPromptSeparatesMarketLevelsFromArticles(t *testing.T) {
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+	g := &Generator{
+		Completer: fake,
+		Now:       testTime,
+		Levels: []marketdata.Reading{
+			{Series: marketdata.Series{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
+				Latest: 4.32, AsOf: testTime(), Previous: 4.28, HasPrevious: true,
+				WeekAgo: 4.11, HasWeekAgo: true},
+		},
+	}
+
+	if _, err := g.Generate(context.Background(), testArticles(), reportGroups()); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	for _, want := range []string{
+		"Market levels",
+		"US 10-year Treasury yield: 4.32%",
+		"up 0.04 since the previous session",
+		"up 0.21 over the past week",
+		"not claims made by any article",
+	} {
+		if !strings.Contains(fake.prompt, want) {
+			t.Errorf("prompt missing %q\n---\n%s", want, fake.prompt)
+		}
+	}
+}
+
+// Directions are spelled out because the reader of this block is a language
+// model, and a bare "-0.04" invites it to describe a fall as a rise.
+func TestMarketLevelsStateDirectionInWords(t *testing.T) {
+	if got := describeMove(-0.04); got != "down 0.04" {
+		t.Errorf("describeMove(-0.04) = %q", got)
+	}
+	if got := describeMove(0.04); got != "up 0.04" {
+		t.Errorf("describeMove(0.04) = %q", got)
+	}
+	if got := describeMove(0.001); got != "unchanged" {
+		t.Errorf("describeMove(0.001) = %q, want unchanged", got)
+	}
+}
+
+func TestPromptOmitsTheLevelsBlockWithoutData(t *testing.T) {
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+	g := &Generator{Completer: fake, Now: testTime}
+
+	if _, err := g.Generate(context.Background(), testArticles(), reportGroups()); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(fake.prompt, "Market levels") {
+		t.Errorf("rendered an empty levels block:\n%s", fake.prompt)
+	}
 }

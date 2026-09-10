@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
@@ -74,7 +75,7 @@ func splitByCoverage(articles []model.Article, groups []model.Group, minimum int
 // buildPrompt renders the articles into the user turn. Articles are ordered by
 // watchlist so related stories sit together, which reads better than the
 // recency order the collector produces.
-func buildPrompt(articles []model.Article, groups []model.Group, now time.Time, display *time.Location) string {
+func buildPrompt(articles []model.Article, groups []model.Group, levels []marketdata.Reading, now time.Time, display *time.Location) string {
 	if display == nil {
 		display = time.UTC
 	}
@@ -82,6 +83,15 @@ func buildPrompt(articles []model.Article, groups []model.Group, now time.Time, 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Date: %s\n", now.In(display).Format("Monday, 2 January 2006"))
 	fmt.Fprintf(&b, "Articles: %d from %d sources\n\n", len(articles), countSources(articles))
+
+	// Market levels come first and are labelled as levels, not as news. The
+	// articles say what people wrote; this says where things actually are, and
+	// conflating the two would let a level be reported as though an outlet had
+	// claimed it.
+	if block := renderMarketData(levels); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n")
+	}
 
 	b.WriteString("Watchlists, in the order their sections must appear:\n")
 	if len(groups) == 0 {
@@ -179,4 +189,42 @@ func sortedGroupIDs(groups []model.Group) []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// renderMarketData writes the levels block.
+//
+// Directions are stated rather than implied by a sign, because the reader of
+// this block is a language model and "-0.04" invites it to describe a fall as a
+// rise. A move that is not known is left out rather than shown as zero.
+func renderMarketData(levels []marketdata.Reading) string {
+	if len(levels) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("\nMarket levels, as reported by FRED. These are measured values, not claims made by any article -- use them to anchor the macro section, and do not attribute them to a source:\n")
+	for _, r := range levels {
+		fmt.Fprintf(&b, "- %s: %.2f%s as of %s",
+			r.Label, r.Latest, r.Unit, r.AsOf.Format("2 Jan"))
+		if r.HasPrevious {
+			fmt.Fprintf(&b, ", %s since the previous session", describeMove(r.Change()))
+		}
+		if r.HasWeekAgo {
+			fmt.Fprintf(&b, ", %s over the past week", describeMove(r.WeeklyChange()))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func describeMove(delta float64) string {
+	const flat = 0.005 // below this the move rounds to nothing at two decimals
+	switch {
+	case delta > flat:
+		return fmt.Sprintf("up %.2f", delta)
+	case delta < -flat:
+		return fmt.Sprintf("down %.2f", -delta)
+	default:
+		return "unchanged"
+	}
 }

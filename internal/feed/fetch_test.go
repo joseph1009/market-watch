@@ -170,7 +170,7 @@ func TestCollectRunsTheWholePipeline(t *testing.T) {
 		{ID: "aggregator", Name: "Aggregator", URL: srv.URL, Weight: 4},
 	}
 
-	res := Collect(context.Background(), testFetcher(), sources, testGroups(), 10)
+	res := Collect(context.Background(), testFetcher(), Options{Sources: sources, Groups: testGroups(), Max: 10})
 	if len(res.Errors) != 0 {
 		t.Fatalf("unexpected errors: %v", res.Errors)
 	}
@@ -203,7 +203,7 @@ func TestCollectHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	res := Collect(ctx, testFetcher(), []model.Source{{ID: "s", Name: "S", URL: srv.URL}}, nil, 10)
+	res := Collect(ctx, testFetcher(), Options{Sources: []model.Source{{ID: "s", Name: "S", URL: srv.URL}}, Max: 10})
 	if !res.AllFailed() {
 		t.Errorf("got %d articles, want the cancelled fetch to report failure", len(res.Articles))
 	}

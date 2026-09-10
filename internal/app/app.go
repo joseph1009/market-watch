@@ -13,8 +13,10 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/feed"
+	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/report"
+	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -26,6 +28,13 @@ type App struct {
 	Fetcher   *feed.Fetcher
 	Generator *report.Generator
 	Bot       *telegram.Client
+
+	// Filings reads SEC 8-K item codes. Nil disables filing collection, which
+	// is what the tests use and what a run without a User-Agent falls back to.
+	Filings *sec.Client
+
+	// Levels reads market data. Disabled without a FRED key.
+	Levels *marketdata.Client
 
 	mu    sync.RWMutex
 	prefs *config.Prefs
@@ -69,7 +78,15 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			DisplayLocation: cfg.DisplayLocation,
 		},
 		// Polling holds a request open for 30s, so this client must outlast it.
-		Bot:   telegram.New(cfg.TelegramBotToken, &http.Client{Timeout: 90 * time.Second}),
+		Bot: telegram.New(cfg.TelegramBotToken, &http.Client{Timeout: 90 * time.Second}),
+		Levels: &marketdata.Client{
+			APIKey: cfg.FREDAPIKey,
+			HTTP:   &http.Client{Timeout: 20 * time.Second},
+		},
+		Filings: &sec.Client{
+			HTTP:      &http.Client{Timeout: 30 * time.Second},
+			UserAgent: cfg.UserAgent,
+		},
 		prefs: prefs,
 	}, nil
 }
@@ -109,7 +126,18 @@ func (a *App) SendReport(ctx context.Context) error {
 	}
 
 	started := a.now()
-	collected := feed.Collect(ctx, a.Fetcher, prefs.EnabledSources(), prefs.Groups, a.Cfg.MaxArticles)
+
+	// SEC filings are gathered before the feeds so they arrive on the same
+	// footing: deduped, matched and scored with everything else rather than
+	// bolted on afterwards.
+	filings := a.collectFilings(ctx, prefs)
+
+	collected := feed.Collect(ctx, a.Fetcher, feed.Options{
+		Sources: append(prefs.EnabledSources(), SECSourceEntry()),
+		Groups:  prefs.Groups,
+		Max:     a.Cfg.MaxArticles,
+		Extra:   filings,
+	})
 	for _, e := range collected.Errors {
 		a.Log.Warn("source failed", "source", e.SourceID, "error", e.Err)
 	}
@@ -132,6 +160,10 @@ func (a *App) SendReport(ctx context.Context) error {
 	if collected.AllFailed() {
 		return fmt.Errorf("every source failed (%d): %v", len(collected.Errors), collected.Errors[0])
 	}
+
+	// Market levels are context, not content: a failure here costs the anchor
+	// numbers, never the brief.
+	a.Generator.Levels = a.collectLevels(ctx)
 
 	rep, err := a.Generator.Generate(ctx, collected.Articles, prefs.Groups)
 	if errors.Is(err, report.ErrNoArticles) {
