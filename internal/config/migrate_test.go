@@ -26,8 +26,8 @@ func TestMigrationExpandsSemisAndMovesTesla(t *testing.T) {
 	}
 
 	applied := p.Migrate()
-	if len(applied) != 1 {
-		t.Fatalf("applied %v, want one migration", applied)
+	if len(applied) != len(migrations) {
+		t.Fatalf("applied %v, want every pending migration", applied)
 	}
 
 	semis := p.group("semis-ai")
@@ -108,11 +108,12 @@ func TestMigrationDoesNotDuplicateExistingTerms(t *testing.T) {
 	}
 }
 
-// A migration must not fail on a file missing the group it edits.
+// A migration must not fail on a file missing the group it edits: someone may
+// have deleted a watchlist, and an upgrade is not the place to discover it.
 func TestMigrationToleratesAMissingGroup(t *testing.T) {
-	p := &Prefs{Groups: []model.Group{{ID: "energy", Name: "Energy"}}}
-	if applied := p.Migrate(); len(applied) != 1 {
-		t.Errorf("applied %v, want the migration to run and do nothing", applied)
+	p := &Prefs{Groups: []model.Group{{ID: "nothing-it-touches", Name: "Unrelated"}}}
+	if applied := p.Migrate(); len(applied) != len(migrations) {
+		t.Errorf("applied %v, want every migration to run and skip what is absent", applied)
 	}
 	if p.SchemaVersion != CurrentSchemaVersion {
 		t.Errorf("SchemaVersion = %d", p.SchemaVersion)

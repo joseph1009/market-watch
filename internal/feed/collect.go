@@ -23,6 +23,13 @@ type Result struct {
 	// costing in slots, which is the number worth watching over time.
 	Fetched int
 	Deduped int
+
+	// Matched is how many of the kept articles a watchlist claimed, and Dropped
+	// how many the cap discarded. Together they answer whether the cut is
+	// costing anything: a rising Dropped is only a problem if Matched articles
+	// are among them.
+	Matched int
+	Dropped int
 }
 
 // AllFailed reports whether every source errored, the one case where sending a
@@ -44,7 +51,21 @@ func Collect(ctx context.Context, f *Fetcher, sources []model.Source, groups []m
 	articles = Match(articles, groups)
 	articles = Limit(articles, sources, max, f.now())
 
-	return Result{Articles: articles, Errors: errs, Fetched: fetched, Deduped: deduped}
+	matched := 0
+	for _, a := range articles {
+		if len(a.GroupIDs) > 0 {
+			matched++
+		}
+	}
+
+	return Result{
+		Articles: articles,
+		Errors:   errs,
+		Fetched:  fetched,
+		Deduped:  deduped,
+		Matched:  matched,
+		Dropped:  deduped - len(articles),
+	}
 }
 
 // MaxArticleAge is how far back a story may be and still belong in a daily

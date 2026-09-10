@@ -4,6 +4,22 @@ import "github.com/joseph1009/market-watch/internal/model"
 
 // DefaultPrefs seeds a fresh install.
 //
+// It builds the base configuration and then runs the migrations over it, so a
+// new install and an upgraded one end up identical by construction. The
+// alternative -- writing each change in both places -- is what let the
+// semiconductor expansion ship to the defaults while never reaching a running
+// install, and it would go wrong again the moment the two lists diverge.
+//
+// The consequence: the lists below are the starting point, not the final
+// state. Read migrate.go alongside them.
+func DefaultPrefs() *Prefs {
+	p := basePrefs()
+	p.Migrate()
+	return p
+}
+
+// basePrefs is the configuration as it stood before any migration.
+//
 // Weight ranks sources when the same story appears in several, and now also
 // ranks what survives the cut: primary agency releases outrank wire coverage,
 // which outranks aggregators and commentary.
@@ -11,9 +27,8 @@ import "github.com/joseph1009/market-watch/internal/model"
 // Every URL here was checked against the live network before being added. The
 // ones that failed are recorded as disabled entries rather than deleted, so the
 // next attempt starts from what is already known not to work.
-func DefaultPrefs() *Prefs {
+func basePrefs() *Prefs {
 	return &Prefs{
-		SchemaVersion: CurrentSchemaVersion,
 		Sources: []model.Source{
 			// --- Filings ----------------------------------------------------
 			{ID: "sec-8k", Name: "SEC EDGAR 8-K", Weight: 10, Enabled: true,
@@ -115,6 +130,39 @@ func DefaultPrefs() *Prefs {
 			// and resets the connection mid-stream for any non-browser client.
 			{ID: "nasdaq-markets", Name: "Nasdaq Markets", Weight: 5, Enabled: false,
 				URL: "https://www.nasdaq.com/feed/rssoutbound?category=Markets"},
+
+			// --- International press ---------------------------------------------
+			// The corpus was almost entirely US outlets, so an Asian or European
+			// session reached the brief only once a US desk chose to cover it.
+			// These are weighted below the US financial press for company news
+			// and earn their place on the sessions it does not see.
+			{ID: "cna-latest", Name: "CNA", Weight: 8, Enabled: true,
+				URL: "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"},
+			{ID: "cna-business", Name: "CNA Business", Weight: 8, Enabled: true,
+				URL: "https://www.channelnewsasia.com/rssfeeds/8395954"},
+			{ID: "straitstimes-business", Name: "Straits Times Business", Weight: 7, Enabled: true,
+				URL: "https://www.straitstimes.com/news/business/rss.xml"},
+			{ID: "scmp-business", Name: "SCMP Business", Weight: 7, Enabled: true,
+				URL: "https://www.scmp.com/rss/92/feed"},
+			{ID: "ft-home", Name: "Financial Times", Weight: 8, Enabled: true,
+				URL: "https://www.ft.com/rss/home"},
+			// Al Jazeera is general news rather than a markets desk, so it is
+			// weighted low. It earns its place on the Middle East reporting that
+			// drives the energy and geopolitics watchlists.
+			{ID: "aljazeera", Name: "Al Jazeera", Weight: 5, Enabled: true,
+				URL: "https://www.aljazeera.com/xml/rss/all.xml"},
+			{ID: "bbc-business", Name: "BBC Business", Weight: 6, Enabled: true,
+				URL: "https://feeds.bbci.co.uk/news/business/rss.xml"},
+			{ID: "guardian-business", Name: "Guardian Business", Weight: 5, Enabled: true,
+				URL: "https://www.theguardian.com/uk/business/rss"},
+			{ID: "skynews-business", Name: "Sky News Business", Weight: 5, Enabled: true,
+				URL: "https://feeds.skynews.com/feeds/rss/business.xml"},
+			// Checked 2026-09-10 and left out: the Economist's finance feed
+			// returns 300 entries reaching back years, nearly all of them
+			// outside the staleness window, and France 24's was a day stale.
+			// Nikkei Asia, Deutsche Welle and the Japan Times all refused.
+			{ID: "economist-finance", Name: "The Economist: Finance (archive)", Weight: 6, Enabled: false,
+				URL: "https://www.economist.com/finance-and-economics/rss.xml"},
 
 			// --- Company newsrooms ---------------------------------------------
 			// Chosen individually rather than as a category: these three publish

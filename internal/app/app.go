@@ -113,10 +113,19 @@ func (a *App) SendReport(ctx context.Context) error {
 	for _, e := range collected.Errors {
 		a.Log.Warn("source failed", "source", e.SourceID, "error", e.Err)
 	}
+	// match_rate is the number a keyword change moves most directly, and the
+	// one that was invisible while keywords were being tuned.
+	matchRate := 0.0
+	if kept := len(collected.Articles); kept > 0 {
+		matchRate = float64(collected.Matched) / float64(kept)
+	}
 	a.Log.Info("collected",
 		"fetched", collected.Fetched,
 		"deduped", collected.Deduped,
 		"kept", len(collected.Articles),
+		"dropped", collected.Dropped,
+		"matched", collected.Matched,
+		"match_rate", fmt.Sprintf("%.2f", matchRate),
 		"failed_sources", len(collected.Errors),
 		"took", time.Since(started).Round(time.Second))
 

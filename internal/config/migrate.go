@@ -9,7 +9,7 @@ import (
 // CurrentSchemaVersion is the newest migration below. A file written by
 // DefaultPrefs is stamped with it, so a fresh install never runs migrations
 // that only exist to correct older files.
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 // migration is a one-time correction to an existing preferences file.
 //
@@ -49,6 +49,57 @@ var migrations = []migration{
 			if g := p.group("big-tech"); g != nil {
 				g.Tickers = removeFold(g.Tickers, "TSLA")
 				g.Names = removeFold(g.Names, "Tesla")
+			}
+		},
+	},
+	{
+		version: 2,
+		name:    "deepen sector coverage and narrow keywords to catalysts",
+		apply: func(p *Prefs) {
+			// Five symbols are tracked by name only, because as bare words they
+			// match things that are not the company: MPC is the Bank of
+			// England's Monetary Policy Committee, EMR an electronic medical
+			// record, ALL an ordinary word in an all-caps headline, URI a web
+			// address, MA a US state, CB and LNG both abbreviations in wider
+			// use. LNG is additionally already an Energy keyword.
+			if g := p.group("energy"); g != nil {
+				g.Tickers = addMissing(g.Tickers, "EQT", "VLO", "PSX")
+				g.Names = addMissing(g.Names,
+					"EQT Corporation", "Valero", "Phillips 66",
+					"Marathon Petroleum", "Cheniere")
+				g.Keywords = addMissing(g.Keywords,
+					"OPEC+", "SPR", "crack spread", "refinery utilization",
+					"LNG exports", "production cuts")
+			}
+			if g := p.group("financials"); g != nil {
+				g.Tickers = addMissing(g.Tickers, "PGR", "AIG", "PYPL", "BX", "KKR", "APO")
+				g.Names = addMissing(g.Names,
+					"Progressive", "PayPal", "Blackstone", "Apollo Global",
+					"Allstate", "Mastercard", "Chubb")
+				g.Keywords = addMissing(g.Keywords,
+					"deposit flight", "NIM", "credit losses", "private credit", "bank stress")
+			}
+			if g := p.group("healthcare"); g != nil {
+				g.Tickers = addMissing(g.Tickers,
+					"AMGN", "GILD", "REGN", "BIIB", "VRTX", "ELV", "HUM")
+				g.Names = addMissing(g.Names,
+					"Amgen", "Gilead", "Regeneron", "Biogen", "Vertex Pharmaceuticals",
+					"Elevance", "Humana")
+				g.Keywords = addMissing(g.Keywords,
+					"PDUFA", "Phase 2", "patent expiry", "drug recall")
+				// "recall" alone matched every product recall in every sector.
+				g.Keywords = removeFold(g.Keywords, "recall")
+			}
+			if g := p.group("industrials-defense"); g != nil {
+				g.Tickers = addMissing(g.Tickers, "ETN", "CMI")
+				g.Names = addMissing(g.Names,
+					"Eaton", "Cummins", "Emerson", "United Rentals")
+				g.Keywords = addMissing(g.Keywords,
+					"industrial capex", "capacity expansion", "backlog",
+					"infrastructure spending")
+			}
+			if g := p.group("consumer-retail"); g != nil {
+				g.Keywords = addMissing(g.Keywords, "consumer pricing", "price increases")
 			}
 		},
 	},

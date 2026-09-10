@@ -81,6 +81,25 @@ var candidates = []candidate{
 	{"macro", "bls-jolts", "https://www.bls.gov/feed/jolts.rss"},
 	{"macro", "treasury-press", "https://home.treasury.gov/news/press-releases/feed"},
 
+	// --- International and Asia-facing press --------------------------------
+	// The reader is in Singapore and the corpus is almost entirely US outlets,
+	// so an Asian session or a European one reaches the brief only after a US
+	// desk decides to cover it.
+	{"world", "cna-latest", "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"},
+	{"world", "cna-business", "https://www.channelnewsasia.com/rssfeeds/8395954"},
+	{"world", "straitstimes-business", "https://www.straitstimes.com/news/business/rss.xml"},
+	{"world", "aljazeera", "https://www.aljazeera.com/xml/rss/all.xml"},
+	{"world", "bbc-business", "https://feeds.bbci.co.uk/news/business/rss.xml"},
+	{"world", "guardian-business", "https://www.theguardian.com/uk/business/rss"},
+	{"world", "nikkei-asia", "https://asia.nikkei.com/rss/feed/nar"},
+	{"world", "scmp-business", "https://www.scmp.com/rss/92/feed"},
+	{"world", "dw-business", "https://rss.dw.com/rdf/rss-en-bus"},
+	{"world", "france24-business", "https://www.france24.com/en/business/rss"},
+	{"world", "skynews-business", "https://feeds.skynews.com/feeds/rss/business.xml"},
+	{"world", "ft-home", "https://www.ft.com/rss/home"},
+	{"world", "economist-finance", "https://www.economist.com/finance-and-economics/rss.xml"},
+	{"world", "japantimes-business", "https://www.japantimes.co.jp/news_category/business/feed/"},
+
 	// --- second-pass alternates for the highest-value misses ----------------
 	{"financials", "fdic-alt", "https://www.fdic.gov/rss/press-releases.xml"},
 	{"financials", "occ-alt", "https://www.occ.treas.gov/rss/occ_news_releases.xml"},
