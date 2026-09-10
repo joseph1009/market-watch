@@ -22,56 +22,76 @@ type candidate struct {
 // candidates are the feeds proposed to broaden coverage. Checking them through
 // the real fetcher answers the question that matters -- does this parse with
 // our code -- rather than merely whether the host returns 200.
+//
+// Official agency feeds are preferred over trade press throughout: a regulator
+// announcing something is the event, where a publication writing about it is a
+// report of the event.
 var candidates = []candidate{
-	// Primary: SEC per-company, filtered by CIK. The default 8-K feed is the
-	// unfiltered "getcurrent" firehose; these return one company's filings.
-	{"sec-company", "sec-nvda", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001045810&type=8-K&dateb=&owner=include&count=10&output=atom"},
-	{"sec-company", "sec-aapl", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193&type=8-K&dateb=&owner=include&count=10&output=atom"},
-	{"sec-company", "sec-nvda-all", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001045810&type=&dateb=&owner=include&count=20&output=atom"},
+	// --- Energy ------------------------------------------------------------
+	{"energy", "eia-today", "https://www.eia.gov/rss/todayinenergy.xml"},
+	{"energy", "eia-press", "https://www.eia.gov/rss/press_rss.xml"},
+	{"energy", "opec-press", "https://www.opec.org/opec_web/en/rss/press_releases.xml"},
+	{"energy", "iea-news", "https://www.iea.org/rss/news"},
+	{"energy", "oilprice", "https://oilprice.com/rss/main"},
+	{"energy", "ferc-news", "https://www.ferc.gov/news-events/news/rss.xml"},
 
-	// Primary: macro. press_monetary is the narrow cut of the Fed feed we
-	// already have -- press_all mixes in enforcement actions the model called
-	// out as having "no market read".
-	{"macro", "fed-monetary", "https://www.federalreserve.gov/feeds/press_monetary.xml"},
-	{"macro", "fed-speeches", "https://www.federalreserve.gov/feeds/speeches.xml"},
-	{"macro", "fed-testimony", "https://www.federalreserve.gov/feeds/testimony.xml"},
-	{"macro", "bls-releases", "https://www.bls.gov/feed/bls_latest.rss"},
-	{"macro", "bea-news", "https://apps.bea.gov/rss/rss.xml"},
-	// home.treasury.gov answered 404 or hung on every path tried
-	// (/rss/press.xml, /news/press-releases/{feed,rss}, /system/feeds/...).
-	// Kept as a record so the next attempt starts somewhere new.
+	// --- Financials & banks -------------------------------------------------
+	{"financials", "fdic-press", "https://www.fdic.gov/news/press-releases/rss.xml"},
+	{"financials", "occ-news", "https://www.occ.gov/rss/occ_media_releases.xml"},
+	{"financials", "bis-press", "https://www.bis.org/list/press_rss.xml"},
+	{"financials", "cfpb-news", "https://www.consumerfinance.gov/about-us/newsroom/feed/"},
+	{"financials", "sec-press", "https://www.sec.gov/news/pressreleases.rss"},
+
+	// --- Healthcare & pharma ------------------------------------------------
+	{"healthcare", "fda-press", "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"},
+	{"healthcare", "fda-drugs", "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/drugs/rss.xml"},
+	{"healthcare", "fda-medwatch", "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/medwatch/rss.xml"},
+	{"healthcare", "nih-news", "https://www.nih.gov/news-events/news-releases/feed.xml"},
+	{"healthcare", "cms-newsroom", "https://www.cms.gov/newsroom/rss.xml"},
+
+	// --- Industrials & defense ----------------------------------------------
+	{"industrials", "dod-contracts", "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=800&Site=945&max=25"},
+	{"industrials", "dod-releases", "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=25"},
+	{"industrials", "census-indicators", "https://www.census.gov/economic-indicators/indicator.xml"},
+	{"industrials", "faa-news", "https://www.faa.gov/newsroom/rss"},
+
+	// --- Consumer & retail --------------------------------------------------
+	{"consumer", "census-retail", "https://www.census.gov/economic-indicators/retail.xml"},
+	{"consumer", "usda-news", "https://www.usda.gov/rss/latest-releases.xml"},
+
+	// --- Autos & EV ---------------------------------------------------------
+	{"autos", "nhtsa-press", "https://www.nhtsa.gov/rss/press-releases"},
+	{"autos", "nhtsa-recalls", "https://www.nhtsa.gov/rss/recalls"},
+
+	// --- Crypto & digital assets --------------------------------------------
+	{"crypto", "coindesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"},
+	{"crypto", "cftc-press", "https://www.cftc.gov/RSS/RSSGP/rssgp.xml"},
+	{"crypto", "sec-litigation", "https://www.sec.gov/rss/litigation/litreleases.xml"},
+
+	// --- Geopolitics & trade ------------------------------------------------
+	{"geopolitics", "commerce-bis", "https://www.bis.doc.gov/index.php/all-articles?format=feed&type=rss"},
+	{"geopolitics", "commerce-news", "https://www.commerce.gov/feeds/news"},
+	{"geopolitics", "federal-register-bis", "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau"},
+	{"geopolitics", "federal-register-ofac", "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=foreign-assets-control-office"},
+
+	// --- Macro, still missing a working Treasury feed -----------------------
+	{"macro", "bls-cpi", "https://www.bls.gov/feed/cpi.rss"},
+	{"macro", "bls-employment", "https://www.bls.gov/feed/empsit.rss"},
+	{"macro", "bls-ppi", "https://www.bls.gov/feed/ppi.rss"},
+	{"macro", "bls-jolts", "https://www.bls.gov/feed/jolts.rss"},
 	{"macro", "treasury-press", "https://home.treasury.gov/news/press-releases/feed"},
 
-	// Geopolitics and export controls.
-	{"geopolitics", "federal-register-export", "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bterm%5D=export+control"},
-	{"geopolitics", "ustr", "https://ustr.gov/rss.xml"},
-	{"geopolitics", "state-press", "https://www.state.gov/rss-feed/press-releases/feed/"},
-
-	// Company IR / newsroom.
-	{"company-ir", "nvidia-news", "https://nvidianews.nvidia.com/releases.xml"},
-	{"company-ir", "apple-newsroom", "https://www.apple.com/newsroom/rss-feed.rss"},
-	{"company-ir", "microsoft-news", "https://news.microsoft.com/feed/"},
-	{"company-ir", "google-blog", "https://blog.google/rss/"},
-	{"company-ir", "meta-news", "https://about.fb.com/news/feed/"},
-	{"company-ir", "intel-news", "https://newsroom.intel.com/feed/"},
-	{"company-ir", "amd-news", "https://ir.amd.com/rss/news-releases.xml"},
-
-	// Semiconductor and tech trade press.
-	{"semis-press", "tomshardware", "https://www.tomshardware.com/feeds/all"},
-	{"semis-press", "semianalysis", "https://semianalysis.com/feed/"},
-	{"semis-press", "eetimes", "https://www.eetimes.com/feed/"},
-	{"semis-press", "theregister", "https://www.theregister.com/headlines.atom"},
-
-	// Additional market news, to widen corroboration.
-	// CNBC's feed ids do not mean what their names suggest: 20910258 is already
-	// our markets feed, 10000664 returns the same midday-movers copy, and
-	// 10001147 ("earnings") returned sports coverage. Only the tech id checked
-	// out, and all four overlap heavily with feeds already enabled.
-	{"news", "cnbc-tech", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910"},
-	{"news", "seekingalpha", "https://seekingalpha.com/feed.xml"},
-	{"news", "ap-business", "https://apnews.com/hub/business.rss"},
-	{"news", "ft-home", "https://www.ft.com/rss/home"},
-	{"news", "businesswire-tech", "https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFpRVQ=="},
+	// --- second-pass alternates for the highest-value misses ----------------
+	{"financials", "fdic-alt", "https://www.fdic.gov/rss/press-releases.xml"},
+	{"financials", "occ-alt", "https://www.occ.treas.gov/rss/occ_news_releases.xml"},
+	{"financials", "fed-h8", "https://www.federalreserve.gov/feeds/h8.xml"},
+	{"financials", "fed-enforcement", "https://www.federalreserve.gov/feeds/press_enforcement.xml"},
+	{"industrials", "dod-contracts-alt", "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=400&Site=945&max=25"},
+	{"industrials", "dod-contracts-alt2", "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=9&Site=945&max=25"},
+	{"autos", "nhtsa-alt", "https://www.nhtsa.gov/rss.xml"},
+	{"energy", "iea-alt", "https://www.iea.org/news/rss"},
+	{"consumer", "census-alt", "https://www.census.gov/newsroom/press-releases.xml"},
+	{"macro", "fed-h15", "https://www.federalreserve.gov/feeds/h15.xml"},
 }
 
 // TestCandidateFeeds is a survey, not an assertion: it reports what each
@@ -87,7 +107,7 @@ func TestCandidateFeeds(t *testing.T) {
 		t.Fatalf("load .env: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx(t), 5*time.Minute)
 	defer cancel()
 
 	sources := make([]model.Source, len(candidates))
@@ -113,10 +133,14 @@ func TestCandidateFeeds(t *testing.T) {
 
 	counts := make(map[string]int, len(sources))
 	sample := make(map[string]string, len(sources))
+	newest := make(map[string]time.Time, len(sources))
 	for _, a := range articles {
 		counts[a.SourceID]++
 		if sample[a.SourceID] == "" {
 			sample[a.SourceID] = a.Title
+		}
+		if a.Published.After(newest[a.SourceID]) {
+			newest[a.SourceID] = a.Published
 		}
 	}
 	failed := make(map[string]string, len(errs))
@@ -133,7 +157,11 @@ func TestCandidateFeeds(t *testing.T) {
 			empty = append(empty, c.category+"/"+c.id)
 		default:
 			working = append(working, c.category+"/"+c.id)
-			t.Logf("OK   %-14s %-24s %3d items | %s", c.category, c.id, counts[c.id], truncate(sample[c.id], 70))
+			// Age matters as much as parsing: several agencies publish an
+			// archive rather than a news feed, which is only visible here.
+			age := time.Since(newest[c.id]).Round(time.Hour)
+			t.Logf("OK   %-12s %-24s %3d items  newest %6s ago | %s",
+				c.category, c.id, counts[c.id], age, truncate(sample[c.id], 62))
 		}
 	}
 	sort.Strings(broken)
@@ -145,4 +173,9 @@ func TestCandidateFeeds(t *testing.T) {
 	}
 	t.Logf("summary: %d working, %d broken, %d empty, of %d candidates",
 		len(working), len(broken), len(empty), len(candidates))
+}
+
+func ctx(t *testing.T) context.Context {
+	t.Helper()
+	return context.Background()
 }

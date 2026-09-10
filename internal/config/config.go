@@ -25,8 +25,14 @@ const (
 	DefaultReportAt   = "20:30"
 	DefaultDisplayTZ  = "Asia/Singapore"
 
-	DefaultModel   = "claude-opus-5"
-	DefaultDataDir = "./data"
+	DefaultModel = "claude-opus-5"
+
+	// DefaultMaxArticles bounds one prompt. Raised from 250 with the sector
+	// watchlists: eleven sectors need more raw material than three did, and
+	// staleness filtering already removes the archive entries that used to
+	// fill the budget.
+	DefaultMaxArticles = 400
+	DefaultDataDir     = "./data"
 )
 
 // Config is the process configuration, read entirely from the environment.
@@ -51,6 +57,12 @@ type Config struct {
 	ScheduleLocation *time.Location
 	ReportAt         ClockTime
 	DisplayLocation  *time.Location
+
+	// ReplacePrevious deletes the previous brief before sending a new one.
+	// Off by default: deleting is irreversible, and a reader may want to look
+	// back at yesterday. Useful while iterating, when repeated test runs would
+	// otherwise bury the chat.
+	ReplacePrevious bool
 
 	MaxArticles int
 	HTTPTimeout time.Duration
@@ -101,7 +113,10 @@ func Load() (*Config, error) {
 	if cfg.TelegramChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
 		return nil, err
 	}
-	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", 250); err != nil {
+	if cfg.ReplacePrevious, err = envBool("REPLACE_PREVIOUS", false); err != nil {
+		return nil, err
+	}
+	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", DefaultMaxArticles); err != nil {
 		return nil, err
 	}
 	if cfg.HTTPTimeout, err = envDuration("HTTP_TIMEOUT", 20*time.Second); err != nil {
@@ -213,4 +228,16 @@ func envLogLevel(key string, fallback slog.Level) (slog.Level, error) {
 		return 0, fmt.Errorf("%s: want debug, info, warn or error, got %q", key, raw)
 	}
 	return level, nil
+}
+
+func envBool(key string, fallback bool) (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s: want true or false, got %q", key, raw)
+	}
+	return v, nil
 }

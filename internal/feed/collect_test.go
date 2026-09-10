@@ -451,3 +451,48 @@ func TestDedupeStillCollapsesSameDayCoverage(t *testing.T) {
 		t.Errorf("Corroborations = %d, want 1", got[0].Corroborations)
 	}
 }
+
+// Single-letter tickers are real -- C is Citigroup, F is Ford, V is Visa -- but
+// as bare words they match ordinary prose, because a hyphen is a word boundary
+// like any other.
+func TestMatchIgnoresBareSingleLetterTickers(t *testing.T) {
+	groups := []model.Group{{ID: "financials", Name: "Financials",
+		Tickers: []string{"C", "F", "V"}}}
+
+	for _, title := range []string{
+		"The C-suite reshuffle continues",
+		"Ford unveils the new F-150 pickup",
+		"Analysts expect a V-shaped recovery",
+		"Vitamin C sales climb",
+		"Plan C is now on the table",
+	} {
+		got := Match([]model.Article{{Title: title}}, groups)
+		if len(got[0].GroupIDs) != 0 {
+			t.Errorf("%q matched %v, want no match", title, got[0].GroupIDs)
+		}
+	}
+}
+
+// An explicit marker is what distinguishes a quoted symbol from a stray capital.
+func TestMatchFindsSingleLetterTickersWhenMarked(t *testing.T) {
+	groups := []model.Group{{ID: "financials", Name: "Financials", Tickers: []string{"C", "F"}}}
+
+	for _, title := range []string{
+		"$C climbs after the results",
+		"Citigroup (NYSE: C) beats estimates",
+		"Ford (NYSE:F) lifts guidance",
+	} {
+		got := Match([]model.Article{{Title: title}}, groups)
+		if len(got[0].GroupIDs) == 0 {
+			t.Errorf("%q did not match, want the marked symbol found", title)
+		}
+	}
+}
+
+// The guard applies only to single letters; longer symbols are unaffected.
+func TestMatchStillFindsOrdinaryTickersUnmarked(t *testing.T) {
+	got := Match([]model.Article{{Title: "NVDA beats on data center revenue"}}, testGroups())
+	if len(got[0].Tickers) != 1 {
+		t.Errorf("Tickers = %v, want NVDA still matched bare", got[0].Tickers)
+	}
+}

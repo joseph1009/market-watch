@@ -97,7 +97,7 @@ func TestLiveEndToEndBrief(t *testing.T) {
 		t.Log("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unset; skipping delivery")
 	default:
 		bot := telegram.New(token, &http.Client{Timeout: 30 * time.Second})
-		if err := bot.SendReport(ctx, chatID, messages); err != nil {
+		if _, err := bot.SendReport(ctx, chatID, messages); err != nil {
 			t.Fatalf("SendReport: %v", err)
 		}
 		t.Logf("delivered %d message(s) to chat %d", len(messages), chatID)

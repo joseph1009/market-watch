@@ -107,6 +107,25 @@ func (c *Client) Poll(ctx context.Context, log *slog.Logger, handle func(context
 	}
 }
 
+// Command is one entry in the bot's command menu.
+type Command struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+type setMyCommandsRequest struct {
+	Commands []Command `json:"commands"`
+}
+
+// SetMyCommands publishes the command menu.
+//
+// Without this a bot's commands are invisible: typing "/" offers nothing, and
+// the only way to discover them is to be told. Telegram keeps the list until it
+// is replaced, so publishing it on every start also corrects it after a change.
+func (c *Client) SetMyCommands(ctx context.Context, commands []Command) error {
+	return c.call(ctx, "setMyCommands", setMyCommandsRequest{Commands: commands}, nil)
+}
+
 // DrainUpdates acknowledges everything pending without acting on it, so a
 // restart does not replay commands sent while the process was down.
 func (c *Client) DrainUpdates(ctx context.Context) (int, error) {

@@ -18,27 +18,40 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/app"
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/logging"
 )
 
 func main() {
 	once := flag.Bool("once", false, "send one brief immediately and exit, instead of running the schedule")
 	check := flag.Bool("check", false, "verify configuration and credentials, then exit without sending anything")
+	clear := flag.Bool("clear", false, "delete the bot's earlier messages from the chat, then exit")
 	flag.Parse()
 
-	if err := run(*once, *check); err != nil {
-		// The logger may not exist yet when configuration is what failed.
-		fmt.Fprintln(os.Stderr, "market-watch:", err)
+	if err := run(*once, *check, *clear); err != nil {
+		// The logger may not exist yet when configuration is what failed, so
+		// this path scrubs from the environment directly rather than relying on
+		// the handler.
+		fmt.Fprintln(os.Stderr, "market-watch:", logging.Scrub(err.Error(),
+			os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("ANTHROPIC_API_KEY")))
 		os.Exit(1)
 	}
 }
 
-func run(once, check bool) error {
+func run(once, check, clear bool) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	// Every log line passes through the scrubber. Redacting at each call site
+	// would mean finding every call site, and the leak that prompted this was
+	// one nobody had thought of: net/http puts the request URL into connection
+	// errors, and the bot token lives in that URL.
+	secrets := []string{cfg.TelegramBotToken, cfg.AnthropicAPIKey}
+	log := slog.New(logging.New(
+		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}),
+		secrets...,
+	))
 	slog.SetDefault(log)
 
 	service, err := app.New(cfg, log)
@@ -55,6 +68,8 @@ func run(once, check bool) error {
 	switch {
 	case check:
 		return runCheck(ctx, service, cfg, log)
+	case clear:
+		return runClear(ctx, service, log)
 	case once:
 		log.Info("sending one brief and exiting")
 		return service.SendReport(ctx)
@@ -72,6 +87,19 @@ func run(once, check bool) error {
 	}
 	log.Info("market-watch stopped")
 	return nil
+}
+
+// runClear removes the bot's earlier messages without needing the service to
+// be running, which is the state it is usually in while iterating.
+func runClear(ctx context.Context, service *app.App, log *slog.Logger) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	prefs := service.Prefs()
+	if prefs.ChatID == 0 {
+		return fmt.Errorf("no chat registered; send /start to the bot first")
+	}
+	return service.ClearChat(ctx, prefs.ChatID)
 }
 
 // runCheck proves the process could do its job without spending anything: it

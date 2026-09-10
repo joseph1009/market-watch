@@ -49,6 +49,28 @@ Three to six labelled blocks or lists on that watchlist, covering only what the 
 
 Emit a SECTION block for every watchlist id you are given, in the order given. If a watchlist has no meaningful news, write a single short sentence saying so.`
 
+// MinSectionArticles is how much news a watchlist needs before it earns a
+// section. Below this the model has nothing to work with and writes around the
+// absence, which costs tokens and tells the reader nothing.
+//
+// Three rather than one, because two articles about a sector is usually one
+// story and its follow-up, and a section built on that reads thinner than no
+// section at all.
+const MinSectionArticles = 3
+
+// splitByCoverage divides watchlists into those with enough news to be worth a
+// section and those to be named as quiet.
+func splitByCoverage(articles []model.Article, groups []model.Group, minimum int) (active []model.Group, quiet []string) {
+	for _, g := range groups {
+		if len(articlesInGroup(articles, g.ID)) >= minimum {
+			active = append(active, g)
+			continue
+		}
+		quiet = append(quiet, g.Name)
+	}
+	return active, quiet
+}
+
 // buildPrompt renders the articles into the user turn. Articles are ordered by
 // watchlist so related stories sit together, which reads better than the
 // recency order the collector produces.
@@ -83,9 +105,12 @@ func buildPrompt(articles []model.Article, groups []model.Group, now time.Time, 
 		writeArticles(&b, matched, display)
 	}
 
-	// Everything the watchlists did not claim still informs the overview, so it
-	// is offered separately rather than dropped.
-	if general := unmatched(articles); len(general) > 0 {
+	// Everything no section claimed still informs the overview, so it is offered
+	// separately rather than dropped. That has to mean "claimed by a section
+	// being written", not "matched something": an article belonging only to a
+	// watchlist too quiet for a section would otherwise fall out of the prompt
+	// entirely, which is how a sector goes silently missing.
+	if general := uncovered(articles, groups); len(general) > 0 {
 		fmt.Fprintf(&b, "\n=== General market news -- %d articles ===\n", len(general))
 		writeArticles(&b, general, display)
 	}
@@ -112,10 +137,25 @@ func articlesInGroup(articles []model.Article, groupID string) []model.Article {
 	return out
 }
 
-func unmatched(articles []model.Article) []model.Article {
+// uncovered returns the articles no listed watchlist will report on: both the
+// ones that matched nothing and the ones whose only watchlist is too quiet for
+// a section of its own.
+func uncovered(articles []model.Article, groups []model.Group) []model.Article {
+	covered := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		covered[g.ID] = true
+	}
+
 	out := make([]model.Article, 0, len(articles))
 	for _, a := range articles {
-		if len(a.GroupIDs) == 0 {
+		claimed := false
+		for _, id := range a.GroupIDs {
+			if covered[id] {
+				claimed = true
+				break
+			}
+		}
+		if !claimed {
 			out = append(out, a)
 		}
 	}

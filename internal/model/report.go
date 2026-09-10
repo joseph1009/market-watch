@@ -10,6 +10,11 @@ type Report struct {
 	ArticleCount int       `json:"article_count"`
 	SourceCount  int       `json:"source_count"`
 	Usage        Usage     `json:"usage"`
+
+	// QuietGroups names the watchlists that had too little news to be worth a
+	// section. Reporting them distinguishes "nothing happened" from "this was
+	// not looked at", which matters more as the number of watchlists grows.
+	QuietGroups []string `json:"quiet_groups,omitempty"`
 }
 
 // Usage is what one brief cost to generate.

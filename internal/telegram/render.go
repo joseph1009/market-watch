@@ -16,7 +16,7 @@ const (
 
 	// maxLinksPerSection keeps a heavy news day readable. The brief is the
 	// product; the links are there to follow up on it, not to be a full index.
-	maxLinksPerSection = 5
+	maxLinksPerSection = 8
 
 	// divider separates sections. Telegram's HTML mode has no horizontal rule,
 	// so the break has to be drawn.
@@ -40,19 +40,49 @@ func Render(rep model.Report, display *time.Location) []string {
 		blocks = append(blocks, paragraphs(rep.Overview)...)
 	}
 
-	for _, s := range rep.Sections {
+	for i, s := range rep.Sections {
 		blocks = append(blocks, fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName)))
 		if s.Body != "" {
 			blocks = append(blocks, paragraphs(s.Body)...)
+		}
+		// The quiet watchlists close the last section's prose, above its link
+		// list, so the brief ends on somewhere to read next rather than on a
+		// note about absence.
+		if i == len(rep.Sections)-1 {
+			if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
+				blocks = append(blocks, quiet)
+			}
 		}
 		if links := renderSources(s.Articles); links != "" {
 			blocks = append(blocks, links)
 		}
 	}
 
+	// With no sections at all there is nothing to sit inside, so it stands on
+	// its own -- which is also the day when it matters most.
+	if len(rep.Sections) == 0 {
+		if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
+			blocks = append(blocks, divider+"\n"+quiet)
+		}
+	}
+
 	blocks = append(blocks, divider+"\n"+renderFooter(rep))
 
 	return pack(blocks)
+}
+
+// renderQuiet names the watchlists that had too little news for a section.
+//
+// It is part of the brief rather than a statistic about it: "these sectors were
+// checked and had nothing" answers the question a reader asks when a sector
+// they track is missing, and it reads as neither finding nor number when it
+// sits beside the token count.
+func renderQuiet(groups []string) string {
+	if len(groups) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("<b>Quiet today</b>\n%s — nothing that warranted a section.",
+		escape(strings.Join(groups, ", ")))
 }
 
 // renderSources lists the stories behind a section. The heading matters: an

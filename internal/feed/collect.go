@@ -265,6 +265,15 @@ func Match(articles []model.Article, groups []model.Group) []model.Article {
 	return out
 }
 
+// minBareTicker is the shortest symbol trusted on its own. Single letters are
+// real tickers -- C is Citigroup, F is Ford, V is Visa -- but as bare words they
+// match C-suite, F-150 and V-shaped recovery, since a hyphen is a word boundary
+// like any other. Those need an explicit marker to count.
+//
+// Two-letter symbols are left alone: GE and KO collide with far less, and
+// demanding a marker would lose most genuine mentions of them.
+const minBareTicker = 2
+
 // mentionsTicker looks for a ticker as a standalone token, case-sensitively.
 // Case matters: lowercasing would match "arm" and "it" in ordinary prose and
 // tag half the feed into the wrong watchlist. This still trusts an all-caps
@@ -284,9 +293,24 @@ func mentionsTicker(text, ticker string) bool {
 		if end := i + len(ticker); end < len(text) && isWordByte(text[end]) {
 			continue
 		}
-		return true
+		if len(ticker) >= minBareTicker || hasTickerMarker(text, i) {
+			return true
+		}
 	}
 	return false
+}
+
+// hasTickerMarker reports whether the symbol at index i is introduced as one:
+// "$C", or the "(NYSE: C)" form quotes use. Anything else is a stray capital.
+func hasTickerMarker(text string, i int) bool {
+	j := i - 1
+	for j >= 0 && text[j] == ' ' {
+		j--
+	}
+	if j < 0 {
+		return false
+	}
+	return text[j] == '$' || text[j] == ':'
 }
 
 // mentionsWord matches a keyword on word boundaries so "CPI" does not fire on

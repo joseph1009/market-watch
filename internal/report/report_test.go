@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -32,15 +33,28 @@ func (f *fakeCompleter) Complete(ctx context.Context, system, prompt string) (Co
 
 func testTime() time.Time { return time.Date(2026, 9, 9, 20, 30, 0, 0, time.UTC) }
 
+// testArticles gives each watchlist enough news to clear MinSectionArticles,
+// plus one story matching nothing, which is what the general bucket is for.
 func testArticles() []model.Article {
 	base := testTime().Add(-6 * time.Hour)
+	semis := []string{"semis-ai"}
+	macro := []string{"macro-rates"}
+
 	return []model.Article{
 		{ID: "1", Title: "NVDA beats on data center revenue", SourceID: "cnbc", SourceName: "CNBC",
-			Summary: "Revenue rose 22%.", Published: base, GroupIDs: []string{"semis-ai"}, Tickers: []string{"NVDA"}},
-		{ID: "2", Title: "Fed signals a rate cut", SourceID: "fed-press", SourceName: "Federal Reserve",
-			Summary: "Policymakers hinted at easing.", Published: base.Add(time.Hour), GroupIDs: []string{"macro-rates"}},
-		{ID: "3", Title: "Retail sales tick higher", SourceID: "cnbc", SourceName: "CNBC",
-			Summary: "Spending held up.", Published: base.Add(2 * time.Hour)},
+			Summary: "Revenue rose 22%.", Published: base, GroupIDs: semis, Tickers: []string{"NVDA"}},
+		{ID: "2", Title: "NVDA guidance lifts the sector", SourceID: "cnbc", SourceName: "CNBC",
+			Summary: "Peers followed.", Published: base.Add(time.Minute), GroupIDs: semis, Tickers: []string{"NVDA"}},
+		{ID: "3", Title: "Chip equipment orders climb", SourceID: "cnbc", SourceName: "CNBC",
+			Summary: "Bookings improved.", Published: base.Add(2 * time.Minute), GroupIDs: semis},
+		{ID: "4", Title: "Fed signals a rate cut", SourceID: "fed-press", SourceName: "Federal Reserve",
+			Summary: "Policymakers hinted at easing.", Published: base.Add(time.Hour), GroupIDs: macro},
+		{ID: "5", Title: "CPI comes in below forecast", SourceID: "fed-press", SourceName: "Federal Reserve",
+			Summary: "Prices cooled.", Published: base.Add(2 * time.Hour), GroupIDs: macro},
+		{ID: "6", Title: "Treasury yields ease", SourceID: "fed-press", SourceName: "Federal Reserve",
+			Summary: "The curve steepened.", Published: base.Add(3 * time.Hour), GroupIDs: macro},
+		{ID: "7", Title: "Retail sales tick higher", SourceID: "cnbc", SourceName: "CNBC",
+			Summary: "Spending held up.", Published: base.Add(4 * time.Hour)},
 	}
 }
 
@@ -146,12 +160,12 @@ func TestGenerateAttachesTheArticlesBehindEachSection(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	if len(rep.Sections[0].Articles) != 1 || rep.Sections[0].Articles[0].ID != "1" {
-		t.Errorf("semis-ai articles = %v, want the NVDA story", rep.Sections[0].Articles)
+	if len(rep.Sections[0].Articles) != 3 || rep.Sections[0].Articles[0].ID != "1" {
+		t.Errorf("semis-ai articles = %v, want the three semis stories", rep.Sections[0].Articles)
 	}
 	// The unmatched article counts toward the totals but belongs to no section.
-	if rep.ArticleCount != 3 {
-		t.Errorf("ArticleCount = %d, want 3", rep.ArticleCount)
+	if rep.ArticleCount != 7 {
+		t.Errorf("ArticleCount = %d, want 7", rep.ArticleCount)
 	}
 	if rep.SourceCount != 2 {
 		t.Errorf("SourceCount = %d, want 2 distinct sources", rep.SourceCount)
@@ -284,15 +298,85 @@ func TestPromptCarriesTheWatchlistsAndTheirArticles(t *testing.T) {
 	}
 }
 
-func TestPromptTellsTheModelWhenAWatchlistIsQuiet(t *testing.T) {
+// A watchlist with too little news is never asked about. Asking and discarding
+// the answer would pay output tokens for prose nobody reads.
+func TestQuietWatchlistsAreLeftOutOfThePromptAndNamedInTheReport(t *testing.T) {
 	groups := append(reportGroups(), model.Group{ID: "energy", Name: "Energy"})
-	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips."}
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
 
 	g := &Generator{Completer: fake, Now: testTime}
-	if _, err := g.Generate(context.Background(), testArticles(), groups); err != nil {
+	rep, err := g.Generate(context.Background(), testArticles(), groups)
+	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if !strings.Contains(fake.prompt, "no articles matched this watchlist today") {
-		t.Errorf("prompt does not mark the quiet watchlist:\n%s", fake.prompt)
+
+	if strings.Contains(fake.prompt, "energy") {
+		t.Errorf("the quiet watchlist was still asked about:\n%s", fake.prompt)
 	}
+	if !equalStringSlices(rep.QuietGroups, []string{"Energy"}) {
+		t.Errorf("QuietGroups = %v, want [Energy]", rep.QuietGroups)
+	}
+	for _, s := range rep.Sections {
+		if s.GroupID == "energy" {
+			t.Error("a quiet watchlist produced a section")
+		}
+	}
+}
+
+// A watchlist below the threshold must not take its articles out of the brief
+// with it: they still belong to the overview as general news.
+func TestArticlesFromQuietWatchlistsStillReachTheModel(t *testing.T) {
+	groups := append(reportGroups(), model.Group{ID: "energy", Name: "Energy"})
+	articles := append(testArticles(), model.Article{
+		ID: "oil", Title: "Brent crude tops $100 a barrel", SourceID: "cnbc", SourceName: "CNBC",
+		Summary: "Supply fears drove it.", Published: testTime(), GroupIDs: []string{"energy"},
+	})
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+
+	g := &Generator{Completer: fake, Now: testTime}
+	if _, err := g.Generate(context.Background(), articles, groups); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(fake.prompt, "Brent crude tops") {
+		t.Errorf("an article whose only watchlist was quiet vanished from the prompt:\n%s", fake.prompt)
+	}
+}
+
+func TestSectionsAppearOnceAWatchlistHasEnoughNews(t *testing.T) {
+	// Two articles is usually one story and its follow-up; three is the point
+	// where a section has something to say.
+	groups := []model.Group{{ID: "energy", Name: "Energy"}}
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: energy\nOil rose."}
+
+	var articles []model.Article
+	for i := 0; i < MinSectionArticles; i++ {
+		articles = append(articles, model.Article{
+			ID: fmt.Sprintf("oil-%d", i), Title: "Oil story", SourceID: "cnbc", SourceName: "CNBC",
+			Published: testTime(), GroupIDs: []string{"energy"},
+		})
+	}
+
+	g := &Generator{Completer: fake, Now: testTime}
+	rep, err := g.Generate(context.Background(), articles, groups)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(rep.Sections) != 1 || rep.Sections[0].GroupID != "energy" {
+		t.Errorf("Sections = %+v, want an energy section", rep.Sections)
+	}
+	if len(rep.QuietGroups) != 0 {
+		t.Errorf("QuietGroups = %v, want none", rep.QuietGroups)
+	}
+}
+
+func equalStringSlices(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

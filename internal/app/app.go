@@ -143,7 +143,26 @@ func (a *App) SendReport(ctx context.Context) error {
 		"took", time.Since(started).Round(time.Second))
 
 	messages := telegram.Render(rep, a.Cfg.DisplayLocation)
-	if err := a.Bot.SendReport(ctx, prefs.ChatID, messages); err != nil {
+
+	// Clearing happens after generation, not before: a run that fails to
+	// produce a brief must not also have thrown away the last one.
+	if a.Cfg.ReplacePrevious && len(prefs.LastBrief) > 0 {
+		deleted, failed := a.Bot.DeleteMessages(ctx, prefs.ChatID, prefs.LastBrief)
+		a.Log.Info("cleared previous brief", "deleted", deleted, "unavailable", failed)
+	}
+
+	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
+	// The ids are recorded even on a partial send, so a half-delivered brief
+	// still gets cleaned up by the next run rather than lingering forever.
+	if len(ids) > 0 {
+		if saveErr := a.UpdatePrefs(func(p *config.Prefs) error {
+			p.LastBrief = ids
+			return nil
+		}); saveErr != nil {
+			a.Log.Warn("could not record the brief's message ids", "error", saveErr)
+		}
+	}
+	if err != nil {
 		return err
 	}
 
@@ -185,6 +204,12 @@ func (a *App) RunScheduler(ctx context.Context) error {
 func (a *App) Serve(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Publishing the menu is what makes the commands discoverable: without it,
+	// typing "/" in the chat offers nothing and they may as well not exist.
+	if err := a.Bot.SetMyCommands(ctx, BotCommands()); err != nil {
+		a.Log.Warn("could not publish the command menu", "error", err)
+	}
 
 	if n, err := a.Bot.DrainUpdates(ctx); err != nil {
 		a.Log.Warn("could not clear pending updates", "error", err)

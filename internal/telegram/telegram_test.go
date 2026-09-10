@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -224,7 +225,7 @@ func TestThousandsGroupsDigits(t *testing.T) {
 
 func TestRenderCapsLinksPerSection(t *testing.T) {
 	rep := testReport()
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 12; i++ {
 		rep.Sections[0].Articles = append(rep.Sections[0].Articles,
 			model.Article{Title: "Story", URL: "https://example.com/x", SourceName: "Wire"})
 	}
@@ -233,7 +234,7 @@ func TestRenderCapsLinksPerSection(t *testing.T) {
 	if got := strings.Count(out, "<a href="); got != maxLinksPerSection {
 		t.Errorf("rendered %d links, want the cap of %d", got, maxLinksPerSection)
 	}
-	if !strings.Contains(out, "+5 more") {
+	if !strings.Contains(out, "+5 more") { // 13 articles, 8 shown
 		t.Errorf("the trimmed links are not accounted for:\n%s", out)
 	}
 }
@@ -373,7 +374,7 @@ func TestSendReportStopsAtTheFirstFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestClient(srv).SendReport(context.Background(), 1, []string{"one", "two", "three"})
+	_, err := newTestClient(srv).SendReport(context.Background(), 1, []string{"one", "two", "three"})
 	if err == nil {
 		t.Fatal("SendReport succeeded despite a failing part")
 	}
@@ -397,5 +398,206 @@ func TestMeReturnsTheBotUsername(t *testing.T) {
 	}
 	if got != "market_watch_bot" {
 		t.Errorf("Me() = %q", got)
+	}
+}
+
+func TestSendReportReturnsTheMessageIDs(t *testing.T) {
+	var next int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next++
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":{"message_id":%d}}`, 100+next)))
+	}))
+	defer srv.Close()
+
+	ids, err := newTestClient(srv).SendReport(context.Background(), 1, []string{"a", "b", "c"})
+	if err != nil {
+		t.Fatalf("SendReport: %v", err)
+	}
+	if len(ids) != 3 || ids[0] != 101 || ids[2] != 103 {
+		t.Errorf("ids = %v, want [101 102 103]", ids)
+	}
+}
+
+// A partial send still has to report what landed, or the delivered parts can
+// never be cleaned up.
+func TestSendReportReturnsIDsEvenWhenItFailsPartway(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 3 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request"}`))
+			return
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":{"message_id":%d}}`, 200+calls)))
+	}))
+	defer srv.Close()
+
+	ids, err := newTestClient(srv).SendReport(context.Background(), 1, []string{"a", "b", "c"})
+	if err == nil {
+		t.Fatal("SendReport succeeded despite a failing part")
+	}
+	if len(ids) != 2 {
+		t.Errorf("ids = %v, want the 2 parts that landed", ids)
+	}
+}
+
+// Telegram refuses to delete anything older than 48 hours, and a message the
+// reader already removed is gone. Neither may stop the new brief.
+func TestDeleteMessagesCountsFailuresWithoutStopping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req deleteMessageRequest
+		_ = json.Unmarshal(body, &req)
+		if req.MessageID == 2 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"message can't be deleted"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+
+	deleted, failed := newTestClient(srv).DeleteMessages(context.Background(), 1, []int64{1, 2, 3})
+	if deleted != 2 || failed != 1 {
+		t.Errorf("deleted=%d failed=%d, want 2 and 1", deleted, failed)
+	}
+}
+
+// The backlog problem: briefs sent before ids were recorded can only be reached
+// by walking id space backwards.
+func TestSweepMessagesWalksBackwardsAndTolerates(t *testing.T) {
+	var attempted []int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req deleteMessageRequest
+		_ = json.Unmarshal(body, &req)
+		attempted = append(attempted, req.MessageID)
+		// Only even ids belong to the bot; the rest are the reader's messages
+		// or ids that never existed, which Telegram refuses.
+		if req.MessageID%2 != 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"message to delete not found"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+
+	deleted, failed := newTestClient(srv).SweepMessages(context.Background(), 1, 10, 4)
+	if deleted != 2 || failed != 2 {
+		t.Errorf("deleted=%d failed=%d, want 2 and 2", deleted, failed)
+	}
+	if len(attempted) != 4 || attempted[0] != 10 || attempted[3] != 7 {
+		t.Errorf("attempted %v, want 10 down to 7", attempted)
+	}
+}
+
+// Ids below 1 do not exist; the walk must stop rather than count failures.
+func TestSweepMessagesStopsAtTheStartOfTheChat(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+
+	newTestClient(srv).SweepMessages(context.Background(), 1, 3, 100)
+	if calls != 3 {
+		t.Errorf("made %d calls, want 3 (ids 3, 2, 1)", calls)
+	}
+}
+
+// The quiet block closes the last section's prose, above its links, so the
+// brief ends on somewhere to read next rather than on a note about absence.
+func TestRenderPutsQuietAboveTheLastSectionsSources(t *testing.T) {
+	rep := testReport()
+	rep.Usage = model.Usage{InputTokens: 1000, OutputTokens: 500, EstimatedUSD: 0.02}
+	rep.QuietGroups = []string{"Energy", "Crypto & Digital Assets"}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	quiet := strings.Index(out, "<b>Quiet today</b>")
+	sources := strings.Index(out, "<i>Sources</i>")
+	body := strings.Index(out, "NVDA carried the group.")
+	stats := strings.Index(out, "articles from")
+
+	if quiet < 0 || sources < 0 {
+		t.Fatalf("quiet or sources block missing:\n%s", out)
+	}
+	if quiet < body {
+		t.Errorf("the quiet block came before the section prose:\n%s", out)
+	}
+	if quiet > sources {
+		t.Errorf("the quiet block came after the source links; it belongs above them:\n%s", out)
+	}
+	if quiet > stats {
+		t.Errorf("the quiet block fell below the statistics:\n%s", out)
+	}
+	if !strings.Contains(out, "Energy, Crypto &amp; Digital Assets — nothing that warranted a section.") {
+		t.Errorf("quiet groups not listed:\n%s", out)
+	}
+}
+
+// Only the final section carries it, or it repeats down the brief.
+func TestRenderShowsTheQuietBlockOnce(t *testing.T) {
+	rep := testReport()
+	rep.Sections = append(rep.Sections, model.Section{
+		GroupID: "macro-rates", GroupName: "Macro & Rates", Body: "Rates did the work.",
+		Articles: []model.Article{{Title: "Fed holds", URL: "https://example.com/f", SourceName: "CNBC"}},
+	})
+	rep.QuietGroups = []string{"Energy"}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if got := strings.Count(out, "<b>Quiet today</b>"); got != 1 {
+		t.Errorf("the quiet block appears %d times, want once", got)
+	}
+	// And on the last section, not the first.
+	if strings.Index(out, "<b>Quiet today</b>") < strings.Index(out, "Rates did the work.") {
+		t.Errorf("the quiet block landed on the wrong section:\n%s", out)
+	}
+}
+
+// A day where nothing cleared the threshold is when it matters most.
+func TestRenderShowsQuietWithNoSectionsAtAll(t *testing.T) {
+	rep := testReport()
+	rep.Sections = nil
+	rep.QuietGroups = []string{"Energy", "Big Tech"}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "<b>Quiet today</b>") {
+		t.Errorf("the quiet block vanished when there were no sections:\n%s", out)
+	}
+}
+
+func TestRenderOmitsQuietWhenEveryWatchlistHadNews(t *testing.T) {
+	out := strings.Join(Render(testReport(), time.UTC), "\n")
+	if strings.Contains(out, "Quiet today") {
+		t.Errorf("rendered a quiet block with nothing quiet:\n%s", out)
+	}
+}
+
+// Without a published menu the commands are invisible: typing "/" offers
+// nothing and the only way to find them is to be told.
+func TestSetMyCommandsPublishesTheMenu(t *testing.T) {
+	var got setMyCommandsRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/setMyCommands") {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv).SetMyCommands(context.Background(), []Command{
+		{Command: "now", Description: "Build a brief"},
+	})
+	if err != nil {
+		t.Fatalf("SetMyCommands: %v", err)
+	}
+	if len(got.Commands) != 1 || got.Commands[0].Command != "now" {
+		t.Errorf("published %+v", got.Commands)
 	}
 }

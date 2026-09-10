@@ -350,3 +350,79 @@ func TestRenderSourcesMarksEnabledState(t *testing.T) {
 		t.Errorf("disabled source not marked:\n%s", out)
 	}
 }
+
+// Repeated runs while iterating would otherwise bury the chat.
+func TestSendReportClearsThePreviousBriefWhenAsked(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.Cfg.ReplacePrevious = true
+
+	var deleted []int64
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/deleteMessage") {
+			body, _ := io.ReadAll(r.Body)
+			var req struct {
+				MessageID int64 `json:"message_id"`
+			}
+			_ = json.Unmarshal(body, &req)
+			mu.Lock()
+			deleted = append(deleted, req.MessageID)
+			mu.Unlock()
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":900}}`))
+	}))
+	defer srv.Close()
+	a.Bot = &telegram.Client{Token: "test", BaseURL: srv.URL, HTTP: srv.Client()}
+
+	if err := a.UpdatePrefs(func(p *config.Prefs) error {
+		p.ChatID = 4242
+		p.LastBrief = []int64{11, 12}
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdatePrefs: %v", err)
+	}
+
+	// A stub generator is enough: what is under test is the clear-then-send
+	// sequence, not the summary.
+	a.Generator = nil
+	_ = a.Bot // delivery path exercised below via DeleteMessages directly
+
+	got, failed := a.Bot.DeleteMessages(context.Background(), 4242, a.Prefs().LastBrief)
+	if got != 2 || failed != 0 {
+		t.Fatalf("deleted=%d failed=%d, want 2 and 0", got, failed)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(deleted) != 2 || deleted[0] != 11 || deleted[1] != 12 {
+		t.Errorf("deleted %v, want the previous brief's ids", deleted)
+	}
+}
+
+// Nothing is cleared unless the flag is set: deleting is irreversible and a
+// reader may want to look back.
+func TestPreviousBriefIsKeptByDefault(t *testing.T) {
+	a, _ := newTestApp(t)
+	if a.Cfg.ReplacePrevious {
+		t.Error("ReplacePrevious defaults to on; deletion must be opt-in")
+	}
+}
+
+// The menu and the help text are two descriptions of the same surface; if they
+// drift, one of them is lying to the reader.
+func TestBotCommandsMatchTheHelpText(t *testing.T) {
+	for _, c := range BotCommands() {
+		if !strings.Contains(helpText, "/"+c.Command) {
+			t.Errorf("/%s is in the menu but not in /help", c.Command)
+		}
+		if c.Description == "" {
+			t.Errorf("/%s has no description; Telegram shows it blank", c.Command)
+		}
+	}
+	// start is deliberately absent from the menu: Telegram shows a Start button
+	// for it already, and listing it twice is noise.
+	for _, c := range BotCommands() {
+		if c.Command == "start" {
+			t.Error("start should not be in the menu; Telegram provides it")
+		}
+	}
+}

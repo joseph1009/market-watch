@@ -48,7 +48,14 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	}
 
 	now := g.now()
-	prompt := buildPrompt(articles, groups, now, g.display())
+
+	// Only watchlists with real news get a section. Filtering here rather than
+	// after the response matters: asking for a section and then discarding it
+	// would pay output tokens for prose nobody reads, and a watchlist with two
+	// articles produces filler -- "the watchlist was thin today" -- rather than
+	// anything worth the space.
+	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
+	prompt := buildPrompt(articles, active, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
 	if err != nil {
@@ -67,21 +74,23 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 		Usage:        usage,
 	}
 
-	for _, grp := range groups {
+	for _, grp := range active {
 		body := got.Sections[grp.ID]
-		matched := articlesInGroup(articles, grp.ID)
-		// A section with neither prose nor articles is silence about a quiet
-		// watchlist; carrying it into the report would render an empty heading.
-		if body == "" && len(matched) == 0 {
-			continue
+		if body == "" {
+			continue // the model skipped it despite being asked
 		}
 		rep.Sections = append(rep.Sections, model.Section{
 			GroupID:   grp.ID,
 			GroupName: grp.Name,
 			Body:      body,
-			Articles:  matched,
+			Articles:  articlesInGroup(articles, grp.ID),
 		})
 	}
+
+	// Naming the quiet watchlists is worth a line: it tells the reader the
+	// sector was checked and had nothing, rather than leaving them to wonder
+	// whether it was dropped.
+	rep.QuietGroups = quiet
 
 	if rep.IsEmpty() {
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))

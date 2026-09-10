@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
@@ -20,9 +21,24 @@ const helpText = `<b>📊 Market Watch</b>
 /sources — show the news feeds
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
+/clear — remove the bot's earlier messages from this chat
 /help — this message
 
 The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
+
+// BotCommands is the menu Telegram shows when someone types "/". It mirrors
+// helpText, and both have to be updated together -- the menu is how anyone
+// discovers the commands exist at all.
+func BotCommands() []telegram.Command {
+	return []telegram.Command{
+		{Command: "now", Description: "Build and send a brief right now"},
+		{Command: "watchlist", Description: "Show or edit your watchlists"},
+		{Command: "sources", Description: "Show or toggle the news feeds"},
+		{Command: "schedule", Description: "When the next brief is due"},
+		{Command: "clear", Description: "Remove my earlier messages from this chat"},
+		{Command: "help", Description: "What I can do"},
+	}
+}
 
 // HandleMessage routes one incoming message. Failures are reported into the
 // chat rather than returned: the sender is the only person who can act on them,
@@ -49,6 +65,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleSources(ctx, msg, args)
 	case "schedule":
 		err = a.handleSchedule(ctx, msg)
+	case "clear":
+		err = a.handleClear(ctx, msg)
 	default:
 		err = a.Bot.SendMessage(ctx, msg.Chat.ID,
 			fmt.Sprintf("Unknown command %s. Try /help.", escape("/"+command)))
@@ -56,7 +74,11 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 
 	if err != nil {
 		a.Log.Error("command failed", "command", command, "error", err)
-		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(err.Error()))
+		// The reply is a second route out for an error's text, and errors are
+		// where a credential ends up. The logger scrubs its own output; this
+		// path has to scrub its own.
+		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.AnthropicAPIKey)
+		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
 	}
 }
 
@@ -114,6 +136,50 @@ func (a *App) handleNow(ctx context.Context, msg telegram.Message) error {
 		}
 	}
 	return a.SendReport(ctx)
+}
+
+// DefaultSweepWindow is how many message ids back /clear reaches. Roughly a
+// week of briefs at nine messages each, plus the replies in between.
+const DefaultSweepWindow = 300
+
+// handleClear removes the bot's earlier messages from the chat.
+//
+// This exists because recording message ids only helps for briefs sent after
+// the recording started: everything before that is unreachable by id, and the
+// Bot API offers no way to list what a bot has sent. Walking backwards from a
+// known id is the only route to the backlog.
+func (a *App) handleClear(ctx context.Context, msg telegram.Message) error {
+	return a.ClearChat(ctx, msg.Chat.ID)
+}
+
+// ClearChat removes the bot's earlier messages. Exported so it can also be run
+// from the command line, which is the state the service is usually in while
+// someone is iterating on the brief.
+func (a *App) ClearChat(ctx context.Context, chatID int64) error {
+	// Sending first serves two purposes: it tells the reader something is
+	// happening, and its id is the anchor to sweep backwards from.
+	anchor, err := a.Bot.Send(ctx, chatID, "Clearing earlier messages — this takes a moment.")
+	if err != nil {
+		return err
+	}
+
+	deleted, failed := a.Bot.SweepMessages(ctx, chatID, anchor-1, DefaultSweepWindow)
+	a.Log.Info("swept chat", "chat", chatID, "deleted", deleted, "unavailable", failed)
+
+	if err := a.UpdatePrefs(func(p *config.Prefs) error {
+		p.LastBrief = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// The failures are expected rather than alarming -- most ids in the window
+	// were never the bot's, and Telegram refuses anything over 48 hours old --
+	// so the reply says what happened without dressing it as an error.
+	_, err = a.Bot.Send(ctx, chatID, fmt.Sprintf(
+		"Cleared %d message(s). %d could not be removed — anything older than 48 hours is beyond what Telegram lets a bot delete.",
+		deleted, failed))
+	return err
 }
 
 func (a *App) handleSchedule(ctx context.Context, msg telegram.Message) error {

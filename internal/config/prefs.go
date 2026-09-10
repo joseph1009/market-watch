@@ -17,9 +17,19 @@ import (
 // runtime, so it lives on the data volume as YAML rather than in the image --
 // it has to survive redeploys and stay hand-editable.
 type Prefs struct {
-	ChatID  int64          `yaml:"chat_id,omitempty"`
-	Groups  []model.Group  `yaml:"groups"`
-	Sources []model.Source `yaml:"sources"`
+	// SchemaVersion records which migrations this file has already had applied.
+	// Absent means zero, which is any file written before versioning existed.
+	SchemaVersion int `yaml:"schema_version"`
+
+	ChatID int64 `yaml:"chat_id,omitempty"`
+
+	// LastBrief holds the message ids of the most recent brief, so the next
+	// one can clear it when ReplacePrevious is set. Runtime state rather than
+	// preference, but it belongs on the same volume and is written by the same
+	// atomic save.
+	LastBrief []int64        `yaml:"last_brief,omitempty"`
+	Groups    []model.Group  `yaml:"groups"`
+	Sources   []model.Source `yaml:"sources"`
 }
 
 // LoadPrefs reads the preferences file, seeding it with defaults when absent.
@@ -41,7 +51,56 @@ func LoadPrefs(path string) (*Prefs, error) {
 		return nil, fmt.Errorf("parse prefs %s: %w", path, err)
 	}
 	p.normalize()
+
+	// Sources and watchlists added to the defaults since this file was written
+	// have to reach an existing install, or new coverage only ever appears on a
+	// fresh one -- and the file is written on first run, so that means never.
+	// Migrations correct what already exists; the merge adds what is absent.
+	// Both are needed: neither can do the other's job.
+	migrated := p.Migrate()
+	added := p.MergeDefaults()
+	if len(migrated) > 0 || len(added) > 0 {
+		if err := p.Save(path); err != nil {
+			return nil, err
+		}
+	}
 	return &p, nil
+}
+
+// MergeDefaults adds sources and watchlists the defaults have gained, and
+// returns what it added. Anything already present by ID is left exactly as it
+// is, so a source the user disabled stays disabled and an edited watchlist
+// keeps its edits.
+//
+// The consequence worth knowing: deleting an entry from prefs.yaml brings it
+// back on the next run. Disabling is the supported way to switch a source off,
+// which is what /sources off does.
+func (p *Prefs) MergeDefaults() []string {
+	defaults := DefaultPrefs()
+	var added []string
+
+	haveSource := make(map[string]bool, len(p.Sources))
+	for _, s := range p.Sources {
+		haveSource[s.ID] = true
+	}
+	for _, s := range defaults.Sources {
+		if !haveSource[s.ID] {
+			p.Sources = append(p.Sources, s)
+			added = append(added, "source:"+s.ID)
+		}
+	}
+
+	haveGroup := make(map[string]bool, len(p.Groups))
+	for _, g := range p.Groups {
+		haveGroup[g.ID] = true
+	}
+	for _, g := range defaults.Groups {
+		if !haveGroup[g.ID] {
+			p.Groups = append(p.Groups, g)
+			added = append(added, "watchlist:"+g.ID)
+		}
+	}
+	return added
 }
 
 // Save writes the preferences atomically. The bot rewrites this file while the
