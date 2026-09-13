@@ -97,6 +97,10 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// whether it was dropped.
 	rep.QuietGroups = quiet
 
+	// The same set the prompt offered as general market news, so the rendered
+	// sources can show everything the overview had to work with.
+	rep.General = uncovered(articles, active)
+
 	if rep.IsEmpty() {
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))
 	}

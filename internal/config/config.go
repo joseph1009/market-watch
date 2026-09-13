@@ -68,6 +68,12 @@ type Config struct {
 	// otherwise bury the chat.
 	ReplacePrevious bool
 
+	// FullSources lists every article behind each section, plus the general
+	// news the overview drew on, instead of the first few per section. For
+	// checking the brief against what it was written from; set with
+	// SOURCE_LINKS=full.
+	FullSources bool
+
 	MaxArticles int
 	HTTPTimeout time.Duration
 	LogLevel    slog.Level
@@ -117,6 +123,13 @@ func Load() (*Config, error) {
 	}
 	if cfg.TelegramChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
 		return nil, err
+	}
+	switch links := strings.ToLower(envOr("SOURCE_LINKS", "short")); links {
+	case "short":
+	case "full":
+		cfg.FullSources = true
+	default:
+		return nil, fmt.Errorf("SOURCE_LINKS: want short or full, got %q", links)
 	}
 	if cfg.ReplacePrevious, err = envBool("REPLACE_PREVIOUS", false); err != nil {
 		return nil, err

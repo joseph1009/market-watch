@@ -87,7 +87,7 @@ func TestRenderUsesTheDisplayTimezone(t *testing.T) {
 // of the brief rather than a note about the sources.
 func TestRenderLabelsTheSourceList(t *testing.T) {
 	out := strings.Join(Render(testReport(), time.UTC), "\n")
-	if !strings.Contains(out, "<i>Sources</i>") {
+	if !strings.Contains(out, "<b>Sources</b>") {
 		t.Errorf("the link list is unlabelled:\n%s", out)
 	}
 }
@@ -518,7 +518,7 @@ func TestRenderPutsQuietAboveTheLastSectionsSources(t *testing.T) {
 	out := strings.Join(Render(rep, time.UTC), "\n")
 
 	quiet := strings.Index(out, "<b>Quiet today</b>")
-	sources := strings.Index(out, "<i>Sources</i>")
+	sources := strings.Index(out, "<b>Sources</b>")
 	body := strings.Index(out, "NVDA carried the group.")
 	stats := strings.Index(out, "articles from")
 
@@ -599,5 +599,284 @@ func TestSetMyCommandsPublishesTheMenu(t *testing.T) {
 	}
 	if len(got.Commands) != 1 || got.Commands[0].Command != "now" {
 		t.Errorf("published %+v", got.Commands)
+	}
+}
+
+// The reading order the layout exists for: every category's analysis first,
+// uninterrupted, then all the links together. Interleaved source lists made
+// the reader skip past headlines to reach the next piece of prose.
+func TestRenderPutsAllProseBeforeAllSources(t *testing.T) {
+	rep := testReport()
+	rep.Sections = append(rep.Sections, model.Section{
+		GroupID: "macro-rates", GroupName: "Macro & Rates", Body: "Rates did the work.",
+		Articles: []model.Article{{Title: "Fed holds", URL: "https://example.com/f", SourceName: "Reuters"}},
+	})
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	lastProse := strings.Index(out, "Rates did the work.")
+	sourcesHeading := strings.Index(out, "<b>Sources</b>")
+	firstLink := strings.Index(out, "<a href=")
+
+	if sourcesHeading < 0 {
+		t.Fatalf("no consolidated sources heading:\n%s", out)
+	}
+	if firstLink < lastProse {
+		t.Errorf("a source link appears before the last section's prose:\n%s", out)
+	}
+	if sourcesHeading < lastProse {
+		t.Errorf("the sources block starts before the prose ends:\n%s", out)
+	}
+	if strings.Count(out, "<b>Sources</b>") != 1 {
+		t.Errorf("sources should be one block, found %d headings", strings.Count(out, "<b>Sources</b>"))
+	}
+}
+
+// Links no longer sit under their prose, so each list is labelled with its
+// category, and the categories keep the order the sections were written in.
+func TestRenderGroupsSourcesByCategoryInSectionOrder(t *testing.T) {
+	rep := testReport()
+	rep.Sections = append(rep.Sections, model.Section{
+		GroupID: "macro-rates", GroupName: "Macro & Rates", Body: "Rates did the work.",
+		Articles: []model.Article{{Title: "Fed holds", URL: "https://example.com/f", SourceName: "Reuters"}},
+	})
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	sources := out[strings.Index(out, "<b>Sources</b>"):]
+
+	semis := strings.Index(sources, "<i>Semiconductors &amp; AI</i>")
+	macro := strings.Index(sources, "<i>Macro &amp; Rates</i>")
+	if semis < 0 || macro < 0 {
+		t.Fatalf("category labels missing from the sources block:\n%s", sources)
+	}
+	if semis > macro {
+		t.Errorf("categories are out of section order in the sources block:\n%s", sources)
+	}
+	// Each link sits under its own category's label.
+	if nvda := strings.Index(sources, "NVDA beats"); nvda < semis || nvda > macro {
+		t.Errorf("the NVDA link is not under Semiconductors & AI:\n%s", sources)
+	}
+	if fed := strings.Index(sources, "Fed holds"); fed < macro {
+		t.Errorf("the Fed link is not under Macro & Rates:\n%s", sources)
+	}
+}
+
+// A category with no articles has nothing to cite and must not leave an empty
+// label in the sources block.
+func TestRenderSkipsCategoriesWithoutSources(t *testing.T) {
+	rep := testReport()
+	rep.Sections = append(rep.Sections, model.Section{
+		GroupID: "energy", GroupName: "Energy", Body: "Quiet on oil.",
+	})
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	sources := out[strings.Index(out, "<b>Sources</b>"):]
+	if strings.Contains(sources, "<i>Energy</i>") {
+		t.Errorf("an empty category left a label in the sources block:\n%s", sources)
+	}
+}
+
+// longReport builds a report with n sections, each around 1,200 runes over four
+// paragraphs -- enough that a real brief spans several messages -- with markers
+// identifying where each section opens and closes.
+func longReport(n int) model.Report {
+	rep := testReport()
+	rep.Sections = nil
+	filler := strings.Repeat("Supporting detail for the reader. ", 9)
+	for i := 0; i < n; i++ {
+		body := strings.Join([]string{
+			fmt.Sprintf("Section %d opens. %s", i, filler),
+			filler,
+			filler,
+			fmt.Sprintf("Section %d closes. %s", i, filler),
+		}, "\n\n")
+		rep.Sections = append(rep.Sections, model.Section{
+			GroupID:   fmt.Sprintf("s%d", i),
+			GroupName: fmt.Sprintf("Sector %d", i),
+			Body:      body,
+			Articles: []model.Article{
+				{Title: fmt.Sprintf("Story %d", i), URL: fmt.Sprintf("https://example.com/%d", i), SourceName: "Wire"},
+			},
+		})
+	}
+	return rep
+}
+
+func messageContaining(msgs []string, needle string) int {
+	for i, m := range msgs {
+		if strings.Contains(m, needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+// Sources are reference material, not reading, so they open a message of their
+// own rather than trailing off the bottom of the last section.
+func TestRenderStartsSourcesOnANewMessage(t *testing.T) {
+	for _, rep := range []model.Report{testReport(), longReport(12)} {
+		msgs := Render(rep, time.UTC)
+		i := messageContaining(msgs, "<b>Sources</b>")
+		if i < 0 {
+			t.Fatal("no sources message rendered")
+		}
+		if !strings.HasPrefix(msgs[i], "<b>Sources</b>") {
+			t.Errorf("message %d carries the sources heading but does not start with it:\n%s", i, msgs[i])
+		}
+		if i == 0 {
+			t.Error("sources share the first message with the analysis")
+		}
+	}
+}
+
+// The break the reader saw: a section heading at the foot of one message and
+// its prose opening the next. A section that fits in a message stays in one.
+func TestRenderKeepsEachSectionInOneMessage(t *testing.T) {
+	rep := longReport(12)
+	msgs := Render(rep, time.UTC)
+	if len(msgs) < 3 {
+		t.Fatalf("got %d messages; the fixture should span several", len(msgs))
+	}
+	for i := range rep.Sections {
+		heading := messageContaining(msgs, fmt.Sprintf("<b>Sector %d</b>", i))
+		closes := messageContaining(msgs, fmt.Sprintf("Section %d closes.", i))
+		if heading != closes {
+			t.Errorf("Sector %d opens in message %d but closes in message %d", i, heading, closes)
+		}
+	}
+}
+
+// A message boundary already separates what is above from what is below; a
+// divider as the first line of a message is a rule drawn under nothing.
+func TestRenderNeverOpensAMessageWithADivider(t *testing.T) {
+	for i, m := range Render(longReport(12), time.UTC) {
+		if strings.HasPrefix(m, divider) {
+			t.Errorf("message %d opens with a divider:\n%s", i, m[:min(len(m), 200)])
+		}
+	}
+}
+
+// Only a section too large for any single message is split, and even then its
+// heading stays with its opening prose instead of ending a message alone.
+func TestRenderKeepsAHeadingWithItsProseWhenASectionMustSplit(t *testing.T) {
+	rep := testReport()
+	var paras []string
+	for i := 0; i < 30; i++ {
+		paras = append(paras, fmt.Sprintf("Paragraph %d. %s", i, strings.Repeat("Detail here. ", 20)))
+	}
+	rep.Sections = []model.Section{{GroupID: "big", GroupName: "Big Section", Body: strings.Join(paras, "\n\n")}}
+
+	msgs := Render(rep, time.UTC)
+	heading := messageContaining(msgs, "<b>Big Section</b>")
+	if heading < 0 {
+		t.Fatal("heading missing")
+	}
+	if first := messageContaining(msgs, "Paragraph 0."); first != heading {
+		t.Errorf("heading in message %d but its first paragraph in message %d", heading, first)
+	}
+	for i, m := range msgs {
+		if strings.HasSuffix(strings.TrimSpace(m), "<b>Big Section</b>") {
+			t.Errorf("message %d ends on an orphaned heading", i)
+		}
+		if got := runeLen(m); got > maxMessageRunes {
+			t.Errorf("message %d is %d runes, over the limit", i, got)
+		}
+	}
+}
+
+// fullSourcesReport has more articles behind one section than the short list
+// shows, plus general news no section claimed.
+func fullSourcesReport() model.Report {
+	rep := testReport()
+	rep.Sections[0].Articles = nil
+	for i := 0; i < 20; i++ {
+		rep.Sections[0].Articles = append(rep.Sections[0].Articles, model.Article{
+			Title: fmt.Sprintf("Semis story %d", i), URL: fmt.Sprintf("https://example.com/s/%d", i), SourceName: "Wire"})
+	}
+	rep.General = []model.Article{
+		{Title: "Retail sales tick higher", URL: "https://example.com/g/1", SourceName: "CNBC"},
+	}
+	return rep
+}
+
+// For cross-checking, the short list hides most of the evidence: in full mode
+// every article behind a section is listed, and nothing collapses into
+// "+N more".
+func TestFullSourcesListsEveryArticle(t *testing.T) {
+	out := strings.Join(RenderWith(fullSourcesReport(), Options{FullSources: true}), "\n")
+	for i := 0; i < 20; i++ {
+		if !strings.Contains(out, fmt.Sprintf("Semis story %d<", i)) {
+			t.Errorf("Semis story %d is missing from the full list", i)
+		}
+	}
+	if strings.Contains(out, "more article(s) not listed") {
+		t.Errorf("full mode still collapsed articles:\n%s", out)
+	}
+}
+
+// The overview is written partly from articles no section claimed; without
+// them a claim in the overview has nothing to be checked against.
+func TestFullSourcesIncludesTheGeneralNews(t *testing.T) {
+	out := strings.Join(RenderWith(fullSourcesReport(), Options{FullSources: true}), "\n")
+	if !strings.Contains(out, "General market news") {
+		t.Errorf("no general news group:\n%s", out)
+	}
+	if !strings.Contains(out, "Retail sales tick higher") {
+		t.Errorf("the general article is missing:\n%s", out)
+	}
+}
+
+// The daily brief keeps the short list; full is something you opt into.
+func TestShortSourcesAreTheDefault(t *testing.T) {
+	out := strings.Join(Render(fullSourcesReport(), time.UTC), "\n")
+	if !strings.Contains(out, "+12 more article(s) not listed") {
+		t.Errorf("the short list did not cap at %d:\n%s", maxLinksPerSection, out)
+	}
+	if strings.Contains(out, "General market news") {
+		t.Errorf("general news appeared without full mode:\n%s", out)
+	}
+}
+
+// A full list outgrows a message. It has to break between links, never inside
+// one, and say where a category carries on.
+func TestFullSourcesSplitLongListsBetweenLinks(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Articles = nil
+	for i := 0; i < 120; i++ {
+		rep.Sections[0].Articles = append(rep.Sections[0].Articles, model.Article{
+			Title:      fmt.Sprintf("A fairly long headline about market developments number %d", i),
+			URL:        fmt.Sprintf("https://example.com/markets/2026/09/14/story-%d", i),
+			SourceName: "Wire",
+		})
+	}
+
+	msgs := RenderWith(rep, Options{FullSources: true})
+	for i, m := range msgs {
+		if got := runeLen(m); got > maxMessageRunes {
+			t.Errorf("message %d is %d runes, over the limit", i, got)
+		}
+		if strings.Count(m, "<a ") != strings.Count(m, "</a>") {
+			t.Errorf("message %d cuts through a link", i)
+		}
+	}
+
+	out := strings.Join(msgs, "\n")
+	if !strings.Contains(out, "(continued)") {
+		t.Error("a list split across blocks does not say it continues")
+	}
+	for i := 0; i < 120; i++ {
+		if !strings.Contains(out, fmt.Sprintf("number %d</a>", i)) {
+			t.Errorf("link %d was lost in the split", i)
+		}
+	}
+}
+
+// The layout guarantee holds in full mode too: no message carries both the
+// analysis and links.
+func TestFullSourcesNeverShareAMessageWithTheAnalysis(t *testing.T) {
+	for i, m := range RenderWith(fullSourcesReport(), Options{FullSources: true}) {
+		if strings.Contains(m, "NVDA carried the group.") && strings.Contains(m, "<a href=") {
+			t.Errorf("message %d holds both analysis and links:\n%s", i, m)
+		}
 	}
 }

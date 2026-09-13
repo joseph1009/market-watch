@@ -15,6 +15,11 @@ type Report struct {
 	// section. Reporting them distinguishes "nothing happened" from "this was
 	// not looked at", which matters more as the number of watchlists grows.
 	QuietGroups []string `json:"quiet_groups,omitempty"`
+
+	// General holds the articles the summarizer was given that no section
+	// claimed. The overview is written partly from these, so without them a
+	// claim in the overview cannot be traced back to anything.
+	General []Article `json:"general,omitempty"`
 }
 
 // Usage is what one brief cost to generate.

@@ -438,3 +438,44 @@ func TestPromptOmitsTheLevelsBlockWithoutData(t *testing.T) {
 		t.Errorf("rendered an empty levels block:\n%s", fake.prompt)
 	}
 }
+
+// The full source list shows the articles no section claimed, so the report has
+// to carry them: they are what the overview was written from.
+func TestGenerateRecordsTheGeneralNews(t *testing.T) {
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+	g := &Generator{Completer: fake, Now: testTime}
+
+	rep, err := g.Generate(context.Background(), testArticles(), reportGroups())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(rep.General) != 1 || rep.General[0].ID != "7" {
+		t.Errorf("General = %+v, want the one article no watchlist claimed", rep.General)
+	}
+}
+
+// An article whose only watchlist was too quiet for a section still informed
+// the overview, so it belongs in the general list rather than vanishing.
+func TestGeneralNewsIncludesArticlesFromQuietWatchlists(t *testing.T) {
+	groups := append(reportGroups(), model.Group{ID: "energy", Name: "Energy"})
+	articles := append(testArticles(), model.Article{
+		ID: "oil", Title: "Brent crude tops $100 a barrel", SourceID: "cnbc", SourceName: "CNBC",
+		Published: testTime(), GroupIDs: []string{"energy"},
+	})
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+	g := &Generator{Completer: fake, Now: testTime}
+
+	rep, err := g.Generate(context.Background(), articles, groups)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	found := false
+	for _, a := range rep.General {
+		if a.ID == "oil" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the quiet watchlist's article is missing from General: %+v", rep.General)
+	}
+}

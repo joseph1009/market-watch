@@ -163,8 +163,11 @@ func (a *App) ClearChat(ctx context.Context, chatID int64) error {
 		return err
 	}
 
-	deleted, failed := a.Bot.SweepMessages(ctx, chatID, anchor-1, DefaultSweepWindow)
-	a.Log.Info("swept chat", "chat", chatID, "deleted", deleted, "unavailable", failed)
+	deleted, skipped := a.Bot.SweepMessages(ctx, chatID, anchor-1, DefaultSweepWindow)
+	// "skipped" rather than "failed": nearly every id in the window was never a
+	// bot message -- the reader's own messages, ids that no longer exist -- so
+	// the count describes the sweep, not what remains in the chat.
+	a.Log.Info("swept chat", "chat", chatID, "deleted", deleted, "skipped_ids", skipped)
 
 	if err := a.UpdatePrefs(func(p *config.Prefs) error {
 		p.LastBrief = nil
@@ -173,12 +176,18 @@ func (a *App) ClearChat(ctx context.Context, chatID int64) error {
 		return err
 	}
 
-	// The failures are expected rather than alarming -- most ids in the window
-	// were never the bot's, and Telegram refuses anything over 48 hours old --
-	// so the reply says what happened without dressing it as an error.
-	_, err = a.Bot.Send(ctx, chatID, fmt.Sprintf(
-		"Cleared %d message(s). %d could not be removed — anything older than 48 hours is beyond what Telegram lets a bot delete.",
-		deleted, failed))
+	// The reply reports only what was removed. It once also reported the ids
+	// that could not be deleted, and "136 could not be removed" read as 136
+	// messages still lingering in the chat -- when almost none of those ids
+	// were ever messages the bot could have deleted. The sweep cannot tell a
+	// too-old brief apart from the reader's own message, so it offers no count
+	// of what remains, only the rule that decides it.
+	reply := "Nothing of mine left to clear."
+	if deleted > 0 {
+		reply = fmt.Sprintf("Cleared %d message(s).", deleted)
+	}
+	reply += " A bot can only delete its messages within 48 hours, so anything older has to be removed by hand."
+	_, err = a.Bot.Send(ctx, chatID, reply)
 	return err
 }
 

@@ -18,57 +18,112 @@ const (
 	// product; the links are there to follow up on it, not to be a full index.
 	maxLinksPerSection = 8
 
+	// maxSourceBlockRunes bounds one run of links. It sits below the message
+	// limit because the first run is joined to the Sources heading when a list
+	// has to be split, and that join must never push it over and force a cut
+	// through the middle of a link.
+	maxSourceBlockRunes = maxMessageRunes - 200
+
 	// divider separates sections. Telegram's HTML mode has no horizontal rule,
 	// so the break has to be drawn.
 	divider = "──────────"
+
+	// generalCategory labels the articles no section claimed. Listed only in
+	// full mode, where the point is to check the overview against its evidence.
+	generalCategory = "General market news (informed the overview)"
 )
 
-// Render turns a report into the messages to send, in order. Long reports are
-// split across several messages because Telegram rejects anything longer.
+// Options controls how a report is laid out.
+type Options struct {
+	Display *time.Location
+
+	// FullSources lists every article behind each section instead of the first
+	// few, and adds the general news the overview drew on. For checking the
+	// brief against what it was written from, where the short list hides most
+	// of the evidence.
+	FullSources bool
+}
+
+// segment is a run of blocks that reads as one unit -- a section's heading and
+// its prose -- and so shares a message wherever it fits.
+//
+// Packing used to work block by block, filling each message to the limit and
+// breaking wherever the limit happened to fall. That left a section heading at
+// the foot of one message with its prose opening the next, and split sections
+// at arbitrary paragraphs. Packing by segment moves the breaks to the places a
+// reader expects them: between sections.
+type segment struct {
+	blocks []string
+
+	// newMessage starts the segment on a fresh message even when there is room
+	// left in the current one.
+	newMessage bool
+}
+
+// Render lays out a report with the short source list.
 func Render(rep model.Report, display *time.Location) []string {
+	return RenderWith(rep, Options{Display: display})
+}
+
+// RenderWith turns a report into the messages to send, in order. Long reports
+// are split across several messages because Telegram rejects anything longer.
+func RenderWith(rep model.Report, opts Options) []string {
+	display := opts.Display
 	if display == nil {
 		display = time.UTC
 	}
 
-	blocks := []string{
+	segs := []segment{{blocks: []string{
 		fmt.Sprintf("<b>📊 Market Watch</b>\n<i>%s</i>",
 			escape(rep.GeneratedAt.In(display).Format("Monday, 2 January 2006 · 15:04 MST"))),
-	}
+	}}}
 
 	if rep.Overview != "" {
-		blocks = append(blocks, divider+"\n<b>Overview</b>")
-		blocks = append(blocks, paragraphs(rep.Overview)...)
+		segs = append(segs, segment{blocks: append(
+			[]string{divider + "\n<b>Overview</b>"}, paragraphs(rep.Overview)...)})
 	}
 
-	for i, s := range rep.Sections {
-		blocks = append(blocks, fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName)))
+	// Every category's prose runs uninterrupted, and the links follow at the
+	// end. Interleaving a source list after each section broke the reading into
+	// prose, links, prose, links -- the reader had to skip past a list of
+	// headlines to reach the next piece of analysis.
+	for _, s := range rep.Sections {
+		blocks := []string{fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName))}
 		if s.Body != "" {
 			blocks = append(blocks, paragraphs(s.Body)...)
 		}
-		// The quiet watchlists close the last section's prose, above its link
-		// list, so the brief ends on somewhere to read next rather than on a
-		// note about absence.
-		if i == len(rep.Sections)-1 {
-			if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
-				blocks = append(blocks, quiet)
-			}
-		}
-		if links := renderSources(s.Articles); links != "" {
-			blocks = append(blocks, links)
-		}
+		segs = append(segs, segment{blocks: blocks})
 	}
 
-	// With no sections at all there is nothing to sit inside, so it stands on
-	// its own -- which is also the day when it matters most.
-	if len(rep.Sections) == 0 {
-		if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
-			blocks = append(blocks, divider+"\n"+quiet)
-		}
+	// The quiet watchlists close the prose, so the analysis ends by accounting
+	// for what was absent before the reference material begins.
+	if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
+		segs = append(segs, segment{blocks: []string{divider + "\n" + quiet}})
 	}
 
-	blocks = append(blocks, divider+"\n"+renderFooter(rep))
+	// Sources are reference material rather than reading, so they open a message
+	// of their own: no message ever holds both analysis and links.
+	limit := maxLinksPerSection
+	if opts.FullSources {
+		limit = 0
+	}
+	var sources []string
+	for _, s := range rep.Sections {
+		sources = append(sources, renderSources(s.GroupName, s.Articles, limit)...)
+	}
+	if opts.FullSources {
+		sources = append(sources, renderSources(generalCategory, rep.General, 0)...)
+	}
+	if len(sources) > 0 {
+		segs = append(segs, segment{
+			blocks:     append([]string{"<b>Sources</b>"}, sources...),
+			newMessage: true,
+		})
+	}
 
-	return pack(blocks)
+	segs = append(segs, segment{blocks: []string{divider + "\n" + renderFooter(rep)}})
+
+	return pack(segs)
 }
 
 // renderQuiet names the watchlists that had too little news for a section.
@@ -85,19 +140,23 @@ func renderQuiet(groups []string) string {
 		escape(strings.Join(groups, ", ")))
 }
 
-// renderSources lists the stories behind a section. The heading matters: an
-// unlabelled list of links and a bare "+3 more" reads as stray text.
-func renderSources(articles []model.Article) string {
+// renderSources lists the stories behind a category as one or more blocks.
+//
+// A limit of zero lists everything. A full list can outgrow a message, so it is
+// broken into runs of whole links -- each its own block, which the packer only
+// ever splits between -- and every run after the first says the category
+// continues, since it may open a new message with nothing above it.
+func renderSources(category string, articles []model.Article, limit int) []string {
 	if len(articles) == 0 {
-		return ""
+		return nil
 	}
 
 	shown := articles
-	if len(shown) > maxLinksPerSection {
-		shown = shown[:maxLinksPerSection]
+	if limit > 0 && len(shown) > limit {
+		shown = shown[:limit]
 	}
 
-	lines := []string{"<i>Sources</i>"}
+	var lines []string
 	for _, a := range shown {
 		lines = append(lines, fmt.Sprintf("• <a href=\"%s\">%s</a> — %s",
 			escape(a.URL), escape(a.Title), escape(a.SourceName)))
@@ -105,7 +164,19 @@ func renderSources(articles []model.Article) string {
 	if extra := len(articles) - len(shown); extra > 0 {
 		lines = append(lines, fmt.Sprintf("<i>+%d more article(s) not listed</i>", extra))
 	}
-	return strings.Join(lines, "\n")
+
+	// Named by category, since the links do not sit under the prose they
+	// support and the reader needs to know which analysis each list backs.
+	var blocks []string
+	current := "<i>" + escape(category) + "</i>"
+	for _, line := range lines {
+		if runeLen(current)+1+runeLen(line) > maxSourceBlockRunes {
+			blocks = append(blocks, current)
+			current = "<i>" + escape(category) + " (continued)</i>"
+		}
+		current += "\n" + line
+	}
+	return append(blocks, current)
 }
 
 // renderFooter reports the run's size and what it cost. The cost is an
@@ -218,9 +289,14 @@ func bullets(paragraph string) string {
 	return strings.Join(lines, "\n")
 }
 
-// pack fits blocks into as few messages as possible without splitting a block
-// across a message boundary, which would tear an anchor tag in half.
-func pack(blocks []string) []string {
+// pack lays segments out across messages.
+//
+// A segment that fits in the space left goes there whole. One that does not
+// starts a fresh message rather than being cut at whatever paragraph reaches
+// the limit, so breaks fall between sections. Only a segment too large for any
+// single message is split, and then between blocks, with its heading kept
+// attached to the first of them so a heading never ends a message alone.
+func pack(segs []segment) []string {
 	var (
 		messages []string
 		current  strings.Builder
@@ -231,17 +307,59 @@ func pack(blocks []string) []string {
 			current.Reset()
 		}
 	}
+	// A message boundary already separates what is above from what is below, so
+	// a divider opening a message would be a rule drawn under nothing.
+	opening := func(piece string) string {
+		return strings.TrimPrefix(piece, divider+"\n")
+	}
+	fits := func(piece string) bool {
+		if current.Len() == 0 {
+			return runeLen(opening(piece)) <= maxMessageRunes
+		}
+		// +2 for the blank line joining blocks within a message.
+		return runeLen(current.String())+2+runeLen(piece) <= maxMessageRunes
+	}
+	add := func(piece string) {
+		if current.Len() == 0 {
+			current.WriteString(opening(piece))
+			return
+		}
+		current.WriteString("\n\n")
+		current.WriteString(piece)
+	}
 
-	for _, block := range blocks {
-		for _, piece := range splitOversized(block) {
-			// +2 for the blank line joining blocks within a message.
-			if current.Len() > 0 && runeLen(current.String())+runeLen(piece)+2 > maxMessageRunes {
-				flush()
+	for _, seg := range segs {
+		if len(seg.blocks) == 0 {
+			continue
+		}
+		if seg.newMessage {
+			flush()
+		}
+
+		whole := strings.Join(seg.blocks, "\n\n")
+		if fits(whole) {
+			add(whole)
+			continue
+		}
+		flush()
+		if fits(whole) {
+			add(whole)
+			continue
+		}
+
+		// Too large for one message. The heading travels with the first block
+		// after it; everything else breaks between blocks.
+		units := seg.blocks
+		if len(units) >= 2 {
+			units = append([]string{units[0] + "\n\n" + units[1]}, units[2:]...)
+		}
+		for _, unit := range units {
+			for _, piece := range splitOversized(unit) {
+				if !fits(piece) {
+					flush()
+				}
+				add(piece)
 			}
-			if current.Len() > 0 {
-				current.WriteString("\n\n")
-			}
-			current.WriteString(piece)
 		}
 	}
 	flush()

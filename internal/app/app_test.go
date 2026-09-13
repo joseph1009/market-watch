@@ -426,3 +426,62 @@ func TestBotCommandsMatchTheHelpText(t *testing.T) {
 		}
 	}
 }
+
+// "136 could not be removed" read as 136 messages lingering in the chat, when
+// nearly every one of those ids was the reader's own message or one that no
+// longer existed. The reply now reports what was cleared and nothing else.
+func TestClearReportsOnlyWhatWasRemoved(t *testing.T) {
+	a, _ := newTestApp(t)
+
+	var (
+		mu      sync.Mutex
+		replies []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+			var m sentMessage
+			_ = json.Unmarshal(body, &m)
+			mu.Lock()
+			replies = append(replies, m.Text)
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":11}}`))
+		case strings.HasSuffix(r.URL.Path, "/deleteMessage"):
+			var req struct {
+				MessageID int64 `json:"message_id"`
+			}
+			_ = json.Unmarshal(body, &req)
+			// Only even ids are the bot's; the rest are refused, as the reader's
+			// own messages would be.
+			if req.MessageID%2 != 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"message can't be deleted"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+		default:
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+		}
+	}))
+	defer srv.Close()
+	a.Bot = &telegram.Client{Token: "test", BaseURL: srv.URL, HTTP: srv.Client()}
+
+	a.HandleMessage(context.Background(), message("/clear"))
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(replies) == 0 {
+		t.Fatal("no reply")
+	}
+	final := replies[len(replies)-1]
+	// Ids 10 down to 1: five even ones deleted, five odd ones refused.
+	if !strings.Contains(final, "Cleared 5 message(s).") {
+		t.Errorf("reply = %q, want the count of what was cleared", final)
+	}
+	for _, bad := range []string{"could not be removed", "5 could", "skipped"} {
+		if strings.Contains(final, bad) {
+			t.Errorf("reply %q still reports refused ids (%q) as if they were messages", final, bad)
+		}
+	}
+}

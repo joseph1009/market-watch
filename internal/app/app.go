@@ -183,7 +183,10 @@ func (a *App) SendReport(ctx context.Context) error {
 		"estimated_usd", rep.Usage.EstimatedUSD,
 		"took", time.Since(started).Round(time.Second))
 
-	messages := telegram.Render(rep, a.Cfg.DisplayLocation)
+	messages := telegram.RenderWith(rep, telegram.Options{
+		Display:     a.Cfg.DisplayLocation,
+		FullSources: a.Cfg.FullSources,
+	})
 
 	// Clearing happens after generation, not before: a run that fails to
 	// produce a brief must not also have thrown away the last one.
