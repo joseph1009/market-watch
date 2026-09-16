@@ -59,7 +59,7 @@ func NewAgent(apiKey, modelID string, reader *Client) *Agent {
 	}
 }
 
-const agentSystemPrompt = systemPrompt + `
+var agentSystemPrompt = systemPrompt + `
 
 You have tools that read the same SEC filings the table came from. Use them: the table is a starting point, not the limit of what you can know.
 
@@ -68,7 +68,7 @@ You have tools that read the same SEC filings the table came from. Use them: the
 
 Look up what the company in front of you requires. The figures you most need are often the ones the table does not carry: amounts owed by customers against revenue, share-based pay against reported profit, buybacks and dividends against free cash flow, the prior year of a balance-sheet line so that a single figure becomes a trend.
 
-Read what you need, then stop and write. Everything you cite must come from the table or from a tool result, exactly as reported. The rules above still hold: no figure from memory, no share price, no valuation, no advice.`
+Read what you need, then stop and write. Everything you cite must come from the table or from a tool result, exactly as reported. The rules above still hold: no figure from memory, no share price, no valuation, no advice.` + "\n\n" + Method
 
 // Analyze reads the accounts, letting the model pull what it needs, and writes
 // them up.
@@ -273,6 +273,7 @@ func (a *Agent) prompt(snap Snapshot) string {
 		fmt.Fprintf(&b, "\nThe latest balance sheet is %d days old.\n", int(age.Hours()/24))
 	}
 	fmt.Fprintf(&b, "\nYou may make up to %d lookups before writing.\n", a.maxCalls())
+	b.WriteString(RelatedFor(snap))
 	return b.String()
 }
 

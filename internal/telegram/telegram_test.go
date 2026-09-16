@@ -134,16 +134,21 @@ func TestRenderLeavesSentencesWithDashesAlone(t *testing.T) {
 	}
 }
 
-func TestRenderDoesNotLabelListItems(t *testing.T) {
+// Bullets were once deliberately left unlabelled, on the grounds that a list
+// reads cleanly without bold. A screenful of them says otherwise: every bullet
+// opening with prose is a wall, and the label is what makes it skimmable. So
+// the rule is now the same as for a paragraph -- bold a real label, leave
+// anything else alone.
+func TestRenderLabelsListItems(t *testing.T) {
 	rep := testReport()
 	rep.Overview = "- Waller - comfortable holding steady\n- Hammack - wants to act now"
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	if strings.Contains(out, "<b>") && strings.Contains(out, "• <b>") {
-		t.Errorf("a bullet was given a bold label:\n%s", out)
+	if !strings.Contains(out, "• <b>Waller</b> - comfortable holding steady") {
+		t.Errorf("a bullet label was not bolded:\n%s", out)
 	}
-	if !strings.Contains(out, "• Waller - comfortable") {
-		t.Errorf("bullet lost its shape:\n%s", out)
+	if !strings.Contains(out, "• <b>Hammack</b> - wants to act now") {
+		t.Errorf("the second bullet lost its label:\n%s", out)
 	}
 }
 
@@ -1031,5 +1036,112 @@ func TestRenderShowsTheExchangeForForeignListings(t *testing.T) {
 
 	if out := strings.Join(Render(rep, time.UTC), "\n"); !strings.Contains(out, "<code>GSK.LN</code>") {
 		t.Errorf("the exchange is missing from a foreign listing:\n%s", out)
+	}
+}
+
+// A screen of bullets that all open with prose reads as one block. The label
+// makes it skimmable -- but only where there is really a label.
+func TestBulletLabelsAreEmphasized(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Body = strings.Join([]string{
+		"- Gross margin - fell to 71.1% from 75.0% as direct costs grew faster than sales.",
+		"- Inventory — US$31.6bn, about 184 days of the latest year's cost of sales.",
+		"- Revenue grew 65.5% in the year, which is a sentence rather than a label.",
+	}, "\n")
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "• <b>Gross margin</b> - fell to 71.1%") {
+		t.Errorf("a dash-separated label was not bolded:\n%s", out)
+	}
+	if !strings.Contains(out, "• <b>Inventory</b> — US$31.6bn") {
+		t.Errorf("an em-dash label was not bolded:\n%s", out)
+	}
+	if strings.Contains(out, "<b>Revenue grew 65.5% in the year</b>") {
+		t.Errorf("a sentence was bolded as a label:\n%s", out)
+	}
+}
+
+// Bullets stacked flush read as a paragraph with odd punctuation. The gap is
+// what makes a list scannable on a phone.
+func TestBulletsAreSpacedApart(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Body = strings.Join([]string{
+		"- Gross margin - 37.7% → 76.6% over the nine months to 28 May 2026.",
+		"- Receivables - US$5.5bn → US$26.9bn, which is most of the profit uncollected.",
+		"- Debt - US$14.0bn → US$5.1bn.",
+	}, "\n")
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "28 May 2026.\n\n• <b>Receivables</b>") {
+		t.Errorf("no blank line between bullets:\n%s", out)
+	}
+	if !strings.Contains(out, "→") {
+		t.Errorf("the arrow did not survive rendering:\n%s", out)
+	}
+}
+
+// A lead line followed by bullets keeps its own spacing: the gap belongs
+// between bullets, not everywhere.
+func TestALeadLineIsNotSpacedFromItsFirstBullet(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Body = "Three moves stood out:\n- Meta - rose on Muse\n- Apple - slipped"
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "Three moves stood out:\n• <b>Meta</b>") {
+		t.Errorf("a gap was inserted after the lead line:\n%s", out)
+	}
+	if !strings.Contains(out, "rose on Muse\n\n• <b>Apple</b>") {
+		t.Errorf("the bullets were not spaced:\n%s", out)
+	}
+}
+
+// A message that ends on "THE CASE AGAINST IT" with the case itself opening the
+// next one reads as though the analysis had been cut off.
+func TestPlainKeepsHeadingsWithTheirSections(t *testing.T) {
+	var body strings.Builder
+	for _, section := range []string{"THE BUSINESS", "WHAT IT OWNS AND OWES", "THE CASE AGAINST IT"} {
+		body.WriteString(section + "\n\n")
+		for i := 0; i < 9; i++ {
+			body.WriteString("- Point " + section + " - " +
+				strings.Repeat("a figure and the sentence that carries it. ", 6) + "\n")
+		}
+		body.WriteString("\n")
+	}
+
+	msgs := RenderPlain("MU — what the filings say", body.String())
+	if len(msgs) < 2 {
+		t.Fatalf("got %d message(s), want the analysis split", len(msgs))
+	}
+	for i, m := range msgs {
+		trimmed := strings.TrimSpace(m)
+		for _, heading := range []string{"THE BUSINESS", "WHAT IT OWNS AND OWES", "THE CASE AGAINST IT"} {
+			if strings.HasSuffix(trimmed, "<b>"+heading+"</b>") {
+				t.Errorf("message %d ends on the heading %q with nothing under it:\n%s", i, heading, m)
+			}
+		}
+		if runeLen(m) > maxMessageRunes {
+			t.Errorf("message %d is %d runes, over the limit", i, runeLen(m))
+		}
+	}
+}
+
+func TestSectionHeadingsAreRecognisedNotGuessed(t *testing.T) {
+	headings := []string{"THE BUSINESS", "WHAT IT HAS ANNOUNCED", "CASH"}
+	for _, h := range headings {
+		if !isSectionHeading(h) {
+			t.Errorf("isSectionHeading(%q) = false, want true", h)
+		}
+	}
+
+	prose := []string{
+		"• <b>Gross margin</b> - 37.7% → 76.6% over the period.",
+		"The company earns most of its money from memory.",
+		"US$215.9bn",             // no letters to speak of
+		strings.Repeat("A", 200), // too long to be a heading
+	}
+	for _, p := range prose {
+		if isSectionHeading(p) {
+			t.Errorf("isSectionHeading(%q) = true, want false", p)
+		}
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 type fakeLookup struct{}
@@ -330,5 +332,133 @@ func TestGrowthComparesLikePeriods(t *testing.T) {
 	// The latest full year against the one before it.
 	if got := snap.revenueGrowth(columns, 2); !got.Known || fmt.Sprintf("%.1f", got.Amount*100) != "65.5" {
 		t.Errorf("annual growth = %+v, want 65.5%%", got)
+	}
+}
+
+func TestValuationUsesThePriceWhenTheCurrenciesMatch(t *testing.T) {
+	snap := Snapshot{
+		Ticker: "TEST", Company: "Test Corp", Currency: "USD",
+		Price: &model.Quote{Price: 100, Percent: 1.2},
+		Years: []Year{{
+			Label:   "FY to Dec 2025",
+			Figures: map[string]Value{"epsDiluted": known(5), "operatingCashFlow": known(3e9), "capitalExpenditure": known(1e9)},
+		}},
+		Balance: Balance{Figures: map[string]Value{
+			"equity": known(20e9), "sharesOutstanding": known(1e9),
+		}},
+	}
+
+	table := snap.Table()
+	for _, want := range []string{
+		"100.00 USD, +1.2% on the day",
+		"20.00x", // price 100 over earnings of 5
+		"5.00x",  // price 100 over book value of 20 a share
+		"Market value of the equity",
+	} {
+		if !strings.Contains(table, want) {
+			t.Errorf("valuation block is missing %q:\n%s", want, table)
+		}
+	}
+}
+
+// A dollar price over earnings filed in Taiwan dollars produces a confident
+// number that means nothing, and a US listing may stand for several ordinary
+// shares besides.
+func TestValuationRefusesToMixCurrencies(t *testing.T) {
+	snap := Snapshot{
+		Ticker: "TSM", Currency: "TWD",
+		Price: &model.Quote{Price: 413.75, Percent: -1.0},
+		Years: []Year{{Label: "FY to Dec 2024", Figures: map[string]Value{"epsDiluted": known(44.67)}}},
+		Balance: Balance{Figures: map[string]Value{
+			"equity": known(4.2e12), "sharesOutstanding": known(25.9e9),
+		}},
+	}
+
+	table := snap.Table()
+	if !strings.Contains(table, "413.75 USD") {
+		t.Errorf("the price is missing:\n%s", table)
+	}
+	if strings.Contains(table, "Price to earnings") || strings.Contains(table, "Price to book") {
+		t.Errorf("multiples were computed across two currencies:\n%s", table)
+	}
+	if !strings.Contains(table, "No multiples are computed") {
+		t.Errorf("the table does not say why there are no multiples:\n%s", table)
+	}
+}
+
+func TestNoPriceMeansNoValuationBlock(t *testing.T) {
+	snap := Snapshot{Ticker: "TEST", Currency: "USD",
+		Years: []Year{{Label: "FY to Dec 2025", Figures: map[string]Value{"revenue": known(1e9)}}}}
+
+	if table := snap.Table(); strings.Contains(table, "Market price") {
+		t.Errorf("a valuation block appeared without a price:\n%s", table)
+	}
+}
+
+func TestSystemPromptAllowsMultiplesButNotVerdicts(t *testing.T) {
+	for _, want := range []string{
+		"Where a market price and multiples are given",
+		"Do not call a multiple cheap or expensive",
+		"valuation cannot be addressed",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("the prompt no longer carries %q", want)
+		}
+	}
+}
+
+// A company mid-cycle makes the last full year a poor divisor. Micron's annual
+// earnings were US$7.59 a share while it had earned US$41.40 in the nine months
+// since: 122 times against about 21, both arithmetically correct and only one
+// describing the company.
+func TestMultiplesUseTheLastTwelveMonths(t *testing.T) {
+	end := time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC)
+	snap := Snapshot{
+		Currency: "USD",
+		Price:    &model.Quote{Price: 927.60},
+		Years: []Year{{
+			Label:   "FY to Aug 2025",
+			Figures: map[string]Value{"epsDiluted": known(7.59)},
+		}},
+		YTD: &Year{
+			Label: "Nine months to 28 May 2026", End: end,
+			Figures: map[string]Value{"epsDiluted": known(41.40)},
+		},
+		PriorYTD: &Year{
+			Label:   "Nine months to 29 May 2025",
+			Figures: map[string]Value{"epsDiluted": known(4.75)},
+		},
+		Balance: Balance{Figures: map[string]Value{"sharesOutstanding": known(1.13e9)}},
+	}
+
+	table := snap.Table()
+	if !strings.Contains(table, "the twelve months to 28 May 2026") {
+		t.Errorf("multiples are not on a trailing basis:\n%s", table)
+	}
+	// 927.60 / (7.59 - 4.75 + 41.40) = 20.97
+	if !strings.Contains(table, "20.97x") {
+		t.Errorf("price to earnings was not computed on the trailing figures:\n%s", table)
+	}
+	if strings.Contains(table, "122") {
+		t.Errorf("the stale annual multiple survived:\n%s", table)
+	}
+}
+
+// Without an interim filing there is nothing to roll forward, and the full year
+// is the honest basis -- said plainly rather than passed off as trailing.
+func TestMultiplesFallBackToTheFullYear(t *testing.T) {
+	snap := Snapshot{
+		Currency: "USD",
+		Price:    &model.Quote{Price: 100},
+		Years:    []Year{{Label: "FY to Dec 2025", Figures: map[string]Value{"epsDiluted": known(5)}}},
+		Balance:  Balance{Figures: map[string]Value{"sharesOutstanding": known(1e9)}},
+	}
+
+	table := snap.Table()
+	if !strings.Contains(table, "FY to Dec 2025 earnings") {
+		t.Errorf("the basis is not named:\n%s", table)
+	}
+	if !strings.Contains(table, "20.00x") {
+		t.Errorf("price to earnings on the full year is wrong:\n%s", table)
 	}
 }

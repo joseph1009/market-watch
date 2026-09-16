@@ -48,6 +48,18 @@ func (s Snapshot) Table() string {
 	fmt.Fprintf(&b, "%s (%s), SEC CIK %d\n", s.Company, s.Ticker, s.CIK)
 	fmt.Fprintf(&b, "Figures as filed with the SEC, in %s. Amounts carry their scale: m is million, bn is billion, tn is trillion.\n", s.currency())
 
+	if s.Business != "" {
+		fmt.Fprintf(&b, "\nWhat the company says it does, from its %s:\n%s\n",
+			s.BusinessFrom, s.Business)
+	}
+	if len(s.Events) > 0 {
+		b.WriteString("\nWhat it has told the SEC recently, by filing date:\n")
+		for _, e := range s.Events {
+			fmt.Fprintf(&b, "- %s\n", e)
+		}
+		b.WriteString("These are filing headings, not the filings themselves: they say what kind of event was announced, never the terms.\n")
+	}
+
 	columns := s.columns()
 	if len(columns) > 0 {
 		b.WriteString("\nReporting periods, most recent first.")
@@ -134,6 +146,8 @@ func (s Snapshot) Table() string {
 				percent(Ratio(s.Years[0].Figure("netIncome"), s.Balance.Figure("equity"))))
 		}
 	}
+
+	b.WriteString(s.valuation())
 
 	b.WriteString(`
 Per-share figures and share counts are as filed and are not restated for later stock splits, so comparing them across years can mislead.
@@ -286,4 +300,94 @@ func (s Snapshot) revenueGrowth(columns []Year, i int) Value {
 		return Value{}
 	}
 	return Ratio(Less(columns[i].Figure("revenue"), prior), prior)
+}
+
+// renderValuation sets today's price against the filed figures.
+//
+// Multiples are computed only where the company reports in US dollars, because
+// the price is a US listing and the accounts may not be: TSMC's shares quote in
+// dollars while its earnings are filed in Taiwan dollars, and dividing one by
+// the other produces a confident number that means nothing. American depositary
+// shares make it worse, each standing for several ordinary shares at a ratio
+// this has no way to know. So a foreign filer gets its price and no arithmetic.
+func (s Snapshot) valuation() string {
+	if s.Price == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nMarket price, as traded rather than as filed: %.2f USD, %s on the day",
+		s.Price.Price, s.Price.Move())
+	if !s.Price.AsOf.IsZero() {
+		fmt.Fprintf(&b, ", as at %s", s.Price.AsOf.Format("2 Jan 2006"))
+	}
+	b.WriteString("\n")
+
+	if s.currency() != "USD" {
+		fmt.Fprintf(&b, "The accounts are in %s while the price is in US dollars, and a US listing may stand for several ordinary shares. No multiples are computed: they would be meaningless without the exchange rate and the share ratio, neither of which is available here.\n", s.currency())
+		return b.String()
+	}
+
+	shares := s.Balance.Figure("sharesOutstanding")
+	price := known(s.Price.Price)
+
+	if value := multiply(price, shares); value.Known {
+		fmt.Fprintf(&b, "%s%s\n", pad("Market value of the equity", 32), amount(value))
+	}
+	if len(s.Years) > 0 {
+		earnings, freeCash, basis := s.trailing()
+		fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Price to earnings", 32),
+			times(Ratio(price, earnings)), basis)
+
+		if value := multiply(price, shares); value.Known {
+			fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Free cash flow yield", 32),
+				percent(Ratio(freeCash, value)), basis)
+		}
+	}
+	fmt.Fprintf(&b, "%s%s\n", pad("Price to book value", 32),
+		times(Ratio(price, Ratio(s.Balance.Figure("equity"), shares))))
+	b.WriteString("These multiples compare today's price with figures already filed, so they are historical. There is no peer group here and no history of the multiple itself, which is what would be needed to call one high or low.\n")
+	return b.String()
+}
+
+// multiply is a product that stays unknown when either side is.
+func multiply(a, b Value) Value {
+	if !a.Known || !b.Known {
+		return Value{}
+	}
+	return known(a.Amount * b.Amount)
+}
+
+// trailing is the last twelve months where the figures allow it, and the last
+// full year otherwise.
+//
+// The full year alone can be badly out of date. Micron's latest annual earnings
+// were US$7.59 a share while it had earned US$41.40 in the nine months since --
+// a price-to-earnings of 122 times against about 21. Both are arithmetically
+// correct and only one describes the company. The twelve months are assembled
+// as the last full year, less the part of it the prior-year interim covered,
+// plus the current interim: the same stretch of the calendar, one year apart.
+func (s Snapshot) trailing() (earnings, freeCash Value, basis string) {
+	year := s.Years[0]
+	annualEPS, annualFCF := year.Figure("epsDiluted"), year.FreeCashFlow()
+	annual := year.Label + " earnings"
+
+	if s.YTD == nil || s.PriorYTD == nil {
+		return annualEPS, annualFCF, annual
+	}
+
+	eps := Add(Less(annualEPS, s.PriorYTD.Figure("epsDiluted")), s.YTD.Figure("epsDiluted"))
+	cash := Add(Less(annualFCF, s.PriorYTD.FreeCashFlow()), s.YTD.FreeCashFlow())
+	if !eps.Known && !cash.Known {
+		return annualEPS, annualFCF, annual
+	}
+
+	// Either half may be missing, so each falls back on its own.
+	if !eps.Known {
+		eps = annualEPS
+	}
+	if !cash.Known {
+		cash = annualFCF
+	}
+	return eps, cash, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
 }

@@ -225,8 +225,8 @@ func TestSameCompanyToleratesLegalForms(t *testing.T) {
 		"TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD": "Taiwan Semiconductor",
 	}
 	for registered, claimed := range matches {
-		if !sameCompany(registered, claimed) {
-			t.Errorf("sameCompany(%q, %q) = false, want true", registered, claimed)
+		if !SameCompany(registered, claimed) {
+			t.Errorf("SameCompany(%q, %q) = false, want true", registered, claimed)
 		}
 	}
 
@@ -236,8 +236,8 @@ func TestSameCompanyToleratesLegalForms(t *testing.T) {
 		"CONSOLIDATED WATER CO": "Sony",
 	}
 	for registered, claimed := range differs {
-		if sameCompany(registered, claimed) {
-			t.Errorf("sameCompany(%q, %q) = true, want false", registered, claimed)
+		if SameCompany(registered, claimed) {
+			t.Errorf("SameCompany(%q, %q) = true, want false", registered, claimed)
 		}
 	}
 }

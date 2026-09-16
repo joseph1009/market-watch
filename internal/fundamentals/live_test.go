@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/discover"
+	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/report"
 	"github.com/joseph1009/market-watch/internal/sec"
 )
@@ -43,6 +45,13 @@ func TestLiveFundamentals(t *testing.T) {
 	snap, err := client.Fetch(ctx, ticker, 5)
 	if err != nil {
 		t.Fatalf("Fetch %s: %v", ticker, err)
+	}
+	if key := os.Getenv("FINNHUB_API_KEY"); key != "" {
+		quotes, _ := (&prices.Client{APIKey: key, HTTP: &http.Client{Timeout: 20 * time.Second}}).
+			Fetch(ctx, []string{ticker})
+		if len(quotes) > 0 {
+			snap.Price = &quotes[0]
+		}
 	}
 	t.Logf("read %s in %s", ticker, time.Since(started).Round(time.Millisecond))
 	t.Logf("\n%s", snap.Table())
@@ -100,6 +109,21 @@ func TestLiveAgent(t *testing.T) {
 		t.Fatalf("Fetch: %v", err)
 	}
 
+	// The same context the bot command supplies: what the company does, what it
+	// has announced, and what its shares cost.
+	filings := &sec.Client{HTTP: &http.Client{Timeout: 60 * time.Second}, UserAgent: agentUA}
+	for _, problem := range AddBusiness(ctx, filings, &snap, time.Now().UTC()) {
+		t.Logf("context: %v", problem)
+	}
+	if key := os.Getenv("FINNHUB_API_KEY"); key != "" {
+		quotes, _ := (&prices.Client{APIKey: key, HTTP: &http.Client{Timeout: 20 * time.Second}}).
+			Fetch(ctx, []string{ticker})
+		if len(quotes) > 0 {
+			snap.Price = &quotes[0]
+		}
+	}
+	t.Logf("business description: %d characters, events: %d", len(snap.Business), len(snap.Events))
+
 	agent := NewAgent(os.Getenv("ANTHROPIC_API_KEY"), config.DefaultModel, reader)
 	agent.Log = func(format string, args ...any) { t.Logf("  lookup: "+format, args...) }
 
@@ -111,5 +135,12 @@ func TestLiveAgent(t *testing.T) {
 	t.Logf("wrote %s in %s: %d in, %d out, estimated $%.4f",
 		ticker, time.Since(started).Round(time.Second),
 		analysis.Usage.InputTokens, analysis.Usage.OutputTokens, analysis.Usage.EstimatedUSD)
-	t.Logf("\n%s", analysis.Text)
+	prose, related := SplitRelated(analysis.Text)
+	t.Logf("%s", prose)
+
+	verified := VerifyRelated(ctx, &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}}, related)
+	t.Logf("related companies: %d proposed, %d verified", len(related), len(verified))
+	for _, r := range verified {
+		t.Logf("  %-12s %s - %s", r.Symbol(), r.Name, r.Why)
+	}
 }

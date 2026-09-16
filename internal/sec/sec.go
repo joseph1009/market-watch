@@ -371,3 +371,121 @@ func (c *Client) LookupCIK(ctx context.Context, ticker string) (cik int, name st
 	}
 	return co.CIK, co.Name, nil
 }
+
+// Recent returns a company's material 8-K filings since a date, newest first.
+// Exported so an analysis can say what the company has told the SEC lately,
+// which is the nearest thing to company news that a filings API holds.
+func (c *Client) Recent(ctx context.Context, ticker string, since time.Time) ([]Filing, error) {
+	index, err := c.tickerIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
+	if !ok {
+		return nil, fmt.Errorf("no SEC filer for ticker %q", ticker)
+	}
+
+	filings, err := c.recent(ctx, co, since)
+	if err != nil {
+		return nil, err
+	}
+	for i := range filings {
+		filings[i].Ticker = strings.ToUpper(ticker)
+	}
+	return filings, nil
+}
+
+// Describe names an 8-K's item codes in plain English, which is what makes a
+// filing readable to anyone who does not know the codes by heart.
+func (f Filing) Describe() string {
+	var out []string
+	for _, code := range f.Items {
+		if plain, ok := materialItems[code]; ok {
+			out = append(out, plain)
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
+// AnnualReport finds the most recent annual filing and returns the URL of its
+// primary document, so its business description can be read.
+func (c *Client) AnnualReport(ctx context.Context, ticker string) (Filing, error) {
+	index, err := c.tickerIndex(ctx)
+	if err != nil {
+		return Filing{}, err
+	}
+	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
+	if !ok {
+		return Filing{}, fmt.Errorf("no SEC filer for ticker %q", ticker)
+	}
+
+	var doc submissions
+	if err := c.getJSON(ctx, fmt.Sprintf(c.submissionsURL(), co.CIK), &doc); err != nil {
+		return Filing{}, err
+	}
+
+	r := doc.Filings.Recent
+	n := len(r.Form)
+	if len(r.FilingDate) < n || len(r.AccessionNumber) < n {
+		return Filing{}, fmt.Errorf("submissions arrays are ragged for CIK %d", co.CIK)
+	}
+
+	// The arrays are newest first, so the first annual form is the current one.
+	// 20-F and 40-F count: a foreign filer's annual report carries the same
+	// business description as a 10-K.
+	for i := 0; i < n; i++ {
+		form := r.Form[i]
+		if form != "10-K" && form != "20-F" && form != "40-F" {
+			continue
+		}
+		primary := ""
+		if i < len(r.PrimaryDocument) {
+			primary = r.PrimaryDocument[i]
+		}
+		filed, _ := time.Parse("2006-01-02", r.FilingDate[i])
+		return Filing{
+			Ticker:    strings.ToUpper(ticker),
+			Company:   doc.Name,
+			Items:     []string{form},
+			Filed:     filed,
+			Accession: r.AccessionNumber[i],
+			URL:       filingURL(co.CIK, r.AccessionNumber[i], primary),
+		}, nil
+	}
+	return Filing{}, fmt.Errorf("%s has filed no annual report this API lists", strings.ToUpper(ticker))
+}
+
+// businessDocMaxBytes bounds the download. A large annual report runs to
+// several megabytes of HTML, nearly all of it financial statements this never
+// reads.
+const businessDocMaxBytes = 24 << 20
+
+// BusinessSection fetches an annual report and returns the part that describes
+// what the company does.
+//
+// Item 1 is where a filer says what it sells and to whom, in its own words and
+// under a legal obligation to be accurate. Nothing else available here answers
+// "what is this company", and an analysis of the accounts without it is a
+// column of numbers about an unnamed business.
+func (c *Client) BusinessSection(ctx context.Context, url string, maxRunes int) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s: %s", url, resp.Status)
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, businessDocMaxBytes))
+	if err != nil {
+		return "", err
+	}
+	return businessText(string(raw), maxRunes), nil
+}

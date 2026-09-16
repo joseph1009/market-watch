@@ -310,13 +310,28 @@ func isLabel(s string) bool {
 // from a run-on paragraph.
 func bullets(paragraph string) string {
 	lines := strings.Split(paragraph, "\n")
-	for i, line := range lines {
+
+	var out []string
+	previousWasBullet := false
+	for _, line := range lines {
 		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "- ") {
-			lines[i] = "• " + strings.TrimSpace(trimmed[2:])
+		isBullet := strings.HasPrefix(trimmed, "- ")
+
+		// A blank line between bullets. Stacked flush against each other they
+		// read as a paragraph with odd punctuation; the gap is what makes a list
+		// scannable on a phone, and the model cannot supply it because a blank
+		// line is how it separates one block from the next.
+		if isBullet && previousWasBullet {
+			out = append(out, "")
 		}
+		if isBullet {
+			out = append(out, "• "+emphasizeBulletLabel(strings.TrimSpace(trimmed[2:])))
+		} else {
+			out = append(out, line)
+		}
+		previousWasBullet = isBullet
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(out, "\n")
 }
 
 // pack lays segments out across messages.
@@ -467,13 +482,57 @@ func RenderPlain(heading, body string) []string {
 	if heading != "" {
 		segs = append(segs, segment{blocks: []string{"<b>" + escape(heading) + "</b>"}})
 	}
+
+	// A section's heading and the bullets under it are one unit. Treating every
+	// paragraph as its own segment let a message end on "THE CASE AGAINST IT"
+	// with the case itself opening the next one, which reads as though the
+	// analysis had been cut off.
+	var current *segment
 	for _, p := range paragraphs(body) {
-		segs = append(segs, segment{blocks: []string{p}})
+		if isSectionHeading(p) {
+			if current != nil {
+				segs = append(segs, *current)
+			}
+			current = &segment{blocks: []string{"<b>" + p + "</b>"}}
+			continue
+		}
+		if current == nil {
+			current = &segment{}
+		}
+		current.blocks = append(current.blocks, p)
 	}
+	if current != nil {
+		segs = append(segs, *current)
+	}
+
 	if len(segs) == 0 {
 		return nil
 	}
 	return pack(segs)
+}
+
+// isSectionHeading recognizes the capitalised lines the analysis divides itself
+// with -- "THE CASE AGAINST IT", "WHAT IT OWNS AND OWES".
+//
+// Capitals alone are the test, because that is the only thing that separates a
+// heading from a line of prose here: no markdown is allowed through, and a
+// bullet or a sentence carries lower-case letters within a few words.
+func isSectionHeading(block string) bool {
+	const maxHeadingRunes = 60
+	if strings.Contains(block, "\n") || runeLen(block) > maxHeadingRunes {
+		return false
+	}
+
+	letters := 0
+	for _, r := range block {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return false
+		case r >= 'A' && r <= 'Z':
+			letters++
+		}
+	}
+	return letters >= 3
 }
 
 // citation matches the "[12]" and "[12][15]" the brief cites its sources with.
@@ -571,4 +630,23 @@ func citationNumber(a model.Article, cited []model.Article) int {
 		}
 	}
 	return 0
+}
+
+// emphasizeBulletLabel bolds the few words a bullet opens with, where it opens
+// with a label at all.
+//
+// A screen of bullets that all begin with prose reads as one block; the same
+// bullets with "Gross margin —" in bold can be skimmed for the one that
+// matters. The same caution applies as for a paragraph label: a fragment of a
+// sentence in bold reads worse than none, so anything that is not plainly a
+// label is left exactly as written.
+func emphasizeBulletLabel(bullet string) string {
+	for _, sep := range []string{" - ", " — ", " – ", ": "} {
+		label, rest, found := strings.Cut(bullet, sep)
+		if !found || !isLabel(label) {
+			continue
+		}
+		return "<b>" + label + "</b>" + sep + rest
+	}
+	return bullet
 }

@@ -427,6 +427,19 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	defer cancel()
 
 	snapshot, err := a.Accounts.Fetch(ctx, ticker, accountYears)
+	if err == nil {
+		// The price is what turns filed figures into multiples. It is fetched
+		// after the filings so a quote outage costs the valuation block and
+		// never the analysis.
+		snapshot.Price = a.quoteFor(ctx, ticker)
+
+		// What the company does, and what it has announced. Both are
+		// best-effort: the accounts are the part that cannot be had anywhere
+		// else, and a failed fetch here must not cost them.
+		for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snapshot, a.now()) {
+			a.Log.Warn("analysis context", "ticker", ticker, "error", problem)
+		}
+	}
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
@@ -444,8 +457,24 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		"missing", len(snapshot.Missing),
 		"estimated_usd", fmt.Sprintf("%.4f", analysis.Usage.EstimatedUSD))
 
+	// The related list is cut out of the prose and checked before it is shown:
+	// it is written as a pipe-delimited table, which reads badly in a chat, and
+	// its tickers are the part of the analysis a reader is most likely to act on.
+	prose, related := fundamentals.SplitRelated(analysis.Text)
+	if a.Finder != nil {
+		related = fundamentals.VerifyRelated(ctx, a.Finder.Verifier, related)
+	} else {
+		related = nil
+	}
+
 	heading := fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
-	messages := telegram.RenderPlain(heading, analysis.Text)
+	messages := telegram.RenderPlain(heading, prose)
+	shown := telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
+		return r.Name, r.Symbol(), r.Listed, r.Why
+	})
+	if block := telegram.RenderRelated(shown); block != "" {
+		messages = append(messages, block)
+	}
 	messages = append(messages, fmt.Sprintf(
 		"<i>%s, from filings up to %s · ~$%.2f</i>",
 		escape(snapshot.Company),
@@ -494,4 +523,22 @@ func (a *App) handleStats(ctx context.Context, msg telegram.Message) error {
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, "No run record on this instance.")
 	}
 	return a.Bot.SendMessage(ctx, msg.Chat.ID, a.Runs.Summary(a.Cfg.DisplayLocation))
+}
+
+// quoteFor reads one share price, or nothing. A company that files with the SEC
+// but trades elsewhere has no US quote, which the analysis says rather than
+// guessing at.
+func (a *App) quoteFor(ctx context.Context, ticker string) *model.Quote {
+	if !a.Quotes.Enabled() {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	quotes, _ := a.Quotes.Fetch(ctx, []string{ticker})
+	if len(quotes) == 0 {
+		return nil
+	}
+	return &quotes[0]
 }

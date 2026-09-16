@@ -343,7 +343,7 @@ func (f *Finder) verify(ctx context.Context, candidates []model.Candidate) ([]mo
 		if n < len(names) {
 			registered = names[n]
 		}
-		if registered == "" || !sameCompany(registered, candidates[i].Name) {
+		if registered == "" || !SameCompany(registered, candidates[i].Name) {
 			candidates[i].Ticker, candidates[i].Exchange, candidates[i].Listed = "", "", ""
 			continue
 		}

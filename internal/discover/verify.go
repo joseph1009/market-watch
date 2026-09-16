@@ -157,14 +157,14 @@ func (f *FIGI) client() *http.Client {
 	return http.DefaultClient
 }
 
-// sameCompany reports whether a registered name and the name the news used
+// SameCompany reports whether a registered name and the name the news used
 // describe the same company.
 //
 // They never match exactly: the news writes "Tencent", the exchange registers
 // "TENCENT HOLDINGS LTD". So the test is whether the distinctive words survive
 // in both once the legal furniture is stripped off. A wrong ticker usually
 // returns a completely different company, which fails this easily.
-func sameCompany(registered, claimed string) bool {
+func SameCompany(registered, claimed string) bool {
 	a, b := significantWords(registered), significantWords(claimed)
 	if len(a) == 0 || len(b) == 0 {
 		return false

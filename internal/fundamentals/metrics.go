@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 // Value is a figure that may not exist. A zero float would be a lie: a company
@@ -139,6 +141,18 @@ type Snapshot struct {
 	YTD      *Year
 	PriorYTD *Year
 
+	// Business is what the company says it does, from the annual report, and
+	// Events what it has told the SEC lately. The accounts describe a shape;
+	// these say whose shape it is. Empty where neither could be read.
+	Business     string
+	BusinessFrom string
+	Events       []string
+
+	// Price is what the share last traded at, where a quote was available. The
+	// accounts are historical; this is today, and the two together are what a
+	// multiple means.
+	Price *model.Quote
+
 	// Currency is what the company reports money in. Filers use their own:
 	// Alibaba reports in yuan, TSMC in Taiwan dollars, Toyota in yen. Printing
 	// those under a dollar heading would be a straightforward falsehood.
@@ -216,7 +230,7 @@ func buildYears(byKey map[string][]Observation, want int, currency string) []Yea
 			if !ok {
 				y = &Year{
 					End:     o.End,
-					Label:   fmt.Sprintf("FY to %s", o.End.Format("Jan 2006")),
+					Label:   fmt.Sprintf("FY to %s", o.End.Format("2 Jan 2006")),
 					Figures: map[string]Value{},
 				}
 				years[key] = y
