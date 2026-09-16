@@ -1,0 +1,13 @@
+# Secrets must never reach the image: they are set as platform secrets at
+# deploy time, and a key baked into a layer stays there for the life of the tag.
+.env
+.env.*
+!.env.example
+
+# The data volume is mounted at runtime; a copy of yesterday's prefs and history
+# in the image would be both stale and a chat id somebody else could read.
+data/
+
+.git/
+.github/
+*.md

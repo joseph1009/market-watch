@@ -148,3 +148,28 @@ func countFold(list []string, want string) int {
 	}
 	return n
 }
+
+// MarketWatch moved hosts and answered the old address with a redirect that
+// does not resolve. A stored source keeps the URL it was seeded with, so the
+// default alone would have fixed nothing.
+func TestMigrationFollowsMarketWatchToItsNewHost(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 2,
+		Sources: []model.Source{
+			{ID: "marketwatch-top", URL: "https://feeds.marketwatch.com/marketwatch/topstories/"},
+			{ID: "cnbc-top", URL: "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+		},
+	}
+
+	p.Migrate()
+
+	if got := p.Sources[0].URL; !strings.Contains(got, "feeds.content.dowjones.io") {
+		t.Errorf("MarketWatch URL = %q, want the Dow Jones host", got)
+	}
+	if !strings.Contains(p.Sources[1].URL, "cnbc.com") {
+		t.Errorf("an unrelated source was rewritten: %q", p.Sources[1].URL)
+	}
+	if p.SchemaVersion != CurrentSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", p.SchemaVersion, CurrentSchemaVersion)
+	}
+}

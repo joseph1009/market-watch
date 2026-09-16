@@ -1,0 +1,41 @@
+# Runs the test suite on every push and pull request.
+#
+# The live tests are deliberately not run here. They call real feeds, the SEC,
+# and the paid Anthropic API: they need credentials this workflow should never
+# hold, and they would fail whenever a publisher had an outage, which is not a
+# fact about this code. They stay opt-in behind MARKET_WATCH_LIVE.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...

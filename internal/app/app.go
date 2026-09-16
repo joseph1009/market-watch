@@ -47,6 +47,10 @@ type App struct {
 	// the news. Disabled without a Finnhub key.
 	Quotes *prices.Client
 
+	// Runs records what each brief cost and did, so the numbers that only ever
+	// reached a log can be read back with /stats.
+	Runs *history.Runs
+
 	// Covered remembers which stories earlier briefs carried, so today's can say
 	// what is new rather than repeating them. Nil disables the check.
 	Covered *history.Store
@@ -131,6 +135,12 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	a.Covered = covered
+
+	runs, err := history.LoadRuns(filepath.Join(cfg.DataDir, "runs.json"))
+	if err != nil {
+		return nil, err
+	}
+	a.Runs = runs
 
 	a.Accounts = &fundamentals.Client{
 		Lookup:    a.Filings,
@@ -351,6 +361,32 @@ func (a *App) SendReport(ctx context.Context) error {
 	if a.Covered != nil {
 		if err := a.Covered.Record(articles, a.now()); err != nil {
 			a.Log.Warn("could not record what this brief covered", "error", err)
+		}
+	}
+
+	if a.Runs != nil {
+		run := history.Run{
+			At:           a.now(),
+			Fetched:      collected.Fetched,
+			Deduped:      collected.Deduped,
+			Kept:         len(collected.Articles),
+			Matched:      collected.Matched,
+			Dropped:      collected.Dropped,
+			Trivial:      collected.Trivial,
+			CutImportant: collected.CutImportant,
+			Sections:     len(rep.Sections),
+			Messages:     len(messages),
+			NewNames:     len(rep.Candidates),
+			USD:          rep.Usage.EstimatedUSD + rep.Triage.EstimatedUSD,
+		}
+		if a.Covered != nil {
+			run.Repeats = a.Covered.Seen(collected.Articles)
+		}
+		for _, e := range collected.Errors {
+			run.Failed = append(run.Failed, e.SourceID)
+		}
+		if err := a.Runs.Add(run); err != nil {
+			a.Log.Warn("could not record the run", "error", err)
 		}
 	}
 

@@ -123,7 +123,7 @@ func basePrefs() *Prefs {
 			{ID: "yahoo-finance", Name: "Yahoo Finance", Weight: 6, Enabled: true,
 				URL: "https://finance.yahoo.com/news/rssindex"},
 			{ID: "marketwatch-top", Name: "MarketWatch Top Stories", Weight: 6, Enabled: true,
-				URL: "https://feeds.marketwatch.com/marketwatch/topstories/"},
+				URL: "https://feeds.content.dowjones.io/public/rss/mw_topstories"},
 			{ID: "investing-news", Name: "Investing.com News", Weight: 4, Enabled: true,
 				URL: "https://www.investing.com/rss/news.rss"},
 			// Disabled 2026-09-09: the endpoint now sits behind bot protection

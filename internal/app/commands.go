@@ -23,6 +23,7 @@ const helpText = `<b>📊 Market Watch</b>
 /sources — show the news feeds
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
+/stats — what recent briefs cost and did
 /clear — remove the bot's earlier messages from this chat
 /help — this message
 
@@ -38,6 +39,7 @@ func BotCommands() []telegram.Command {
 		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
+		{Command: "stats", Description: "What recent briefs cost and did"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
 		{Command: "help", Description: "What I can do"},
 	}
@@ -72,6 +74,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleSources(ctx, msg, args)
 	case "schedule":
 		err = a.handleSchedule(ctx, msg)
+	case "stats":
+		err = a.handleStats(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
 	default:
@@ -477,4 +481,17 @@ func (a *App) analyse(ctx context.Context, snapshot fundamentals.Snapshot) (fund
 		}
 	}
 	return a.Analyzer.Analyze(ctx, snapshot)
+}
+
+// handleStats reads the run record back.
+//
+// The numbers it reports were the ones I told the reader to watch and then left
+// in a terminal log, where they survived until the next restart. This is the
+// answer to "is the cap still cutting things that matter", "which feed has
+// quietly died", and "what is this costing me".
+func (a *App) handleStats(ctx context.Context, msg telegram.Message) error {
+	if a.Runs == nil {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, "No run record on this instance.")
+	}
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, a.Runs.Summary(a.Cfg.DisplayLocation))
 }

@@ -9,7 +9,7 @@ import (
 // CurrentSchemaVersion is the newest migration below. A file written by
 // DefaultPrefs is stamped with it, so a fresh install never runs migrations
 // that only exist to correct older files.
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 // migration is a one-time correction to an existing preferences file.
 //
@@ -100,6 +100,23 @@ var migrations = []migration{
 			}
 			if g := p.group("consumer-retail"); g != nil {
 				g.Keywords = addMissing(g.Keywords, "consumer pricing", "price increases")
+			}
+		},
+	},
+	{
+		version: 3,
+		name:    "follow MarketWatch to its new feed host",
+		apply: func(p *Prefs) {
+			// MarketWatch moved its feeds to Dow Jones and answers the old
+			// address with a redirect that does not resolve -- "host not
+			// found", reaching us as HTTP 400. A stored source keeps the URL it
+			// was seeded with, so changing the default alone would have fixed
+			// nothing for an existing install.
+			for i, s := range p.Sources {
+				if s.ID == "marketwatch-top" &&
+					strings.Contains(s.URL, "feeds.marketwatch.com") {
+					p.Sources[i].URL = "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+				}
 			}
 		},
 	},

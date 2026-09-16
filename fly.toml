@@ -1,0 +1,40 @@
+# Fly.io deployment. One machine, one volume, no public port.
+#
+# The service opens connections out -- to the feeds, Anthropic and Telegram --
+# and listens for nothing, so it needs no HTTP service block and nothing should
+# be able to reach it from the internet.
+
+app = "market-watch"
+primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are worldwide anyway
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DATA_DIR = "/data"
+  SCHEDULE_TZ = "America/New_York"
+  REPORT_AT = "20:30"
+  DISPLAY_TZ = "Asia/Singapore"
+  SKIP_WEEKENDS = "true"
+  SOURCE_LINKS = "off"
+  REPLACE_PREVIOUS = "true"
+  MAX_ARTICLES = "600"
+  TRIAGE = "true"
+  DISCOVER = "true"
+
+# prefs.yaml, the covered-story record, the candidate names and the run history.
+# Without this the chat id is lost on every deploy and the brief has nowhere to
+# go until /start is sent again.
+[mounts]
+  source = "market_watch_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"   # the XBRL company-facts file for a large filer is tens of megabytes
+
+# The machine runs a scheduler, so it must never be stopped for being idle: a
+# stopped machine has no timer, and the brief would simply never fire. Nothing
+# needs saying for that. Idle machines are stopped by Fly's proxy, which only
+# manages an app with an [http_service] or [[services]] section, and this app
+# has neither.
