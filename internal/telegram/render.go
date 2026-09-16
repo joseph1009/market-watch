@@ -112,6 +112,10 @@ func RenderWith(rep model.Report, opts Options) []string {
 		segs = append(segs, segment{blocks: blocks})
 	}
 
+	if blocks := renderCandidates(rep.Candidates, rep.Cited); len(blocks) > 0 {
+		segs = append(segs, segment{blocks: blocks})
+	}
+
 	// The quiet watchlists close the prose, so the analysis ends by accounting
 	// for what was absent before the reference material begins.
 	if quiet := renderQuiet(rep.QuietGroups); quiet != "" {
@@ -504,4 +508,67 @@ func cite(blocks []string, cited []model.Article) []string {
 		blocks[i] = linkCitations(b, cited)
 	}
 	return blocks
+}
+
+// renderCandidates lists the companies the news kept mentioning that no
+// watchlist tracks.
+//
+// Every line carries the evidence with it -- what happened, which outlets, how
+// many days it has been running -- because the reader has to be able to dismiss
+// a name as quickly as they can act on one. There is no ranking and no verdict:
+// a heading that said "opportunities" would be claiming something the brief
+// cannot know.
+func renderCandidates(candidates []model.Candidate, cited []model.Article) []string {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	blocks := []string{divider + "\n<b>New names in the news</b>\n" +
+		"<i>Companies today's stories were about that none of your watchlists track. Not recommendations.</i>"}
+
+	for _, c := range candidates {
+		var b strings.Builder
+		b.WriteString("• <b>" + escape(c.Name) + "</b>")
+		switch {
+		case c.Symbol() != "":
+			b.WriteString(" <code>" + escape(c.Symbol()) + "</code>")
+		case c.Private:
+			b.WriteString(" <i>private</i>")
+		default:
+			b.WriteString(" <i>ticker unverified</i>")
+		}
+		b.WriteString("\n" + escape(c.Why))
+
+		var notes []string
+		if c.Days > 1 {
+			notes = append(notes, fmt.Sprintf("%d days running", c.Days))
+		}
+		if c.Sources > 1 {
+			notes = append(notes, fmt.Sprintf("%d outlets", c.Sources))
+		}
+		if len(notes) > 0 {
+			b.WriteString(" <i>(" + escape(strings.Join(notes, ", ")) + ")</i>")
+		}
+
+		// The articles behind it, as citations, so the claim can be checked in
+		// one tap exactly as the rest of the brief can.
+		for _, a := range c.Articles {
+			if n := citationNumber(a, cited); n > 0 {
+				b.WriteString(fmt.Sprintf(" <a href=\"%s\">[%d]</a>", escape(a.URL), n))
+			}
+		}
+		blocks = append(blocks, b.String())
+	}
+	return blocks
+}
+
+// citationNumber finds an article's number in the brief's numbering, so a
+// candidate cites the same article the prose does.
+func citationNumber(a model.Article, cited []model.Article) int {
+	for i, c := range cited {
+		if c.ID == a.ID {
+			return i + 1
+		}
+	}
+	return 0
 }

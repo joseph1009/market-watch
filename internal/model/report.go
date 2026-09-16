@@ -25,6 +25,10 @@ type Report struct {
 	// the numbering used and must not be rearranged.
 	Cited []Article `json:"-"`
 
+	// Candidates are companies the news kept mentioning that no watchlist
+	// tracks. Named rather than recommended: catalyst and evidence, no advice.
+	Candidates []Candidate `json:"candidates,omitempty"`
+
 	// General holds the articles the summarizer was given that no section
 	// claimed. The overview is written partly from these, so without them a
 	// claim in the overview cannot be traced back to anything.

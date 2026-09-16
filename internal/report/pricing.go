@@ -8,12 +8,12 @@ type rate struct {
 	output float64
 }
 
-// prices are Anthropic first-party API rates, correct as of 2026-09-09. They
+// rates are Anthropic first-party API rates, correct as of 2026-09-09. They
 // are compiled in because the API does not quote a price with a response, so
 // every figure derived from them is an estimate: if Anthropic changes rates,
 // this table is what goes stale, and the Console remains the source of truth
 // for real spend.
-var prices = map[string]rate{
+var rates = map[string]rate{
 	"claude-opus-5":    {input: 5, output: 25},
 	"claude-opus-4-8":  {input: 5, output: 25},
 	"claude-sonnet-5":  {input: 2, output: 10},
@@ -25,7 +25,7 @@ var prices = map[string]rate{
 // number -- a missing cost reads as "not known", where a fabricated one would
 // be taken at face value.
 func EstimateCost(modelID string, u model.Usage) float64 {
-	r, known := prices[modelID]
+	r, known := rates[modelID]
 	if !known {
 		return 0
 	}

@@ -13,11 +13,14 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
+	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/report"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -40,12 +43,21 @@ type App struct {
 	// Levels reads market data. Disabled without a FRED key.
 	Levels *marketdata.Client
 
+	// Quotes reads share prices, so the brief can say how the market answered
+	// the news. Disabled without a Finnhub key.
+	Quotes *prices.Client
+
 	// Covered remembers which stories earlier briefs carried, so today's can say
 	// what is new rather than repeating them. Nil disables the check.
 	Covered *history.Store
 
 	// Triage rates and places articles before the cap. Nil disables it.
 	Triage *triage.Triager
+
+	// Finder proposes companies the news is about that no watchlist tracks, and
+	// Names remembers them across days. Nil on either disables the section.
+	Finder *discover.Finder
+	Names  *discover.Store
 
 	// Accounts and Analyzer answer /accounts: reported figures from EDGAR, and
 	// the writing up of them. Nil on either disables the command.
@@ -104,6 +116,10 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			APIKey: cfg.FREDAPIKey,
 			HTTP:   &http.Client{Timeout: 20 * time.Second},
 		},
+		Quotes: &prices.Client{
+			APIKey: cfg.FinnhubAPIKey,
+			HTTP:   &http.Client{Timeout: 20 * time.Second},
+		},
 		Filings: &sec.Client{
 			HTTP:      &http.Client{Timeout: 30 * time.Second},
 			UserAgent: cfg.UserAgent,
@@ -130,6 +146,22 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 	}
 	if cfg.Triage {
 		a.Triage = &triage.Triager{Completer: triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)}
+	}
+	if cfg.Discover {
+		// The same small model triage uses -- this is extraction and
+		// classification, and the verification is done in code -- but a longer
+		// reply: one line per company, where triage writes one per article.
+		finder := triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)
+		finder.MaxTokens = discover.ReplyTokens
+		a.Finder = &discover.Finder{
+			Completer: finder,
+			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
+		}
+		names, err := discover.LoadStore(filepath.Join(cfg.DataDir, "candidates.json"))
+		if err != nil {
+			return nil, err
+		}
+		a.Names = names
 	}
 	return a, nil
 }
@@ -235,9 +267,10 @@ func (a *App) SendReport(ctx context.Context) error {
 		a.Log.Info("previously covered", "articles", repeats, "remembered", a.Covered.Len())
 	}
 
-	// Market levels are context, not content: a failure here costs the anchor
-	// numbers, never the brief.
+	// Market levels and prices are context, not content: a failure here costs
+	// the anchor numbers, never the brief.
 	a.Generator.Levels = a.collectLevels(ctx)
+	a.Generator.Quotes = a.collectQuotes(ctx, articles, watchedTickers(prefs.Groups))
 
 	rep, err := a.Generator.Generate(ctx, articles, prefs.Groups)
 	if errors.Is(err, report.ErrNoArticles) {
@@ -250,6 +283,34 @@ func (a *App) SendReport(ctx context.Context) error {
 		return err
 	}
 	rep.Triage = collected.TriageUsage
+
+	// New names are looked for after the brief is written, and a failure only
+	// costs the section: the brief is the product, and this is an addition to
+	// it. The cost joins the triage line in the footer, being the same small
+	// model doing the same kind of work.
+	if a.Finder != nil {
+		candidates, usage, err := a.Finder.Find(ctx, articles, watchedNames(prefs.Groups))
+		rep.Triage.InputTokens += usage.InputTokens
+		rep.Triage.OutputTokens += usage.OutputTokens
+		rep.Triage.EstimatedUSD += usage.EstimatedUSD
+
+		switch {
+		case err != nil:
+			a.Log.Warn("could not look for new names", "error", err)
+		default:
+			if a.Names != nil {
+				candidates = a.Names.Note(candidates, a.now())
+				if err := a.Names.Save(); err != nil {
+					a.Log.Warn("could not record the new names", "error", err)
+				}
+			}
+			rep.Candidates = a.priceCandidates(ctx, candidates)
+			a.Log.Info("new names",
+				"found", len(candidates),
+				"remembered", namesRemembered(a.Names),
+				"estimated_usd", fmt.Sprintf("%.4f", usage.EstimatedUSD))
+		}
+	}
 
 	a.Log.Info("generated",
 		"sections", len(rep.Sections),
@@ -322,6 +383,7 @@ func (a *App) RunScheduler(ctx context.Context) error {
 			}
 			// A failed brief must not stop tomorrow's.
 			a.Log.Error("scheduled brief failed", "error", err)
+			a.reportFailure(ctx, err)
 		}
 	}
 }
@@ -393,5 +455,55 @@ func sourceMode(links string) telegram.SourceMode {
 		return telegram.SourcesOff
 	default:
 		return telegram.SourcesShort
+	}
+}
+
+// watchedNames is every company the reader already tracks, by ticker and by
+// name. A watchlist name is not a discovery: its section already covers it.
+func watchedNames(groups []model.Group) []string {
+	var out []string
+	for _, g := range groups {
+		out = append(out, g.Tickers...)
+		out = append(out, g.Names...)
+	}
+	return out
+}
+
+func namesRemembered(s *discover.Store) int {
+	if s == nil {
+		return 0
+	}
+	return s.Len()
+}
+
+// reportFailure tells the reader the brief did not arrive.
+//
+// Silence is the worst outcome: a missing brief is indistinguishable from a
+// quiet news day, and the reader would find out only by noticing the absence
+// days later. The message says what broke and when the next attempt is, so
+// nothing has to be inferred.
+//
+// The failure is not retried. Whatever stopped it -- an outage, a bad key, a
+// model refusal -- is unlikely to clear inside a few minutes, and a retry loop
+// spends real money on the same error.
+func (a *App) reportFailure(ctx context.Context, cause error) {
+	chat := a.Prefs().ChatID
+	if chat == 0 {
+		return
+	}
+
+	// The error is the other route a credential can take out of the process, so
+	// it is scrubbed exactly as the log is.
+	clean := logging.Scrub(cause.Error(), a.Cfg.TelegramBotToken, a.Cfg.AnthropicAPIKey)
+	next := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
+
+	text := fmt.Sprintf(
+		"<b>📊 Market Watch</b>\n\nToday's brief failed and was not sent.\n\n<i>%s</i>\n\nNothing is retried automatically. The next scheduled brief is %s; send /now to try again sooner.",
+		escape(clean), escape(next.Format("Mon 2 Jan at 15:04 MST")))
+
+	if err := a.Bot.SendMessage(ctx, chat, text); err != nil {
+		// Nothing further to try: if Telegram is what broke, the logs are the
+		// only channel left.
+		a.Log.Error("could not report the failure either", "error", err)
 	}
 }

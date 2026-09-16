@@ -504,7 +504,7 @@ func TestPromptNumbersArticlesAndFlagsRepeats(t *testing.T) {
 			Covered: now.AddDate(0, 0, -2)},
 	}
 
-	prompt := buildPrompt(articles, nil, nil, now, time.UTC)
+	prompt := buildPrompt(articles, nil, nil, nil, now, time.UTC)
 
 	if !strings.Contains(prompt, "[1] Oil surges on Gulf attack") {
 		t.Errorf("articles are not numbered for citation:\n%s", prompt)

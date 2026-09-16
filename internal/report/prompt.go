@@ -10,6 +10,7 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 )
 
 // The response is delimited rather than JSON: the sections are prose that goes
@@ -84,7 +85,7 @@ func splitByCoverage(articles []model.Article, groups []model.Group, minimum int
 // buildPrompt renders the articles into the user turn. Articles are ordered by
 // watchlist so related stories sit together, which reads better than the
 // recency order the collector produces.
-func buildPrompt(articles []model.Article, groups []model.Group, levels []marketdata.Reading, now time.Time, display *time.Location) string {
+func buildPrompt(articles []model.Article, groups []model.Group, levels []marketdata.Reading, quotes []model.Quote, now time.Time, display *time.Location) string {
 	if display == nil {
 		display = time.UTC
 	}
@@ -101,6 +102,10 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 	// conflating the two would let a level be reported as though an outlet had
 	// claimed it.
 	if block := renderMarketData(levels); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n")
+	}
+	if block := renderPrices(quotes, display); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
@@ -269,4 +274,35 @@ func describeMove(delta float64) string {
 	default:
 		return "unchanged"
 	}
+}
+
+// renderPrices writes what shares actually did.
+//
+// Labelled as measured, like the market levels and for the same reason: an
+// article says what someone wrote, and this says what the market paid. A model
+// given both without the distinction will happily report a price as though an
+// outlet had claimed it.
+//
+// The funds are named as funds. SPY is not the S&P 500, it is a fund that
+// tracks it, and on a bad day the two differ -- so the brief says "SPY fund"
+// rather than quietly passing one off as the other.
+func renderPrices(quotes []model.Quote, display *time.Location) string {
+	if len(quotes) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("\nPrices, as measured on the exchange rather than reported by any article. Use them to say how the market answered the news, and do not attribute them to a source:\n")
+	for _, q := range quotes {
+		fmt.Fprintf(&b, "- %s: %.2f, %s on the day", prices.LabelFor(q.Symbol), q.Price, q.Move())
+		if q.Previous > 0 {
+			fmt.Fprintf(&b, " (previous close %.2f)", q.Previous)
+		}
+		if !q.AsOf.IsZero() {
+			fmt.Fprintf(&b, ", as at %s", q.AsOf.In(display).Format("15:04 on 2 Jan"))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("A move of \"flat\" means the price barely changed; say so rather than inventing a direction. Prices are US listings only, so a company quoted elsewhere has none here -- say that instead of guessing.\n")
+	return b.String()
 }

@@ -87,6 +87,11 @@ type Config struct {
 	ReportAt         ClockTime
 	DisplayLocation  *time.Location
 
+	// Discover adds the "new names in the news" section: companies the day's
+	// stories were about that no watchlist tracks, with every ticker checked
+	// against the exchange before it is shown.
+	Discover bool
+
 	// SkipWeekends suppresses the Saturday and Sunday briefs, which would cover
 	// days the US market was shut.
 	SkipWeekends bool
@@ -169,6 +174,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.Triage, err = envBool("TRIAGE", true); err != nil {
+		return nil, err
+	}
+	if cfg.Discover, err = envBool("DISCOVER", true); err != nil {
 		return nil, err
 	}
 	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", DefaultMaxArticles); err != nil {

@@ -983,3 +983,53 @@ func TestRenderLeavesUnbackedCitationsAlone(t *testing.T) {
 		t.Errorf("a bracketed aside was mangled:\n%s", out)
 	}
 }
+
+func TestRenderNewNamesSection(t *testing.T) {
+	rep := testReport()
+	rep.Cited = []model.Article{{Title: "Grab deal", URL: "https://example.com/grab"}}
+	rep.Candidates = []model.Candidate{
+		{
+			Name: "Grab", Ticker: "GRAB", Exchange: "US", Listed: "GRAB HOLDINGS LTD",
+			Why: "Agreed to buy Atome Financial for $1.49bn", Sources: 2, Days: 3,
+			Articles: rep.Cited,
+		},
+		{Name: "Atome Financial", Private: true, Why: "Being acquired by Grab", Sources: 2},
+		{Name: "Nonesuch", Why: "Announced a takeover", Sources: 2},
+	}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	if !strings.Contains(out, "<b>New names in the news</b>") {
+		t.Errorf("no new-names section:\n%s", out)
+	}
+	if !strings.Contains(out, "Not recommendations") {
+		t.Errorf("the section does not say what it is not:\n%s", out)
+	}
+	if !strings.Contains(out, "<code>GRAB</code>") {
+		t.Errorf("a verified US ticker is not shown plainly:\n%s", out)
+	}
+	if !strings.Contains(out, "3 days running") || !strings.Contains(out, "2 outlets") {
+		t.Errorf("the evidence is missing:\n%s", out)
+	}
+	if !strings.Contains(out, "<i>private</i>") {
+		t.Errorf("a private company is not flagged:\n%s", out)
+	}
+	if !strings.Contains(out, "<i>ticker unverified</i>") {
+		t.Errorf("an unverified name is not flagged:\n%s", out)
+	}
+	if !strings.Contains(out, `<a href="https://example.com/grab">[1]</a>`) {
+		t.Errorf("the candidate does not cite its article:\n%s", out)
+	}
+}
+
+// A foreign listing has to say which market, or the symbol is ambiguous.
+func TestRenderShowsTheExchangeForForeignListings(t *testing.T) {
+	rep := testReport()
+	rep.Candidates = []model.Candidate{
+		{Name: "GSK", Ticker: "GSK", Exchange: "LN", Why: "Licensed a cancer drug", Sources: 2},
+	}
+
+	if out := strings.Join(Render(rep, time.UTC), "\n"); !strings.Contains(out, "<code>GSK.LN</code>") {
+		t.Errorf("the exchange is missing from a foreign listing:\n%s", out)
+	}
+}

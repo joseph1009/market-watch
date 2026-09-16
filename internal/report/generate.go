@@ -41,6 +41,10 @@ type Generator struct {
 	// than as news. Empty omits the block entirely.
 	Levels []marketdata.Reading
 
+	// Quotes are what shares did on the session the brief covers. They answer
+	// the question the articles cannot: whether the market agreed with the news.
+	Quotes []model.Quote
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -60,7 +64,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// articles produces filler -- "the watchlist was thin today" -- rather than
 	// anything worth the space.
 	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
-	prompt := buildPrompt(articles, active, g.Levels, now, g.display())
+	prompt := buildPrompt(articles, active, g.Levels, g.Quotes, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
 	if err != nil {

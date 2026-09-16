@@ -542,3 +542,43 @@ type failingLookup struct{}
 func (failingLookup) LookupCIK(context.Context, string) (int, string, error) {
 	return 0, "", errors.New("no SEC filer for ticker")
 }
+
+// A brief that fails silently is indistinguishable from a quiet news day, so
+// the failure has to reach the chat.
+func TestAFailedBriefIsReported(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.Cfg.TelegramBotToken = "8955:secret-token"
+
+	a.reportFailure(context.Background(), errors.New("every source failed"))
+
+	if len(*sent) != 1 {
+		t.Fatalf("got %d messages, want the failure reported", len(*sent))
+	}
+	text := (*sent)[0].Text
+	for _, want := range []string{"failed", "every source failed", "/now"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the failure message is missing %q: %s", want, text)
+		}
+	}
+	if !strings.Contains(text, "next scheduled brief") {
+		t.Errorf("the message does not say when the next attempt is: %s", text)
+	}
+}
+
+// An error is the other way a credential leaves the process, so it is scrubbed
+// on this path exactly as it is in the log.
+func TestAFailureMessageCarriesNoCredentials(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.Cfg.TelegramBotToken = "8955:secret-token"
+	a.Cfg.AnthropicAPIKey = "sk-ant-secret"
+
+	a.reportFailure(context.Background(),
+		errors.New(`Post "https://api.telegram.org/bot8955:secret-token/sendMessage": key sk-ant-secret rejected`))
+
+	text := (*sent)[0].Text
+	if strings.Contains(text, "secret-token") || strings.Contains(text, "sk-ant-secret") {
+		t.Errorf("a credential reached the chat: %s", text)
+	}
+}

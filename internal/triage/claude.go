@@ -21,6 +21,12 @@ const maxTokens = 2048
 type Claude struct {
 	Client anthropic.Client
 	Model  string
+
+	// MaxTokens bounds the reply. Triage needs little -- a verdict is about a
+	// dozen tokens -- but the same client answers the discovery pass, whose
+	// reply is one line per company and outgrew the triage ceiling on its first
+	// real day.
+	MaxTokens int64
 }
 
 // NewClaude builds a client for the given key and model.
@@ -39,7 +45,7 @@ func (c *Claude) Complete(ctx context.Context, system, prompt string) (string, m
 	disabled := anthropic.NewThinkingConfigDisabledParam()
 	msg, err := c.Client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(c.Model),
-		MaxTokens: maxTokens,
+		MaxTokens: c.maxTokens(),
 		Thinking:  anthropic.ThinkingConfigParamUnion{OfDisabled: &disabled},
 		System:    []anthropic.TextBlockParam{{Text: system}},
 		Messages: []anthropic.MessageParam{
@@ -68,7 +74,14 @@ func (c *Claude) Complete(ctx context.Context, system, prompt string) (string, m
 	}
 	if msg.StopReason == anthropic.StopReasonMaxTokens {
 		// The text is still returned: its verdicts are valid up to the cut.
-		return b.String(), usage, fmt.Errorf("reply cut off at the %d token limit", maxTokens)
+		return b.String(), usage, fmt.Errorf("reply cut off at the %d token limit", c.maxTokens())
 	}
 	return b.String(), usage, nil
+}
+
+func (c *Claude) maxTokens() int64 {
+	if c.MaxTokens > 0 {
+		return c.MaxTokens
+	}
+	return maxTokens
 }
