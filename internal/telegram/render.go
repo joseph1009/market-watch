@@ -450,3 +450,22 @@ var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "
 func escape(s string) string { return escaper.Replace(s) }
 
 func runeLen(s string) int { return len([]rune(s)) }
+
+// RenderPlain lays out a heading and a block of model prose as messages.
+//
+// It exists for replies that are not the daily brief -- a company analysis, say
+// -- which still need the same escaping, paragraph handling and message
+// splitting, and would otherwise be truncated by Telegram at 4096 characters.
+func RenderPlain(heading, body string) []string {
+	segs := []segment{}
+	if heading != "" {
+		segs = append(segs, segment{blocks: []string{"<b>" + escape(heading) + "</b>"}})
+	}
+	for _, p := range paragraphs(body) {
+		segs = append(segs, segment{blocks: []string{p}})
+	}
+	if len(segs) == 0 {
+		return nil
+	}
+	return pack(segs)
+}

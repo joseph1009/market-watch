@@ -355,3 +355,19 @@ func (c *Client) submissionsURL() string {
 	}
 	return submissionsURL
 }
+
+// LookupCIK resolves a ticker to the company the SEC knows it as, using the
+// same index the filing collector loads. Exported because the fundamentals
+// reader needs the CIK to read a company's reported figures, and there is no
+// second authoritative mapping worth maintaining.
+func (c *Client) LookupCIK(ctx context.Context, ticker string) (cik int, name string, err error) {
+	index, err := c.tickerIndex(ctx)
+	if err != nil {
+		return 0, "", err
+	}
+	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
+	if !ok {
+		return 0, "", fmt.Errorf("no SEC filer for ticker %q", ticker)
+	}
+	return co.CIK, co.Name, nil
+}

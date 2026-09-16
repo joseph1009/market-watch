@@ -927,3 +927,24 @@ func TestZeroValueOptionsStillListSources(t *testing.T) {
 		t.Errorf("the zero value dropped the source list:\n%s", out)
 	}
 }
+
+func TestRenderPlainSplitsLongProseAndEscapesIt(t *testing.T) {
+	body := strings.TrimSpace(strings.Repeat("Gross margin fell to 71.1% from 75.0% & that matters.\n\n", 120))
+
+	msgs := RenderPlain("NVDA — what the filings say", body)
+	if len(msgs) < 2 {
+		t.Fatalf("got %d message(s), want the prose split across several", len(msgs))
+	}
+	for i, m := range msgs {
+		if runeLen(m) > maxMessageRunes {
+			t.Errorf("message %d is %d runes, over the limit", i, runeLen(m))
+		}
+	}
+	joined := strings.Join(msgs, "\n")
+	if !strings.Contains(joined, "&amp;") {
+		t.Errorf("ampersands were not escaped:\n%s", msgs[0])
+	}
+	if !strings.Contains(msgs[0], "<b>NVDA — what the filings say</b>") {
+		t.Errorf("heading missing from the first message:\n%s", msgs[0])
+	}
+}

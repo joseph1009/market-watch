@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
@@ -498,4 +500,45 @@ func TestSourceModeMapsEveryConfiguredValue(t *testing.T) {
 			t.Errorf("sourceMode(%q) = %v, want %v", links, got, want)
 		}
 	}
+}
+
+// Asking without a ticker should teach the command rather than error.
+func TestAnalyseWithoutATickerExplainsItself(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.Accounts = &fundamentals.Client{}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	a.HandleMessage(context.Background(), message("/analyse"))
+
+	if len(*sent) != 1 {
+		t.Fatalf("got %d replies, want 1", len(*sent))
+	}
+	for _, want := range []string{"/analyse NVDA", "SEC", "never advice"} {
+		if !strings.Contains((*sent)[0].Text, want) {
+			t.Errorf("reply is missing %q: %s", want, (*sent)[0].Text)
+		}
+	}
+}
+
+// A ticker that does not file with the SEC is ordinary -- foreign listings and
+// private companies -- so it gets an explanation, not a stack trace.
+func TestAnalyseExplainsATickerItCannotRead(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	a.HandleMessage(context.Background(), message("/analyse TENCENT"))
+
+	if len(*sent) != 2 { // the "reading..." note, then the explanation
+		t.Fatalf("got %d replies, want 2: %+v", len(*sent), *sent)
+	}
+	if !strings.Contains((*sent)[1].Text, "does not file with the SEC") {
+		t.Errorf("unhelpful failure reply: %s", (*sent)[1].Text)
+	}
+}
+
+type failingLookup struct{}
+
+func (failingLookup) LookupCIK(context.Context, string) (int, string, error) {
+	return 0, "", errors.New("no SEC filer for ticker")
 }

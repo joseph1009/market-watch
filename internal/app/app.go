@@ -13,6 +13,7 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/feed"
+	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -39,6 +40,16 @@ type App struct {
 
 	// Triage rates and places articles before the cap. Nil disables it.
 	Triage *triage.Triager
+
+	// Accounts and Analyzer answer /accounts: reported figures from EDGAR, and
+	// the writing up of them. Nil on either disables the command.
+	Accounts *fundamentals.Client
+	Analyzer *fundamentals.Analyzer
+
+	// Agent is the same analysis with the filings open: it looks up whatever
+	// the company turns out to need. Nil falls back to Analyzer and its fixed
+	// table.
+	Agent *fundamentals.Agent
 
 	mu    sync.RWMutex
 	prefs *config.Prefs
@@ -92,6 +103,18 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			UserAgent: cfg.UserAgent,
 		},
 		prefs: prefs,
+	}
+	a.Accounts = &fundamentals.Client{
+		Lookup:    a.Filings,
+		HTTP:      &http.Client{Timeout: 30 * time.Second},
+		UserAgent: cfg.UserAgent,
+	}
+	a.Analyzer = &fundamentals.Analyzer{
+		Completer: report.NewClaude(cfg.AnthropicAPIKey, cfg.Model),
+	}
+	a.Agent = fundamentals.NewAgent(cfg.AnthropicAPIKey, cfg.Model, a.Accounts)
+	a.Agent.Log = func(format string, args ...any) {
+		log.Debug("analysis lookup", "detail", fmt.Sprintf(format, args...))
 	}
 	if cfg.Triage {
 		a.Triage = &triage.Triager{Completer: triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)}

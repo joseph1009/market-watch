@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -15,6 +16,7 @@ import (
 const helpText = `<b>📊 Market Watch</b>
 
 /now — build and send a brief right now
+/analyse &lt;ticker&gt; — analyse a company from its filings, e.g. /analyse NVDA
 /watchlist — show your watchlists
 /watchlist add &lt;group&gt; &lt;ticker or name&gt; — track something
 /watchlist remove &lt;group&gt; &lt;ticker or name&gt; — stop tracking it
@@ -33,6 +35,7 @@ func BotCommands() []telegram.Command {
 	return []telegram.Command{
 		{Command: "now", Description: "Build and send a brief right now"},
 		{Command: "watchlist", Description: "Show or edit your watchlists"},
+		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
@@ -59,6 +62,10 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.Bot.SendMessage(ctx, msg.Chat.ID, helpText)
 	case "now":
 		err = a.handleNow(ctx, msg)
+	// Spelling and the earlier name both route here: a command that answers
+	// only to one spelling reads as broken to whoever typed the other.
+	case "analyse", "analyze", "accounts":
+		err = a.handleAnalyse(ctx, msg, args)
 	case "watchlist":
 		err = a.handleWatchlist(ctx, msg, args)
 	case "sources":
@@ -385,3 +392,89 @@ func groupIDs(groups []model.Group) string {
 var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 
 func escape(s string) string { return escaper.Replace(s) }
+
+// handleAnalyse reads one company's filed figures and writes them up.
+//
+// Separate from the daily brief on purpose: the brief reports what happened
+// today, and this answers a different question -- what the accounts say about a
+// company, whenever you happen to ask.
+func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []string) error {
+	if a.Accounts == nil || (a.Analyzer == nil && a.Agent == nil) {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID,
+			"Reading filings is not configured on this instance.")
+	}
+	if len(args) == 0 {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID,
+			"Which company? Send a ticker, for example /analyse NVDA.\n\n"+
+				"I read what the company filed with the SEC: revenue, margins, cash and the balance sheet. "+
+				"Any SEC filer works, including foreign companies with a US listing such as TSM or BABA. "+
+				"It is a reading of the accounts, never advice on the stock.")
+	}
+
+	ticker := strings.ToUpper(strings.TrimSpace(args[0]))
+	if err := a.Bot.SendMessage(ctx, msg.Chat.ID,
+		fmt.Sprintf("Reading %s's filings — about a minute.", escape(ticker))); err != nil {
+		return err
+	}
+
+	// Its own budget: the SEC reads are quick, the writing is not, and this
+	// must not inherit however long the caller's context happens to have left.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	snapshot, err := a.Accounts.Fetch(ctx, ticker, accountYears)
+	if err != nil {
+		a.Log.Warn("accounts", "ticker", ticker, "error", err)
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
+			"I could not read %s. Either it does not file with the SEC — foreign listings and private companies mostly do not — or the ticker is wrong.",
+			escape(ticker)))
+	}
+
+	analysis, err := a.analyse(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	a.Log.Info("analysed",
+		"ticker", ticker,
+		"years", len(snapshot.Years),
+		"missing", len(snapshot.Missing),
+		"estimated_usd", fmt.Sprintf("%.4f", analysis.Usage.EstimatedUSD))
+
+	heading := fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
+	messages := telegram.RenderPlain(heading, analysis.Text)
+	messages = append(messages, fmt.Sprintf(
+		"<i>%s, from filings up to %s · ~$%.2f</i>",
+		escape(snapshot.Company),
+		escape(snapshot.Balance.AsOf.Format("2 Jan 2006")),
+		analysis.Usage.EstimatedUSD))
+
+	_, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages)
+	return err
+}
+
+// accountYears is how much history the analysis gets. Five years covers a cycle
+// without burying the recent trend in a wall of columns.
+const accountYears = 5
+
+// analyse writes up a snapshot, preferring the agent.
+//
+// The agent looks up whatever this company's figures turn out to require --
+// receivables against revenue, a prior year of inventory, what the free cash
+// flow was spent on -- which is most of what makes the analysis about this
+// company rather than about companies in general. It costs several times a
+// single call, so a failure falls back to the fixed table rather than leaving
+// the reader with nothing.
+func (a *App) analyse(ctx context.Context, snapshot fundamentals.Snapshot) (fundamentals.Analysis, error) {
+	if a.Agent != nil {
+		analysis, err := a.Agent.Analyze(ctx, snapshot)
+		if err == nil {
+			return analysis, nil
+		}
+		a.Log.Warn("analysis agent failed; falling back to the fixed table",
+			"ticker", snapshot.Ticker, "error", err)
+		if a.Analyzer == nil {
+			return fundamentals.Analysis{}, err
+		}
+	}
+	return a.Analyzer.Analyze(ctx, snapshot)
+}
