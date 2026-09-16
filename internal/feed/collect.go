@@ -30,6 +30,23 @@ type Result struct {
 	// are among them.
 	Matched int
 	Dropped int
+
+	// Triage outcome, all zero when no triager ran. Rated is how many articles
+	// got a rating; NewlyMatched how many that keywords missed were placed in a
+	// watchlist, and Placements how many placements were added in all. Trivial
+	// is how many unmatched articles rated 1 were removed before the cap, and
+	// CutImportant how many rated 4 or 5 the cap still discarded -- the number
+	// that says whether the cap is set too low.
+	Rated        int
+	NewlyMatched int
+	Placements   int
+	Trivial      int
+	CutImportant int
+	TriageUsage  model.Usage
+
+	// TriageErr reports a partial or total triage failure. It is not fatal:
+	// unrated articles rank on the other signals and the brief still goes out.
+	TriageErr error
 }
 
 // AllFailed reports whether every source errored, the one case where sending a
@@ -52,6 +69,17 @@ type Options struct {
 	// filings from the submissions API. They join before dedupe and scoring, so
 	// a filing competes for a place on the same terms as everything else.
 	Extra []model.Article
+
+	// Triage, when set, rates and places articles after keyword matching and
+	// before the cap. Nil ranks on keyword matches and source weight alone.
+	Triage Triager
+}
+
+// Triager judges articles by content. It returns the articles in the same order
+// with Rating set and watchlist placements added, never removed. An error means
+// some articles came back unrated; the articles are still usable.
+type Triager interface {
+	Triage(ctx context.Context, articles []model.Article, groups []model.Group) ([]model.Article, model.Usage, error)
 }
 
 // Collect runs the full pipeline: fetch every source, collapse duplicates, tag
@@ -78,23 +106,63 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 	deduped := len(articles)
 	// Matching runs before the cut so watchlist relevance can inform it.
 	articles = Match(articles, groups)
-	articles = Limit(articles, sources, max, f.now())
 
-	matched := 0
-	for _, a := range articles {
-		if len(a.GroupIDs) > 0 {
-			matched++
+	res := Result{Errors: errs, Fetched: fetched, Deduped: deduped}
+	if opts.Triage != nil {
+		articles = res.triage(ctx, opts.Triage, articles, groups)
+	}
+
+	ranked := Limit(articles, sources, 0, f.now())
+	kept := ranked
+	if max > 0 && len(ranked) > max {
+		kept = ranked[:max]
+		for _, a := range ranked[max:] {
+			if a.Rating >= 4 {
+				res.CutImportant++
+			}
 		}
 	}
 
-	return Result{
-		Articles: articles,
-		Errors:   errs,
-		Fetched:  fetched,
-		Deduped:  deduped,
-		Matched:  matched,
-		Dropped:  deduped - len(articles),
+	for _, a := range kept {
+		if len(a.GroupIDs) > 0 {
+			res.Matched++
+		}
 	}
+	res.Articles = kept
+	res.Dropped = len(ranked) - len(kept)
+	return res
+}
+
+// triage runs the triager, records what it changed, and removes the trivia: an
+// article rated 1 that no watchlist claims. A keyword match is kept whatever its
+// rating, since the reader asked for that subject by name.
+func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article, groups []model.Group) []model.Article {
+	before := make(map[string]int, len(articles))
+	for _, a := range articles {
+		before[a.ID] = len(a.GroupIDs)
+	}
+
+	triaged, usage, err := t.Triage(ctx, articles, groups)
+	r.TriageUsage, r.TriageErr = usage, err
+
+	out := make([]model.Article, 0, len(triaged))
+	for _, a := range triaged {
+		if a.Rating > 0 {
+			r.Rated++
+		}
+		if added := len(a.GroupIDs) - before[a.ID]; added > 0 {
+			r.Placements += added
+			if before[a.ID] == 0 {
+				r.NewlyMatched++
+			}
+		}
+		if a.Rating == 1 && len(a.GroupIDs) == 0 {
+			r.Trivial++
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // MaxArticleAge is how far back a story may be and still belong in a daily
@@ -398,10 +466,16 @@ func isWordByte(b byte) bool {
 // utf8Continuation is the first byte value outside 7-bit ASCII.
 const utf8Continuation = 0x80
 
-// Scoring weights. They are relative, not absolute: only their ratios matter,
-// and the point is that no single signal can dominate the others.
+// Scoring weights. They are relative, not absolute: only their ratios matter.
+//
+// The triage rating counts most, because it is the only signal that reads what
+// an article says: without it, an unmatched story ranked on its outlet's weight,
+// which kept routine sanctions notices over a Gulf oil-supply shock. It still
+// cannot outvote everything else together, so a named ticker from a primary
+// source holds its place even when triage undersells it.
 const (
-	weightMatch   = 4.0 // strongest signal: the reader asked for this subject
+	weightRating  = 6.0 // how much the content matters, judged by triage
+	weightMatch   = 4.0 // the reader asked for this subject
 	weightSource  = 3.0 // a filing outranks an aggregator's rewrite of it
 	weightAgree   = 2.0 // several outlets carrying it means it mattered
 	weightRecency = 2.0
@@ -450,7 +524,16 @@ func score(a model.Article, weights map[string]int, now time.Time) float64 {
 		body = 1.0
 	}
 
-	return match*weightMatch +
+	// Unrated sits at the midpoint, level with a 3. With triage off every
+	// article gets it, which leaves the ranking exactly as it was; after a
+	// failed batch its articles are neither buried nor promoted.
+	rating := 0.5
+	if a.Rating >= 1 && a.Rating <= 5 {
+		rating = float64(a.Rating-1) / 4
+	}
+
+	return rating*weightRating +
+		match*weightMatch +
 		source*weightSource +
 		agree*weightAgree +
 		recency*weightRecency +

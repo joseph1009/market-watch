@@ -33,15 +33,30 @@ const (
 	generalCategory = "General market news (informed the overview)"
 )
 
+// SourceMode says whether the brief carries its source links, and how many.
+//
+// The zero value is the short list: a caller that says nothing about links
+// gets the usual brief rather than one stripped of its references.
+type SourceMode int
+
+const (
+	// SourcesShort lists the first few links behind each section.
+	SourcesShort SourceMode = iota
+
+	// SourcesFull lists every article behind each section and adds the general
+	// news the overview drew on. For checking the brief against what it was
+	// written from, where the short list hides most of the evidence.
+	SourcesFull
+
+	// SourcesOff omits the source list altogether, for a reader who wants the
+	// analysis and nothing else.
+	SourcesOff
+)
+
 // Options controls how a report is laid out.
 type Options struct {
 	Display *time.Location
-
-	// FullSources lists every article behind each section instead of the first
-	// few, and adds the general news the overview drew on. For checking the
-	// brief against what it was written from, where the short list hides most
-	// of the evidence.
-	FullSources bool
+	Sources SourceMode
 }
 
 // segment is a run of blocks that reads as one unit -- a section's heading and
@@ -102,17 +117,20 @@ func RenderWith(rep model.Report, opts Options) []string {
 	}
 
 	// Sources are reference material rather than reading, so they open a message
-	// of their own: no message ever holds both analysis and links.
-	limit := maxLinksPerSection
-	if opts.FullSources {
-		limit = 0
-	}
+	// of their own: no message ever holds both analysis and links. Off, there is
+	// no such message at all -- the brief ends with the analysis and the footer.
 	var sources []string
-	for _, s := range rep.Sections {
-		sources = append(sources, renderSources(s.GroupName, s.Articles, limit)...)
-	}
-	if opts.FullSources {
-		sources = append(sources, renderSources(generalCategory, rep.General, 0)...)
+	if opts.Sources != SourcesOff {
+		limit := maxLinksPerSection
+		if opts.Sources == SourcesFull {
+			limit = 0
+		}
+		for _, s := range rep.Sections {
+			sources = append(sources, renderSources(s.GroupName, s.Articles, limit)...)
+		}
+		if opts.Sources == SourcesFull {
+			sources = append(sources, renderSources(generalCategory, rep.General, 0)...)
+		}
 	}
 	if len(sources) > 0 {
 		segs = append(segs, segment{
@@ -186,14 +204,20 @@ func renderFooter(rep model.Report) string {
 	lines := []string{fmt.Sprintf("<i>%d articles from %d sources</i>", rep.ArticleCount, rep.SourceCount)}
 
 	if u := rep.Usage; u.Total() > 0 {
-		line := fmt.Sprintf("<i>%s in · %s out</i>", thousands(u.InputTokens), thousands(u.OutputTokens))
-		if u.EstimatedUSD > 0 {
-			line = fmt.Sprintf("<i>%s in · %s out · ~$%.3f</i>",
-				thousands(u.InputTokens), thousands(u.OutputTokens), u.EstimatedUSD)
-		}
-		lines = append(lines, line)
+		lines = append(lines, usageLine("", u))
+	}
+	if u := rep.Triage; u.Total() > 0 {
+		lines = append(lines, usageLine("triage ", u))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func usageLine(label string, u model.Usage) string {
+	if u.EstimatedUSD > 0 {
+		return fmt.Sprintf("<i>%s%s in · %s out · ~$%.3f</i>",
+			label, thousands(u.InputTokens), thousands(u.OutputTokens), u.EstimatedUSD)
+	}
+	return fmt.Sprintf("<i>%s%s in · %s out</i>", label, thousands(u.InputTokens), thousands(u.OutputTokens))
 }
 
 // paragraphs splits model prose on blank lines and escapes each part. The model

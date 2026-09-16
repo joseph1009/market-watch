@@ -141,7 +141,7 @@ func TestLiveInspectTheCut(t *testing.T) {
 	articles = Dedupe(articles, sources)
 	articles = Match(articles, prefs.Groups)
 
-	const cap = 400
+	cap := config.DefaultMaxArticles
 	ranked := Limit(articles, sources, 0, now) // 0 = rank everything, drop nothing
 	if len(ranked) <= cap {
 		t.Logf("%d articles, under the cap of %d -- nothing is being dropped", len(ranked), cap)

@@ -11,6 +11,10 @@ type Report struct {
 	SourceCount  int       `json:"source_count"`
 	Usage        Usage     `json:"usage"`
 
+	// Triage is what rating and placing the articles cost, kept apart from
+	// Usage because it is a different model at a different price.
+	Triage Usage `json:"triage,omitempty"`
+
 	// QuietGroups names the watchlists that had too little news to be worth a
 	// section. Reporting them distinguishes "nothing happened" from "this was
 	// not looked at", which matters more as the number of watchlists grows.

@@ -25,6 +25,11 @@ type Article struct {
 	// after near-duplicates were collapsed into this one. Several independent
 	// outlets covering something is itself evidence that it mattered.
 	Corroborations int `json:"corroborations,omitempty"`
+
+	// Rating is the triage model's judgment of market relevance, 1 (irrelevant)
+	// to 5 (moves markets). Zero means unrated: triage was off, or the batch
+	// carrying this article failed.
+	Rating int `json:"rating,omitempty"`
 }
 
 // InGroup reports whether the article was matched to the given watchlist group.

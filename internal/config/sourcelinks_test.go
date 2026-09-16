@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func withRequiredEnv(t *testing.T) {
 	t.Helper()
@@ -17,33 +20,44 @@ func TestSourceLinksDefaultsToShort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.FullSources {
-		t.Error("FullSources is on without SOURCE_LINKS=full")
+	if cfg.SourceLinks != SourceLinksShort {
+		t.Errorf("SourceLinks = %q, want %q", cfg.SourceLinks, SourceLinksShort)
 	}
 }
 
-func TestSourceLinksFullIsCaseInsensitive(t *testing.T) {
-	for _, v := range []string{"full", "FULL", "Full"} {
+func TestSourceLinksAcceptsEveryModeCaseInsensitively(t *testing.T) {
+	tests := map[string]string{
+		"full":  SourceLinksFull,
+		"FULL":  SourceLinksFull,
+		"Off":   SourceLinksOff,
+		"off":   SourceLinksOff,
+		"SHORT": SourceLinksShort,
+	}
+	for set, want := range tests {
 		withRequiredEnv(t)
-		t.Setenv("SOURCE_LINKS", v)
+		t.Setenv("SOURCE_LINKS", set)
 
 		cfg, err := Load()
 		if err != nil {
-			t.Fatalf("Load with %q: %v", v, err)
+			t.Fatalf("Load with %q: %v", set, err)
 		}
-		if !cfg.FullSources {
-			t.Errorf("SOURCE_LINKS=%q did not turn on full sources", v)
+		if cfg.SourceLinks != want {
+			t.Errorf("SOURCE_LINKS=%q gave %q, want %q", set, cfg.SourceLinks, want)
 		}
 	}
 }
 
 // A typo should stop the process with a clear message, not silently fall back
-// to the short list while you think you are cross-checking the full one.
+// to a mode you did not ask for.
 func TestSourceLinksRejectsUnknownValues(t *testing.T) {
 	withRequiredEnv(t)
 	t.Setenv("SOURCE_LINKS", "everything")
 
-	if _, err := Load(); err == nil {
-		t.Error("an unknown SOURCE_LINKS value was accepted")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("an unknown SOURCE_LINKS value was accepted")
+	}
+	if !strings.Contains(err.Error(), "off, short or full") {
+		t.Errorf("error %q does not name the valid values", err)
 	}
 }

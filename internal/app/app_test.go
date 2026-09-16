@@ -485,3 +485,17 @@ func TestClearReportsOnlyWhatWasRemoved(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceModeMapsEveryConfiguredValue(t *testing.T) {
+	tests := map[string]telegram.SourceMode{
+		config.SourceLinksShort: telegram.SourcesShort,
+		config.SourceLinksFull:  telegram.SourcesFull,
+		config.SourceLinksOff:   telegram.SourcesOff,
+		"":                      telegram.SourcesShort, // unset config, e.g. in tests
+	}
+	for links, want := range tests {
+		if got := sourceMode(links); got != want {
+			t.Errorf("sourceMode(%q) = %v, want %v", links, got, want)
+		}
+	}
+}

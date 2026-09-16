@@ -18,6 +18,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/report"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
+	"github.com/joseph1009/market-watch/internal/triage"
 )
 
 // App holds everything one process needs. Prefs are guarded because the bot
@@ -35,6 +36,9 @@ type App struct {
 
 	// Levels reads market data. Disabled without a FRED key.
 	Levels *marketdata.Client
+
+	// Triage rates and places articles before the cap. Nil disables it.
+	Triage *triage.Triager
 
 	mu    sync.RWMutex
 	prefs *config.Prefs
@@ -66,7 +70,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
-	return &App{
+	a := &App{
 		Cfg: cfg,
 		Log: log,
 		Fetcher: &feed.Fetcher{
@@ -88,7 +92,11 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			UserAgent: cfg.UserAgent,
 		},
 		prefs: prefs,
-	}, nil
+	}
+	if cfg.Triage {
+		a.Triage = &triage.Triager{Completer: triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)}
+	}
+	return a, nil
 }
 
 // Prefs returns a snapshot safe to read without holding the lock.
@@ -132,12 +140,18 @@ func (a *App) SendReport(ctx context.Context) error {
 	// bolted on afterwards.
 	filings := a.collectFilings(ctx, prefs)
 
-	collected := feed.Collect(ctx, a.Fetcher, feed.Options{
+	opts := feed.Options{
 		Sources: append(prefs.EnabledSources(), SECSourceEntry()),
 		Groups:  prefs.Groups,
 		Max:     a.Cfg.MaxArticles,
 		Extra:   filings,
-	})
+	}
+	// Assigned only when set: a nil *Triager stored in the interface would not
+	// compare equal to nil, and Collect would call through it.
+	if a.Triage != nil {
+		opts.Triage = a.Triage
+	}
+	collected := feed.Collect(ctx, a.Fetcher, opts)
 	for _, e := range collected.Errors {
 		a.Log.Warn("source failed", "source", e.SourceID, "error", e.Err)
 	}
@@ -157,6 +171,21 @@ func (a *App) SendReport(ctx context.Context) error {
 		"failed_sources", len(collected.Errors),
 		"took", time.Since(started).Round(time.Second))
 
+	if a.Triage != nil {
+		if collected.TriageErr != nil {
+			a.Log.Warn("triage incomplete; unrated articles rank on the other signals", "error", collected.TriageErr)
+		}
+		// cut_rated_4_plus is the number to watch: if it stays above zero, the
+		// cap is discarding news that matters and should rise.
+		a.Log.Info("triaged",
+			"rated", collected.Rated,
+			"newly_matched", collected.NewlyMatched,
+			"placements_added", collected.Placements,
+			"trivial_removed", collected.Trivial,
+			"cut_rated_4_plus", collected.CutImportant,
+			"estimated_usd", fmt.Sprintf("%.4f", collected.TriageUsage.EstimatedUSD))
+	}
+
 	if collected.AllFailed() {
 		return fmt.Errorf("every source failed (%d): %v", len(collected.Errors), collected.Errors[0])
 	}
@@ -175,6 +204,7 @@ func (a *App) SendReport(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	rep.Triage = collected.TriageUsage
 
 	a.Log.Info("generated",
 		"sections", len(rep.Sections),
@@ -184,8 +214,8 @@ func (a *App) SendReport(ctx context.Context) error {
 		"took", time.Since(started).Round(time.Second))
 
 	messages := telegram.RenderWith(rep, telegram.Options{
-		Display:     a.Cfg.DisplayLocation,
-		FullSources: a.Cfg.FullSources,
+		Display: a.Cfg.DisplayLocation,
+		Sources: sourceMode(a.Cfg.SourceLinks),
 	})
 
 	// Clearing happens after generation, not before: a run that fails to
@@ -297,4 +327,18 @@ func (a *App) now() time.Time {
 func groupSummary(g model.Group) string {
 	return fmt.Sprintf("%d tickers, %d names, %d keywords",
 		len(g.Tickers), len(g.Names), len(g.Keywords))
+}
+
+// sourceMode maps the configured SOURCE_LINKS value onto the renderer's mode.
+// An unknown value cannot arrive here -- configuration rejects it at startup --
+// so the fallback is the usual short list rather than an error.
+func sourceMode(links string) telegram.SourceMode {
+	switch links {
+	case config.SourceLinksFull:
+		return telegram.SourcesFull
+	case config.SourceLinksOff:
+		return telegram.SourcesOff
+	default:
+		return telegram.SourcesShort
+	}
 }

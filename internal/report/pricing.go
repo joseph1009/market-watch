@@ -21,10 +21,10 @@ var prices = map[string]rate{
 	"claude-fable-5-1": {input: 10, output: 50},
 }
 
-// estimateCost prices a run. An unknown model yields zero rather than a wrong
+// EstimateCost prices a run. An unknown model yields zero rather than a wrong
 // number -- a missing cost reads as "not known", where a fabricated one would
 // be taken at face value.
-func estimateCost(modelID string, u model.Usage) float64 {
+func EstimateCost(modelID string, u model.Usage) float64 {
 	r, known := prices[modelID]
 	if !known {
 		return 0

@@ -479,3 +479,17 @@ func TestGeneralNewsIncludesArticlesFromQuietWatchlists(t *testing.T) {
 		t.Errorf("the quiet watchlist's article is missing from General: %+v", rep.General)
 	}
 }
+
+// The reader asked not to be handed trade shorthand: the brief has to explain
+// its terms rather than assume them.
+func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
+	for _, want := range []string{
+		"not a market professional",
+		"25bp",
+		"Keep every number, attribution and caveat",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("the system prompt no longer carries %q", want)
+		}
+	}
+}

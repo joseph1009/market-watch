@@ -68,7 +68,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	}
 
 	usage := completion.Usage
-	usage.EstimatedUSD = estimateCost(completion.Model, usage)
+	usage.EstimatedUSD = EstimateCost(completion.Model, usage)
 
 	got := parseResponse(completion.Text)
 	rep := model.Report{

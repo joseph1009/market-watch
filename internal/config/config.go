@@ -27,12 +27,25 @@ const (
 
 	DefaultModel = "claude-opus-5"
 
-	// DefaultMaxArticles bounds one prompt. Raised from 250 with the sector
-	// watchlists: eleven sectors need more raw material than three did, and
-	// staleness filtering already removes the archive entries that used to
-	// fill the budget.
-	DefaultMaxArticles = 400
-	DefaultDataDir     = "./data"
+	// DefaultTriageModel rates and places every article before the brief is
+	// written. A small model: the judgment is coarse, and it runs over the
+	// whole day's intake rather than the capped set.
+	DefaultTriageModel = "claude-haiku-4-5"
+
+	// DefaultMaxArticles bounds one prompt. It is a ceiling for heavy days, not
+	// a routine filter: at 400 it cut 82 of 482 articles on an ordinary day, and
+	// rating those showed oil-supply and Middle East stories among them. A
+	// normal day now fits whole, and triage removes the trivia before the cap
+	// is reached.
+	DefaultMaxArticles = 600
+
+	// SOURCE_LINKS values. Short is the default; off suits a reader who wants
+	// the analysis alone, and full is for checking the brief against its
+	// sources.
+	SourceLinksOff   = "off"
+	SourceLinksShort = "short"
+	SourceLinksFull  = "full"
+	DefaultDataDir   = "./data"
 )
 
 // Config is the process configuration, read entirely from the environment.
@@ -44,6 +57,12 @@ type Config struct {
 
 	AnthropicAPIKey string
 	Model           string
+
+	// Triage has a small model rate and place every article before the cap and
+	// the brief. TriageModel names it. Off, ranking falls back to keyword
+	// matches and source weight alone.
+	Triage      bool
+	TriageModel string
 
 	// UserAgent identifies the service to publishers. Empty means the feed
 	// package's own default, which carries no contact address -- SEC EDGAR
@@ -68,11 +87,11 @@ type Config struct {
 	// otherwise bury the chat.
 	ReplacePrevious bool
 
-	// FullSources lists every article behind each section, plus the general
-	// news the overview drew on, instead of the first few per section. For
-	// checking the brief against what it was written from; set with
-	// SOURCE_LINKS=full.
-	FullSources bool
+	// SourceLinks says how much of the source list the brief carries: short
+	// (the first few per section), full (every article, plus the general news the
+	// overview drew on, for checking the brief against its evidence), or off (no
+	// source list at all). Set with SOURCE_LINKS.
+	SourceLinks string
 
 	MaxArticles int
 	HTTPTimeout time.Duration
@@ -92,6 +111,7 @@ func Load() (*Config, error) {
 		TelegramBotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
 		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
 		Model:            envOr("CLAUDE_MODEL", DefaultModel),
+		TriageModel:      envOr("TRIAGE_MODEL", DefaultTriageModel),
 		UserAgent:        envOr("USER_AGENT", ""),
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
@@ -124,14 +144,16 @@ func Load() (*Config, error) {
 	if cfg.TelegramChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
 		return nil, err
 	}
-	switch links := strings.ToLower(envOr("SOURCE_LINKS", "short")); links {
-	case "short":
-	case "full":
-		cfg.FullSources = true
+	switch links := strings.ToLower(envOr("SOURCE_LINKS", SourceLinksShort)); links {
+	case SourceLinksShort, SourceLinksFull, SourceLinksOff:
+		cfg.SourceLinks = links
 	default:
-		return nil, fmt.Errorf("SOURCE_LINKS: want short or full, got %q", links)
+		return nil, fmt.Errorf("SOURCE_LINKS: want off, short or full, got %q", links)
 	}
 	if cfg.ReplacePrevious, err = envBool("REPLACE_PREVIOUS", false); err != nil {
+		return nil, err
+	}
+	if cfg.Triage, err = envBool("TRIAGE", true); err != nil {
 		return nil, err
 	}
 	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", DefaultMaxArticles); err != nil {

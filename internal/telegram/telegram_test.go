@@ -193,6 +193,22 @@ func TestRenderShowsTokenUsageAndCost(t *testing.T) {
 	}
 }
 
+// Triage is a different model at a different price, so it gets its own line
+// rather than being folded into the brief's tokens.
+func TestRenderShowsTriageCostOnItsOwnLine(t *testing.T) {
+	rep := testReport()
+	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204, EstimatedUSD: 0.187}
+	rep.Triage = model.Usage{InputTokens: 32_328, OutputTokens: 4_397, EstimatedUSD: 0.054}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "<i>triage 32,328 in · 4,397 out · ~$0.054</i>") {
+		t.Errorf("footer is missing the triage line in:\n%s", out)
+	}
+	if !strings.Contains(out, "<i>21,450 in · 3,204 out · ~$0.187</i>") {
+		t.Errorf("the brief's own usage line changed in:\n%s", out)
+	}
+}
+
 // An unpriced model must not render a "$0.000" that reads as free.
 func TestRenderOmitsCostWhenUnpriced(t *testing.T) {
 	rep := testReport()
@@ -803,7 +819,7 @@ func fullSourcesReport() model.Report {
 // every article behind a section is listed, and nothing collapses into
 // "+N more".
 func TestFullSourcesListsEveryArticle(t *testing.T) {
-	out := strings.Join(RenderWith(fullSourcesReport(), Options{FullSources: true}), "\n")
+	out := strings.Join(RenderWith(fullSourcesReport(), Options{Sources: SourcesFull}), "\n")
 	for i := 0; i < 20; i++ {
 		if !strings.Contains(out, fmt.Sprintf("Semis story %d<", i)) {
 			t.Errorf("Semis story %d is missing from the full list", i)
@@ -817,7 +833,7 @@ func TestFullSourcesListsEveryArticle(t *testing.T) {
 // The overview is written partly from articles no section claimed; without
 // them a claim in the overview has nothing to be checked against.
 func TestFullSourcesIncludesTheGeneralNews(t *testing.T) {
-	out := strings.Join(RenderWith(fullSourcesReport(), Options{FullSources: true}), "\n")
+	out := strings.Join(RenderWith(fullSourcesReport(), Options{Sources: SourcesFull}), "\n")
 	if !strings.Contains(out, "General market news") {
 		t.Errorf("no general news group:\n%s", out)
 	}
@@ -850,7 +866,7 @@ func TestFullSourcesSplitLongListsBetweenLinks(t *testing.T) {
 		})
 	}
 
-	msgs := RenderWith(rep, Options{FullSources: true})
+	msgs := RenderWith(rep, Options{Sources: SourcesFull})
 	for i, m := range msgs {
 		if got := runeLen(m); got > maxMessageRunes {
 			t.Errorf("message %d is %d runes, over the limit", i, got)
@@ -874,9 +890,40 @@ func TestFullSourcesSplitLongListsBetweenLinks(t *testing.T) {
 // The layout guarantee holds in full mode too: no message carries both the
 // analysis and links.
 func TestFullSourcesNeverShareAMessageWithTheAnalysis(t *testing.T) {
-	for i, m := range RenderWith(fullSourcesReport(), Options{FullSources: true}) {
+	for i, m := range RenderWith(fullSourcesReport(), Options{Sources: SourcesFull}) {
 		if strings.Contains(m, "NVDA carried the group.") && strings.Contains(m, "<a href=") {
 			t.Errorf("message %d holds both analysis and links:\n%s", i, m)
 		}
+	}
+}
+
+// SOURCE_LINKS=off is for a reader who wants the analysis alone: the links go,
+// and nothing else does.
+func TestSourcesOffOmitsTheSourceList(t *testing.T) {
+	msgs := RenderWith(fullSourcesReport(), Options{Sources: SourcesOff})
+	out := strings.Join(msgs, "\n")
+
+	if strings.Contains(out, "<b>Sources</b>") {
+		t.Errorf("the source list survived with sources off:\n%s", out)
+	}
+	if strings.Contains(out, "<a href=") {
+		t.Errorf("article links survived with sources off:\n%s", out)
+	}
+	if strings.Contains(out, generalCategory) {
+		t.Errorf("the general news list survived with sources off:\n%s", out)
+	}
+	// The brief itself has to be untouched.
+	for _, want := range []string{"Market Watch", "<b>Overview</b>", "articles from"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("sources off also removed %q:\n%s", want, out)
+		}
+	}
+}
+
+// Short remains the default, so a caller that sets only Display is unaffected.
+func TestZeroValueOptionsStillListSources(t *testing.T) {
+	out := strings.Join(RenderWith(testReport(), Options{}), "\n")
+	if !strings.Contains(out, "<b>Sources</b>") {
+		t.Errorf("the zero value dropped the source list:\n%s", out)
 	}
 }

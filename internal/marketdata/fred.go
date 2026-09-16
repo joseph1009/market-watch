@@ -33,8 +33,10 @@ type Series struct {
 var DefaultSeries = []Series{
 	{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
 	{ID: "DGS2", Label: "US 2-year Treasury yield", Unit: "%"},
-	{ID: "T10Y2Y", Label: "2s10s curve", Unit: "%"},
+	{ID: "T10Y2Y", Label: "Gap between the 10-year and 2-year Treasury yields (the 2s10s curve)", Unit: "%"},
 	{ID: "DFF", Label: "Effective fed funds rate", Unit: "%"},
+	{ID: "SP500", Label: "S&P 500 index level", Unit: ""},
+	{ID: "VIXCLS", Label: "VIX, the market volatility index", Unit: ""},
 }
 
 // Reading is the latest value of a series and how far it has moved.
