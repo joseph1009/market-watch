@@ -2,6 +2,8 @@ package telegram
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,7 +97,7 @@ func RenderWith(rep model.Report, opts Options) []string {
 
 	if rep.Overview != "" {
 		segs = append(segs, segment{blocks: append(
-			[]string{divider + "\n<b>Overview</b>"}, paragraphs(rep.Overview)...)})
+			[]string{divider + "\n<b>Overview</b>"}, cite(paragraphs(rep.Overview), rep.Cited)...)})
 	}
 
 	// Every category's prose runs uninterrupted, and the links follow at the
@@ -105,7 +107,7 @@ func RenderWith(rep model.Report, opts Options) []string {
 	for _, s := range rep.Sections {
 		blocks := []string{fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName))}
 		if s.Body != "" {
-			blocks = append(blocks, paragraphs(s.Body)...)
+			blocks = append(blocks, cite(paragraphs(s.Body), rep.Cited)...)
 		}
 		segs = append(segs, segment{blocks: blocks})
 	}
@@ -468,4 +470,38 @@ func RenderPlain(heading, body string) []string {
 		return nil
 	}
 	return pack(segs)
+}
+
+// citation matches the "[12]" and "[12][15]" the brief cites its sources with.
+var citation = regexp.MustCompile(`\[(\d{1,4})\]`)
+
+// linkCitations turns each citation into a link to the article it points at.
+//
+// A source list at the end answers "where did this come from" only for someone
+// willing to hunt; a number beside the claim answers it in one tap. A number
+// with no article behind it is left as written rather than linked to something
+// else, so a miscount cannot silently attribute a claim to the wrong outlet.
+func linkCitations(block string, cited []model.Article) string {
+	if len(cited) == 0 {
+		return block
+	}
+	return citation.ReplaceAllStringFunc(block, func(match string) string {
+		n, err := strconv.Atoi(strings.Trim(match, "[]"))
+		if err != nil || n < 1 || n > len(cited) {
+			return match
+		}
+		a := cited[n-1]
+		if a.URL == "" {
+			return match
+		}
+		return fmt.Sprintf("<a href=\"%s\">[%d]</a>", escape(a.URL), n)
+	})
+}
+
+// cite links the citations in every block of a section.
+func cite(blocks []string, cited []model.Article) []string {
+	for i, b := range blocks {
+		blocks[i] = linkCitations(b, cited)
+	}
+	return blocks
 }

@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
+	"github.com/joseph1009/market-watch/internal/history"
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -37,6 +39,10 @@ type App struct {
 
 	// Levels reads market data. Disabled without a FRED key.
 	Levels *marketdata.Client
+
+	// Covered remembers which stories earlier briefs carried, so today's can say
+	// what is new rather than repeating them. Nil disables the check.
+	Covered *history.Store
 
 	// Triage rates and places articles before the cap. Nil disables it.
 	Triage *triage.Triager
@@ -104,6 +110,12 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		},
 		prefs: prefs,
 	}
+	covered, err := history.Load(filepath.Join(cfg.DataDir, "covered.json"))
+	if err != nil {
+		return nil, err
+	}
+	a.Covered = covered
+
 	a.Accounts = &fundamentals.Client{
 		Lookup:    a.Filings,
 		HTTP:      &http.Client{Timeout: 30 * time.Second},
@@ -213,11 +225,21 @@ func (a *App) SendReport(ctx context.Context) error {
 		return fmt.Errorf("every source failed (%d): %v", len(collected.Errors), collected.Errors[0])
 	}
 
+	// Stories earlier briefs already carried are marked rather than dropped: a
+	// running story should be reported when it moves, and silently removing it
+	// would leave the reader with a development and no thread to hang it on.
+	articles := collected.Articles
+	if a.Covered != nil {
+		repeats := a.Covered.Seen(articles)
+		articles = a.Covered.Mark(articles)
+		a.Log.Info("previously covered", "articles", repeats, "remembered", a.Covered.Len())
+	}
+
 	// Market levels are context, not content: a failure here costs the anchor
 	// numbers, never the brief.
 	a.Generator.Levels = a.collectLevels(ctx)
 
-	rep, err := a.Generator.Generate(ctx, collected.Articles, prefs.Groups)
+	rep, err := a.Generator.Generate(ctx, articles, prefs.Groups)
 	if errors.Is(err, report.ErrNoArticles) {
 		// A genuinely empty day is worth saying out loud, rather than leaving
 		// the reader wondering whether the service died.
@@ -261,6 +283,14 @@ func (a *App) SendReport(ctx context.Context) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// Recorded only after delivery: a brief that never reached the reader has
+	// not covered anything, and marking it would silence tomorrow's.
+	if a.Covered != nil {
+		if err := a.Covered.Record(articles, a.now()); err != nil {
+			a.Log.Warn("could not record what this brief covered", "error", err)
+		}
 	}
 
 	a.Log.Info("delivered", "messages", len(messages), "chat", prefs.ChatID)

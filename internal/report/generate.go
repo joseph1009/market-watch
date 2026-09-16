@@ -101,6 +101,10 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// sources can show everything the overview had to work with.
 	rep.General = uncovered(articles, active)
 
+	// The same order newNumbering used, so citation [n] resolves to the article
+	// the model was looking at.
+	rep.Cited = articles
+
 	if rep.IsEmpty() {
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))
 	}

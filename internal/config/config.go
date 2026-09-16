@@ -69,6 +69,12 @@ type Config struct {
 	// answers that with 403, so a real deployment sets this.
 	UserAgent string
 
+	// FinnhubAPIKey and TwelveDataAPIKey will carry share prices into the brief:
+	// Finnhub for US listings, Twelve Data for the other major exchanges. Empty
+	// until the keys exist, and nothing reads them yet.
+	FinnhubAPIKey    string
+	TwelveDataAPIKey string
+
 	// FREDAPIKey enables the market-levels block. Free to obtain, but not
 	// universal, so an empty key omits the block rather than failing the run.
 	FREDAPIKey string
@@ -80,6 +86,10 @@ type Config struct {
 	ScheduleLocation *time.Location
 	ReportAt         ClockTime
 	DisplayLocation  *time.Location
+
+	// SkipWeekends suppresses the Saturday and Sunday briefs, which would cover
+	// days the US market was shut.
+	SkipWeekends bool
 
 	// ReplacePrevious deletes the previous brief before sending a new one.
 	// Off by default: deleting is irreversible, and a reader may want to look
@@ -114,6 +124,8 @@ func Load() (*Config, error) {
 		TriageModel:      envOr("TRIAGE_MODEL", DefaultTriageModel),
 		UserAgent:        envOr("USER_AGENT", ""),
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
+		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
+		TwelveDataAPIKey: envOr("TWELVEDATA_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 
@@ -153,6 +165,9 @@ func Load() (*Config, error) {
 	if cfg.ReplacePrevious, err = envBool("REPLACE_PREVIOUS", false); err != nil {
 		return nil, err
 	}
+	if cfg.SkipWeekends, err = envBool("SKIP_WEEKENDS", true); err != nil {
+		return nil, err
+	}
 	if cfg.Triage, err = envBool("TRIAGE", true); err != nil {
 		return nil, err
 	}
@@ -175,9 +190,37 @@ func (c *Config) PrefsPath() string { return filepath.Join(c.DataDir, "prefs.yam
 // DatabasePath is where the dedupe history database lives on the volume.
 func (c *Config) DatabasePath() string { return filepath.Join(c.DataDir, "market-watch.db") }
 
-// NextRun returns the next scheduled report time after from.
+// NextRun returns the next scheduled report time after from, skipping the days
+// the brief would have nothing to report on.
+//
+// The report fires after the US close, so a Saturday run covers a Saturday: the
+// market was shut, and the news is Friday's, which Friday's brief already
+// carried. Skipping both weekend days means the reader gets a brief on the
+// morning after each trading day, and none on a morning that would only repeat
+// the last one.
 func (c *Config) NextRun(from time.Time) time.Time {
-	return c.ReportAt.Next(from, c.ScheduleLocation)
+	next := c.ReportAt.Next(from, c.ScheduleLocation)
+	if !c.SkipWeekends {
+		return next
+	}
+	// At most two skips: a Saturday moves to Monday, a Sunday to Monday.
+	for i := 0; i < 2 && isWeekend(next); i++ {
+		next = c.ReportAt.Next(next, c.ScheduleLocation)
+	}
+	return next
+}
+
+// isWeekend reports whether the brief would cover a day the US market was shut.
+// Holidays are not handled: they move every year and a quiet brief on Christmas
+// Day costs a dollar, where a wrong holiday table would silently skip a
+// trading day.
+func isWeekend(t time.Time) bool {
+	switch t.Weekday() {
+	case time.Saturday, time.Sunday:
+		return true
+	default:
+		return false
+	}
 }
 
 // ClockTime is a wall-clock time of day, interpreted in some location.

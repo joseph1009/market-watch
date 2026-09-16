@@ -20,6 +20,11 @@ type Report struct {
 	// not looked at", which matters more as the number of watchlists grows.
 	QuietGroups []string `json:"quiet_groups,omitempty"`
 
+	// Cited are the articles as numbered for the model, so a "[12]" in the prose
+	// can be turned back into a link to article twelve. The order is the order
+	// the numbering used and must not be rearranged.
+	Cited []Article `json:"-"`
+
 	// General holds the articles the summarizer was given that no section
 	// claimed. The overview is written partly from these, so without them a
 	// claim in the overview cannot be traced back to anything.

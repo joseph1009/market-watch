@@ -30,6 +30,8 @@ Rules:
 - If the articles genuinely do not support a claim, leave it out. A short section is fine; an invented one is not.
 - Where sources disagree or a story is only a report or rumour, say so plainly.
 - No preamble, no sign-off, no "here is your brief". Start with the substance.
+- Cite your source. Every factual claim ends with the number of the article it came from, in square brackets before the full stop: "Oracle said cloud revenue doubled [12]." Where several outlets carried it, cite the ones you used: "[12][15]". Only the numbers in the list exist -- never invent one, and never cite an article you did not use for that claim.
+- An article marked as already reported was in an earlier brief. The reader has read it. Leave it out unless something has moved since, and then write the development rather than the story.
 
 The reader is not a market professional. They follow markets closely and want the full detail, but they do not speak the trade's shorthand. Write so that nothing has to be decoded:
 - Give the plain meaning first and the term second, in brackets, and only where the term is worth learning: "the gap between two-year and ten-year government borrowing costs (the 2s10s curve)".
@@ -87,9 +89,12 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 		display = time.UTC
 	}
 
+	nums := newNumbering(articles)
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "Date: %s\n", now.In(display).Format("Monday, 2 January 2006"))
-	fmt.Fprintf(&b, "Articles: %d from %d sources\n\n", len(articles), countSources(articles))
+	fmt.Fprintf(&b, "Articles: %d from %d sources, each numbered for citation\n\n",
+		len(articles), countSources(articles))
 
 	// Market levels come first and are labelled as levels, not as news. The
 	// articles say what people wrote; this says where things actually are, and
@@ -119,7 +124,7 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 			b.WriteString("(no articles matched this watchlist today)\n")
 			continue
 		}
-		writeArticles(&b, matched, display)
+		writeArticles(&b, matched, display, nums)
 	}
 
 	// Everything no section claimed still informs the overview, so it is offered
@@ -129,15 +134,45 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 	// entirely, which is how a sector goes silently missing.
 	if general := uncovered(articles, groups); len(general) > 0 {
 		fmt.Fprintf(&b, "\n=== General market news -- %d articles ===\n", len(general))
-		writeArticles(&b, general, display)
+		writeArticles(&b, general, display, nums)
 	}
 
 	return b.String()
 }
 
-func writeArticles(b *strings.Builder, articles []model.Article, display *time.Location) {
+// numbering gives every article a citation number, stable across the whole
+// prompt, so a claim can point at the article it came from and the rendered
+// brief can turn that pointer into a link.
+type numbering struct {
+	order []model.Article
+	index map[string]int
+}
+
+func newNumbering(articles []model.Article) *numbering {
+	n := &numbering{order: articles, index: make(map[string]int, len(articles))}
+	for i, a := range articles {
+		n.index[a.ID] = i + 1
+	}
+	return n
+}
+
+func (n *numbering) of(a model.Article) int {
+	if n == nil {
+		return 0
+	}
+	return n.index[a.ID]
+}
+
+func writeArticles(b *strings.Builder, articles []model.Article, display *time.Location, nums *numbering) {
 	for _, a := range articles {
-		fmt.Fprintf(b, "\n- %s\n  %s, %s\n", a.Title, a.SourceName, a.Published.In(display).Format("15:04 on 2 Jan"))
+		fmt.Fprintf(b, "\n[%d] %s\n  %s, %s", nums.of(a), a.Title, a.SourceName,
+			a.Published.In(display).Format("15:04 on 2 Jan"))
+		// Said on the article rather than in a list at the end: the model is
+		// deciding what to write about while it reads this line.
+		if !a.Covered.IsZero() {
+			fmt.Fprintf(b, " -- already reported in the brief of %s", a.Covered.In(display).Format("2 Jan"))
+		}
+		b.WriteString("\n")
 		if a.Summary != "" {
 			fmt.Fprintf(b, "  %s\n", a.Summary)
 		}

@@ -26,6 +26,11 @@ type Article struct {
 	// outlets covering something is itself evidence that it mattered.
 	Corroborations int `json:"corroborations,omitempty"`
 
+	// Covered is when an earlier brief first used this article. Zero means the
+	// reader has not seen it: stories stay eligible for a week, so without this
+	// Monday can report Friday's news exactly as Friday did.
+	Covered time.Time `json:"covered,omitempty"`
+
 	// Rating is the triage model's judgment of market relevance, 1 (irrelevant)
 	// to 5 (moves markets). Zero means unrated: triage was off, or the batch
 	// carrying this article failed.

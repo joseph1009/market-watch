@@ -948,3 +948,38 @@ func TestRenderPlainSplitsLongProseAndEscapesIt(t *testing.T) {
 		t.Errorf("heading missing from the first message:\n%s", msgs[0])
 	}
 }
+
+// A citation is only useful if it reaches the article. The number stays visible
+// so the reader can see which claim rests on which source.
+func TestRenderLinksCitationsToTheirArticles(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "Oracle said cloud revenue doubled [1]. Two outlets carried the chip story [1][2]."
+	rep.Cited = []model.Article{
+		{Title: "Oracle results", URL: "https://example.com/oracle"},
+		{Title: "Chip story", URL: "https://example.com/chips?a=1&b=2"},
+	}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, `<a href="https://example.com/oracle">[1]</a>`) {
+		t.Errorf("citation 1 was not linked:\n%s", out)
+	}
+	if !strings.Contains(out, `<a href="https://example.com/chips?a=1&amp;b=2">[2]</a>`) {
+		t.Errorf("citation 2 was not linked or not escaped:\n%s", out)
+	}
+}
+
+// A number with no article behind it must not be attached to some other
+// outlet's story, so it is left exactly as the model wrote it.
+func TestRenderLeavesUnbackedCitationsAlone(t *testing.T) {
+	rep := testReport()
+	rep.Overview = "A claim citing nothing that exists [99]. A bracketed aside [not a citation]."
+	rep.Cited = []model.Article{{Title: "One", URL: "https://example.com/one"}}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if !strings.Contains(out, "[99]") || strings.Contains(out, ">[99]</a>") {
+		t.Errorf("an unbacked citation was linked:\n%s", out)
+	}
+	if !strings.Contains(out, "[not a citation]") {
+		t.Errorf("a bracketed aside was mangled:\n%s", out)
+	}
+}

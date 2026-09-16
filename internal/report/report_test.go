@@ -493,3 +493,41 @@ func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
 		}
 	}
 }
+
+// The reader asked to be able to check a claim against its source, which means
+// every article has to arrive with a number the model can point back at.
+func TestPromptNumbersArticlesAndFlagsRepeats(t *testing.T) {
+	now := time.Date(2026, 9, 16, 20, 30, 0, 0, time.UTC)
+	articles := []model.Article{
+		{ID: "a", Title: "Oil surges on Gulf attack", SourceName: "Reuters", Published: now},
+		{ID: "b", Title: "Fed holds rates", SourceName: "CNBC", Published: now,
+			Covered: now.AddDate(0, 0, -2)},
+	}
+
+	prompt := buildPrompt(articles, nil, nil, now, time.UTC)
+
+	if !strings.Contains(prompt, "[1] Oil surges on Gulf attack") {
+		t.Errorf("articles are not numbered for citation:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "[2] Fed holds rates") {
+		t.Errorf("numbering is not continuous:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "already reported in the brief of 14 Sep") {
+		t.Errorf("a story an earlier brief carried was not flagged:\n%s", prompt)
+	}
+	if strings.Count(prompt, "already reported") != 1 {
+		t.Errorf("an unseen story was flagged as a repeat:\n%s", prompt)
+	}
+}
+
+func TestSystemPromptAsksForCitationsAndSkipsRepeats(t *testing.T) {
+	for _, want := range []string{
+		"Cite your source",
+		"never invent one",
+		"Leave it out unless something has moved since",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("the system prompt no longer carries %q", want)
+		}
+	}
+}
