@@ -1,6 +1,7 @@
 package sec
 
 import (
+	"html"
 	"regexp"
 	"strings"
 )
@@ -86,7 +87,8 @@ func plainText(document string) string {
 	text = regexp.MustCompile(`(?i)<br[^>]*>`).ReplaceAllString(text, "\n")
 
 	text = tag.ReplaceAllString(text, " ")
-	text = entities.Replace(text)
+	text = html.UnescapeString(text)
+	text = typography.Replace(text)
 	text = whitespace.ReplaceAllString(text, " ")
 	text = blankLines.ReplaceAllString(text, "\n\n")
 
@@ -99,12 +101,12 @@ func plainText(document string) string {
 	return strings.Join(kept, "\n")
 }
 
-// entities covers what filing software actually emits. A full table would add
-// nothing: these documents are written by a handful of tools.
-var entities = strings.NewReplacer(
-	"&nbsp;", " ", "&#160;", " ", "&amp;", "&", "&#38;", "&",
-	"&lt;", "<", "&gt;", ">", "&quot;", `"`, "&#39;", "'", "&apos;", "'",
-	"&#8217;", "'", "&#8216;", "'", "&#8220;", `"`, "&#8221;", `"`,
-	"&#8211;", "-", "&#8212;", "--", "&mdash;", "--", "&ndash;", "-",
-	"&#149;", "*", "&bull;", "*", "&#8226;", "*",
+// typography flattens the punctuation filing software dresses prose in, once
+// the entities are decoded, so the description reads like the rest of the
+// prompt. Decoding itself is left to the full table: a short list of the
+// entities these tools emit turned out to miss Micron's "&#174;" and its
+// "1&#947;" process node, which reached the model as written.
+var typography = strings.NewReplacer(
+	"’", "'", "‘", "'", "“", `"`, "”", `"`,
+	"–", "-", "—", "--", "•", "*",
 )

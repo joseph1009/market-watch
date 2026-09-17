@@ -1095,6 +1095,29 @@ func TestALeadLineIsNotSpacedFromItsFirstBullet(t *testing.T) {
 	}
 }
 
+// The case for and against split into the business and the figures. The two
+// labels are what a reader scans for on a phone, so they stand out and keep a
+// gap from the bullets above them -- but a brief's lead line does not.
+func TestGroupLabelsAreEmphasized(t *testing.T) {
+	body := "THE CASE FOR IT\n\n" +
+		"In the business:\n- Demand - AI memory is scarce.\n- Technology - first 1γ node.\n" +
+		"In the numbers:\n- Cash - US$26.17bn of free cash flow."
+
+	out := strings.Join(RenderPlain("MU", body), "\n")
+	if !strings.Contains(out, "<b>In the business:</b>\n• <b>Demand</b>") {
+		t.Errorf("the business label was not bolded or was spaced from its bullets:\n%s", out)
+	}
+	if !strings.Contains(out, "first 1γ node.\n\n<b>In the numbers:</b>\n• <b>Cash</b>") {
+		t.Errorf("the numbers label was not bolded and set apart:\n%s", out)
+	}
+
+	rep := testReport()
+	rep.Sections[0].Body = "Three moves stood out:\n- Meta - rose on Muse"
+	if lead := strings.Join(Render(rep, time.UTC), "\n"); strings.Contains(lead, "<b>Three moves stood out:</b>") {
+		t.Errorf("a brief's lead line was bolded as a group label:\n%s", lead)
+	}
+}
+
 // A message that ends on "THE CASE AGAINST IT" with the case itself opening the
 // next one reads as though the analysis had been cut off.
 func TestPlainKeepsHeadingsWithTheirSections(t *testing.T) {

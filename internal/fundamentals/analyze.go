@@ -32,6 +32,8 @@ Rules:
 - Write a change as a movement, with an arrow: "gross margin 37.7% → 76.6%", "long-term debt US$14.0bn → US$5.1bn". It carries the same information as "rose from ... to ..." in a third of the words, and a column of them can be read at a glance. Say which way is good or bad only where it is not obvious.
 - Explain the terms as you use them: "gross margin (what is left of each dollar of sales after the direct cost of producing it)". Write the plain meaning first, the term second.
 - Where a market price and multiples are given, use them: set what the company earns against what it costs, and explain each multiple as you use it ("price to earnings of 21 times: at today's price, twenty-one years of last year's profit per share"). They measure today's price against figures already filed, so say so.
+- Press reports are claims, not filed facts. Attribute every one to its outlet and date -- "Reuters reported on 3 September that..." -- and never restate one as though the company had filed it. Where a report and the accounts disagree, say so and say which is the filed figure. Where a report would change the accounts, name the line it would land on and the period it would show up in.
+- Trading statistics describe what the price has already done. They are not forecasts and none of them is a signal: a share below its own average is not thereby cheap, one above it not thereby expensive, and a company's worth is not settled by where its price has been.
 - Where no price is given -- a company that files here but trades elsewhere -- say plainly that valuation cannot be addressed, rather than reaching for a number.
 - Give no investment advice. Do not say whether to buy, sell or hold, and do not set a target. Do not call a multiple cheap or expensive either: with no peer group and no history of the multiple itself, that is not something these figures can settle. Say what it is and what it implies, and leave the verdict where it belongs.
 - Say plainly where the numbers look strong, where they look weak, and where they raise a question worth asking. That is judgment about the accounts, which is different from advice about the stock.
@@ -43,6 +45,9 @@ What the company sells, to whom, and how it makes its money, from its own descri
 
 WHAT IT HAS ANNOUNCED
 The recent filings, in plain words: what kind of event each was and what it might bear on. These are headings only, never terms or amounts, so say what would have to be read to know more. Skip the section if there are none.
+
+WHAT THE NEWS SAYS
+What has been reported about the company lately, and what it would mean for the figures. Group the headlines by what they are about rather than listing them one by one: several outlets on one story is one point, not four. Attribute each to its outlet and date. For each thing that matters, say what it would change in the accounts and when it would first appear -- the next quarter's revenue, a margin two quarters out, a write-down that has not been taken. Say plainly where the reporting is thin, or where it is all commentary and no news. Skip the section where nothing was reported.
 
 WHAT THE COMPANY EARNS
 How revenue, profit and margins have moved across the periods shown, and what changed.
@@ -56,14 +61,20 @@ Whether profit turns into cash, what capital spending takes back out, and what w
 WHAT IT COSTS
 The market price and the multiples against it, each explained as you use it. Skip this section where no price was given, saying in one line that valuation cannot be addressed without one.
 
+HOW THE SHARE HAS TRADED
+Where the price sits against its own recent history: the moves over the past weeks and months, the price against its fifty and two-hundred day averages, where it stands between its year's high and low, what it has typically traded at, how much changes hands on a normal day and whether the latest session was one, and how widely it swings. Say what each figure means in plain words the first time you use it -- a moving average is the average closing price over that many trading days, volatility is the usual size of the daily move. Give every move with the prices at both ends as well as the percentage -- "US$1,132.40 on 17 Jun 2026 → US$977.77, -13.7%" -- and every average, high and low as a price, not only as a distance from today's: a percentage alone does not show what the chart looks like. Describe, do not predict, and do not turn any of it into a verdict on the price. Skip the section where no trading history was given.
+
 THE CASE FOR IT
-Three to five bullets: what, in these figures, would make somebody want to own this company. Each tied to a number. Not advice -- the strongest honest reading of the evidence.
+What would make somebody want to own this company, in two groups of equal weight, each opened by its label on a line of its own: "In the business:" and then "In the numbers:". Neither group outranks the other, so give each two or three bullets.
+In the business: the demand for what it sells, its products and technology, who its customers are, where it stands against competitors, where it makes things, and what is changing in its market. Tie each to the company's own description, a filing heading or an attributed report, and do not bring in market shares, customers or events from memory.
+In the numbers: what the figures show. Tie each to a number, and where several figures make one point, make it in one bullet.
+Not advice -- the strongest honest reading of the evidence.
 
 THE CASE AGAINST IT
-Three to five bullets: what in the same figures should worry them. Each tied to a number. Give this section the same weight as the last one; if you find it much harder to fill than the case for, say so, because that itself is a finding.
+What in the same evidence should worry them, in the same two groups, weighted and sourced the same way. In the business: competition, rivals adding capacity, reliance on one source of demand, customers under strain, what could go wrong in building or staffing, regulation. In the numbers: what in the figures should give pause. Give this section the same weight as the last one; if you find it much harder to fill than the case for, say so, because that itself is a finding.
 
 WHAT WOULD SETTLE IT
-The specific things a reader would need to know to decide, that these figures cannot tell them -- and, for each, where it would be found: the next quarterly filing, the segment breakdown, a peer's margins, guidance. Close with the one question that matters most.
+The specific things a reader would need to know to decide that these figures cannot tell them, about the business as much as the accounts: a big customer's spending plans, a rival's new capacity, where prices in its market are heading. For each, say where it would be found -- the next quarterly filing, the segment breakdown, a peer's results, guidance. Close with the one question that matters most.
 
 Keep every number you cite exact.
 

@@ -60,6 +60,8 @@ func (s Snapshot) Table() string {
 		b.WriteString("These are filing headings, not the filings themselves: they say what kind of event was announced, never the terms.\n")
 	}
 
+	b.WriteString(s.news())
+
 	columns := s.columns()
 	if len(columns) > 0 {
 		b.WriteString("\nReporting periods, most recent first.")
@@ -74,27 +76,27 @@ func (s Snapshot) Table() string {
 
 		b.WriteString(pad("", 32))
 		for _, y := range columns {
-			b.WriteString(padLeft(y.Label, 26))
+			b.WriteString(padLeft(y.Label, cellWidth))
 		}
 		b.WriteString("\n")
 
 		for _, row := range incomeRows {
 			b.WriteString(pad(row.label, 32))
 			for _, y := range columns {
-				b.WriteString(padLeft(amount(y.Figure(row.key)), 26))
+				b.WriteString(padLeft(amount(y.Figure(row.key)), cellWidth))
 			}
 			b.WriteString("\n")
 		}
 
 		b.WriteString(pad("Free cash flow", 32))
 		for _, y := range columns {
-			b.WriteString(padLeft(amount(y.FreeCashFlow()), 26))
+			b.WriteString(padLeft(amount(y.FreeCashFlow()), cellWidth))
 		}
 		b.WriteString("\n")
 
 		b.WriteString(pad("Diluted EPS ("+s.currency()+")", 32))
 		for _, y := range columns {
-			b.WriteString(padLeft(plain(y.Figure("epsDiluted")), 26))
+			b.WriteString(padLeft(plain(y.Figure("epsDiluted")), cellWidth))
 		}
 		b.WriteString("\n")
 
@@ -112,7 +114,7 @@ func (s Snapshot) Table() string {
 		for _, d := range derived {
 			b.WriteString(pad(d.label, 32))
 			for _, y := range columns {
-				b.WriteString(padLeft(percent(d.of(y)), 26))
+				b.WriteString(padLeft(percent(d.of(y)), cellWidth))
 			}
 			b.WriteString("\n")
 		}
@@ -122,7 +124,7 @@ func (s Snapshot) Table() string {
 		// it. Comparing a half year to a full one would halve the business.
 		b.WriteString(pad("Revenue growth", 32))
 		for i := range columns {
-			b.WriteString(padLeft(percent(s.revenueGrowth(columns, i)), 26))
+			b.WriteString(padLeft(percent(s.revenueGrowth(columns, i)), cellWidth))
 		}
 		b.WriteString("\n")
 	}
@@ -142,12 +144,14 @@ func (s Snapshot) Table() string {
 		fmt.Fprintf(&b, "%s%s\n", pad("Equity per share ("+s.currency()+")", 32),
 			plain(Ratio(s.Balance.Figure("equity"), s.Balance.Figure("sharesOutstanding"))))
 		if len(s.Years) > 0 {
-			fmt.Fprintf(&b, "%s%s\n", pad("Return on equity", 32),
-				percent(Ratio(s.Years[0].Figure("netIncome"), s.Balance.Figure("equity"))))
+			income, basis := s.trailingIncome()
+			fmt.Fprintf(&b, "%s%s  (profit for %s over equity at the balance sheet date)\n", pad("Return on equity", 32),
+				percent(Ratio(income, s.Balance.Figure("equity"))), basis)
 		}
 	}
 
 	b.WriteString(s.valuation())
+	b.WriteString(s.trading())
 
 	b.WriteString(`
 Per-share figures and share counts are as filed and are not restated for later stock splits, so comparing them across years can mislead.
@@ -223,11 +227,19 @@ func pad(s string, n int) string {
 	return s
 }
 
+// cellWidth is one column of figures. It fits "Three months to 30 Sep 2026",
+// the longest period label, with a space to spare.
+const cellWidth = 28
+
+// padLeft right-aligns a table cell, always leaving at least one space in front
+// of it. At twenty-six columns "Nine months to 28 May 2026" filled its cell
+// exactly and ran into the next heading, which is the row that says which
+// figures belong to which period.
 func padLeft(s string, n int) string {
-	for len([]rune(s)) < n {
+	for len([]rune(s)) < n-1 {
 		s = " " + s
 	}
-	return s
+	return " " + s
 }
 
 // commas groups a rounded amount in threes. Go's formatter has no separator
@@ -390,4 +402,22 @@ func (s Snapshot) trailing() (earnings, freeCash Value, basis string) {
 		cash = annualFCF
 	}
 	return eps, cash, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
+}
+
+// trailingIncome is net income on the same footing as the multiples.
+//
+// A return on equity is a year's profit over the equity that earned it. The
+// last full year's profit over a balance sheet three quarters later is neither:
+// for Micron it read 8.5%, against 50.1% on the twelve months to the same
+// balance sheet.
+func (s Snapshot) trailingIncome() (Value, string) {
+	year := s.Years[0]
+	annual := year.Figure("netIncome")
+	if s.YTD != nil && s.PriorYTD != nil {
+		rolled := Add(Less(annual, s.PriorYTD.Figure("netIncome")), s.YTD.Figure("netIncome"))
+		if rolled.Known {
+			return rolled, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
+		}
+	}
+	return annual, "the " + strings.Replace(year.Label, "FY to", "year to", 1)
 }

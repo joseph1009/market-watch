@@ -47,6 +47,13 @@ type App struct {
 	// the news. Disabled without a Finnhub key.
 	Quotes *prices.Client
 
+	// Market reads daily price history for the analysis, and Press what has
+	// been written about a company lately. Both answer the half of the question
+	// the filings cannot: what the share has been doing, and what has happened
+	// since the last period closed. Either being nil costs one section.
+	Market *prices.History
+	Press  *prices.News
+
 	// Runs records what each brief cost and did, so the numbers that only ever
 	// reached a log can be read back with /stats.
 	Runs *history.Runs
@@ -121,6 +128,13 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			HTTP:   &http.Client{Timeout: 20 * time.Second},
 		},
 		Quotes: &prices.Client{
+			APIKey: cfg.FinnhubAPIKey,
+			HTTP:   &http.Client{Timeout: 20 * time.Second},
+		},
+		Market: &prices.History{
+			HTTP: &http.Client{Timeout: 20 * time.Second},
+		},
+		Press: &prices.News{
 			APIKey: cfg.FinnhubAPIKey,
 			HTTP:   &http.Client{Timeout: 20 * time.Second},
 		},

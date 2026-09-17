@@ -410,7 +410,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	if len(args) == 0 {
 		return a.Bot.SendMessage(ctx, msg.Chat.ID,
 			"Which company? Send a ticker, for example /analyse NVDA.\n\n"+
-				"I read what the company filed with the SEC: revenue, margins, cash and the balance sheet. "+
+				"I read what the company filed with the SEC — revenue, margins, cash and the balance sheet — then what the share has been doing and what has been written about it lately. "+
 				"Any SEC filer works, including foreign companies with a US listing such as TSM or BABA. "+
 				"It is a reading of the accounts, never advice on the stock.")
 	}
@@ -433,11 +433,16 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		// never the analysis.
 		snapshot.Price = a.quoteFor(ctx, ticker)
 
-		// What the company does, and what it has announced. Both are
-		// best-effort: the accounts are the part that cannot be had anywhere
-		// else, and a failed fetch here must not cost them.
+		// What the company does, how the share has traded, and what has been
+		// written about it. All best-effort: the accounts are the part that
+		// cannot be had anywhere else, and a failed fetch here must not cost
+		// them.
 		for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snapshot, a.now()) {
 			a.Log.Warn("analysis context", "ticker", ticker, "error", problem)
+		}
+		snapshot.Trading = a.tradingFor(ctx, ticker)
+		if err := a.addNews(ctx, &snapshot); err != nil {
+			a.Log.Warn("analysis news", "ticker", ticker, "error", err)
 		}
 	}
 	if err != nil {

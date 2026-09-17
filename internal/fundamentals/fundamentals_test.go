@@ -395,6 +395,22 @@ func TestNoPriceMeansNoValuationBlock(t *testing.T) {
 	}
 }
 
+// The case for and against each weigh the business and the figures equally, as
+// two labelled groups, so neither a ratio-only case nor a story-only one gets
+// through. The labels are what the reader scans for.
+func TestSystemPromptBalancesTheBusinessAndTheNumbers(t *testing.T) {
+	for _, want := range []string{
+		`"In the business:"`,
+		`"In the numbers:"`,
+		"Neither group outranks the other",
+		"do not bring in market shares, customers or events from memory",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("the prompt no longer carries %q", want)
+		}
+	}
+}
+
 func TestSystemPromptAllowsMultiplesButNotVerdicts(t *testing.T) {
 	for _, want := range []string{
 		"Where a market price and multiples are given",
@@ -441,6 +457,89 @@ func TestMultiplesUseTheLastTwelveMonths(t *testing.T) {
 	}
 	if strings.Contains(table, "122") {
 		t.Errorf("the stale annual multiple survived:\n%s", table)
+	}
+}
+
+// Return on equity is profit over the equity that earned it, so the profit has
+// to be the twelve months to the balance sheet, not a year that closed three
+// quarters before it.
+func TestReturnOnEquityUsesTheLastTwelveMonths(t *testing.T) {
+	end := time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC)
+	snap := Snapshot{
+		Currency: "USD",
+		Years: []Year{{
+			Label:   "FY to 28 Aug 2025",
+			Figures: map[string]Value{"netIncome": known(8.54e9)},
+		}},
+		YTD: &Year{
+			Label: "Nine months to 28 May 2026", End: end,
+			Figures: map[string]Value{"netIncome": known(47.27e9)},
+		},
+		PriorYTD: &Year{
+			Label:   "Nine months to 28 May 2025",
+			Figures: map[string]Value{"netIncome": known(5.34e9)},
+		},
+		Balance: Balance{AsOf: end, Figures: map[string]Value{"equity": known(100.72e9)}},
+	}
+
+	table := snap.Table()
+	// (8.54 - 5.34 + 47.27) / 100.72 = 50.1%
+	if !strings.Contains(table, "50.1%  (profit for the twelve months to 28 May 2026") {
+		t.Errorf("return on equity is not on the last twelve months:\n%s", table)
+	}
+	if strings.Contains(table, "8.5%") {
+		t.Errorf("the stale full-year return survived:\n%s", table)
+	}
+
+	snap.YTD, snap.PriorYTD = nil, nil
+	if table := snap.Table(); !strings.Contains(table, "(profit for the year to 28 Aug 2025") {
+		t.Errorf("without an interim the full year should be used and named:\n%s", table)
+	}
+}
+
+// The heading row says which figures belong to which period, so no label may
+// run into the next one however long it is.
+func TestColumnHeadingsStayApart(t *testing.T) {
+	period := func(label string) *Year {
+		return &Year{Label: label, Figures: map[string]Value{"revenue": known(1e9)}}
+	}
+	snap := Snapshot{
+		Currency: "USD",
+		Years:    []Year{*period("FY to 28 Aug 2025")},
+		YTD:      period("Three months to 30 Sep 2026"),
+		PriorYTD: period("Nine months to 28 May 2025"),
+	}
+
+	table := snap.Table()
+	for _, joined := range []string{"2026Nine", "2025FY"} {
+		if strings.Contains(table, joined) {
+			t.Errorf("headings ran together at %q:\n%s", joined, table)
+		}
+	}
+}
+
+// The share count on a filing's cover page is counted weeks after the quarter
+// closes. It is a real figure, but it is not the balance sheet's date.
+func TestBalanceDateIsNotTheCoverPageDate(t *testing.T) {
+	quarter := time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC)
+	cover := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC)
+	byKey := map[string][]Observation{
+		"equity":            {{End: quarter, Value: 100.72e9, Unit: "USD", Form: "10-Q"}},
+		"sharesOutstanding": {{End: cover, Value: 1.13e9, Unit: "shares", Form: "10-Q"}},
+	}
+
+	got := buildBalance(byKey, "USD")
+	if !got.AsOf.Equal(quarter) {
+		t.Errorf("balance sheet dated %s, want the quarter end %s", got.AsOf.Format(time.DateOnly), quarter.Format(time.DateOnly))
+	}
+	if !got.Figure("sharesOutstanding").Known {
+		t.Error("the share count was dropped rather than kept undated")
+	}
+
+	// A filer with nothing but the cover page still needs some date.
+	only := buildBalance(map[string][]Observation{"sharesOutstanding": byKey["sharesOutstanding"]}, "USD")
+	if !only.AsOf.Equal(cover) {
+		t.Errorf("with only a share count, dated %s, want %s", only.AsOf.Format(time.DateOnly), cover.Format(time.DateOnly))
 	}
 }
 

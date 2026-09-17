@@ -153,6 +153,17 @@ type Snapshot struct {
 	// multiple means.
 	Price *model.Quote
 
+	// Trading is what the share has done over months: where the price sits
+	// against its own averages, how much of it changes hands, how far it swings.
+	// A filing cannot say any of that, and it is half of what a reader means
+	// when they ask how a company is doing.
+	Trading *model.Trading
+
+	// News is what has been written about the company lately, after the
+	// headlines that only mention it in passing have been dropped. Reported
+	// claims rather than filed facts, which the analysis is told to say.
+	News []model.Article
+
 	// Currency is what the company reports money in. Filers use their own:
 	// Alibaba reports in yuan, TSMC in Taiwan dollars, Toyota in yen. Printing
 	// those under a dollar heading would be a straightforward falsehood.
@@ -252,6 +263,7 @@ func buildYears(byKey map[string][]Observation, want int, currency string) []Yea
 
 func buildBalance(byKey map[string][]Observation, currency string) Balance {
 	b := Balance{Figures: map[string]Value{}}
+	var cover Observation
 	for _, con := range balanceConcepts {
 		instants := Instant(keepCurrency(byKey[con.key], currency))
 		if len(instants) == 0 {
@@ -259,9 +271,21 @@ func buildBalance(byKey map[string][]Observation, currency string) Balance {
 		}
 		latest := instants[0]
 		b.Figures[con.key] = known(latest.Value)
+
+		// The share count is from the filing's cover page, counted on a day
+		// weeks after the quarter closed. Left to date the balance sheet, it
+		// made Micron's 28 May balance sheet read as at 17 June, and twenty
+		// days younger than it was.
+		if con.key == "sharesOutstanding" {
+			cover = latest
+			continue
+		}
 		if latest.End.After(b.AsOf) {
 			b.AsOf, b.Form = latest.End, latest.Form
 		}
+	}
+	if b.AsOf.IsZero() {
+		b.AsOf, b.Form = cover.End, cover.Form
 	}
 	return b
 }

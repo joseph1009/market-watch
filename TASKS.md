@@ -5,13 +5,23 @@ you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Deploy it.** `Dockerfile` and `fly.toml` are written but **unverified**: the
-  Docker daemon was not running here, so the image has never been built. Steps:
+- **Anthropic credit.** The API key's balance is too low, so the brief and
+  `/analyse` both fail at the first model call. Everything before that call
+  works. Top up under Plans & Billing in the Anthropic Console.
+- **Deploy it.** The image now builds and runs: `--check` passes inside the
+  container, the service starts, schedules the brief and stops cleanly. Two
+  fixes were needed: the data directory was not writable by the container's
+  user, and `fly.toml` had an invalid `[[vm.processes]]` block. `fly.toml` has
+  been checked against Fly's reference but never by `flyctl` itself. Steps:
   1. `fly launch --no-deploy` (or `fly apps create market-watch`)
   2. `fly volumes create market_watch_data --size 1 --region sin`
   3. `fly secrets set TELEGRAM_BOT_TOKEN=... ANTHROPIC_API_KEY=... FRED_API_KEY=... FINNHUB_API_KEY=... TELEGRAM_CHAT_ID=509509492 USER_AGENT="Market Watch you@example.com"`
   4. `fly deploy`
-  Expect the first build to need a fix or two, since it has not been run.
+  5. The new volume is empty, so the watchlists in `data/prefs.yaml` are not
+     there. Copy the file up with `fly ssh sftp shell` (`put data/prefs.yaml
+     /data/prefs.yaml`) and restart, or re-add them with `/watchlist`.
+  Stop any local copy first: two copies polling one bot token fight over every
+  message, and two schedulers send two briefs.
 - **Push the repository.** Every commit is still local only.
 
 ## Reliability
@@ -24,20 +34,29 @@ you, and why it is worth doing.
 
 ## Brief quality
 
-- **Prices outside the US.** Both free tiers turned out to be US-only: Twelve
-  Data answers London with "available starting with the Grow plan" and does not
-  resolve Hong Kong or Tokyo at all. A company quoted elsewhere therefore has no
-  move in the brief. Fixing it means a paid plan (Twelve Data Grow, EODHD, or
-  similar at roughly $20-80 a month).
+- **Prices outside the US.** Every keyed free tier turned out to be US-only:
+  Twelve Data answers London with "available starting with the Grow plan" and
+  does not resolve Hong Kong or Tokyo at all. A company quoted elsewhere
+  therefore has no move in the brief.
+  Since then the daily-history source added for `/analyse` (Yahoo's charting
+  endpoint, in `internal/prices/history.go`) has proved to answer for Taipei,
+  Hong Kong and Tokyo in the local currency, keyless. A close against the
+  previous close is a day's move, so the brief's gap could be filled from it
+  without a paid plan. What it is not is a live quote: the brief would be saying
+  what a share closed at rather than what it is trading at now, and the source
+  is undocumented and can refuse without notice. Worth doing, with that said
+  plainly in the brief, before spending $20-80 a month on a vendor.
 - **Promotion.** A command to move a name from "new names in the news" straight
   into a watchlist. `/watchlist add <group> <ticker>` already does the work; this
   would just save the typing.
 
 ## /analyse — further
 
-- **Share price in the analysis.** Now possible: with a Finnhub key the analysis
-  could carry price against earnings and book value. It currently refuses
-  valuation outright, which was right when it had no price and is no longer.
+- **Charts.** The trading history is described in words. A picture of price
+  against its averages, or free cash flow against capital spending, would carry
+  more of it in less space. Telegram takes images; drawing one means either a Go
+  plotting library or the code-execution container, which is the case for moving
+  the agent to the beta API.
 - **Companies with no US listing.** The analysis reads SEC filings, so Tencent,
   Keyence and anything without a US listing are not covered. Japan's EDINET is a
   free XBRL API and would cover Tokyo; Hong Kong and mainland Europe need a paid
@@ -51,7 +70,16 @@ you, and why it is worth doing.
 - The brief written for a non-specialist, with terms explained, in bullets.
 - `/analyse <ticker>`: SEC filings read and written up, agentic, any SEC filer
   including foreign ones with a US listing, in their own currency, with the
-  current year so far beside the full years.
+  current year so far beside the full years, and the share price against them.
+- The analysis calculates rather than estimates: a `compute` tool does every
+  ratio, growth rate and multiple in Go, so arithmetic is not done in the
+  model's head.
+- What the share has done: returns over weeks and months, fifty and two-hundred
+  day averages, the year's high and low, volume-weighted average price, volume
+  against its averages, and volatility.
+- What has been written lately: company news, filtered to pieces that actually
+  name the company, spread across days, and used as reported claims rather than
+  filed facts.
 - Citations: every claim carries a link to the article behind it.
 - Repeats: stories earlier briefs carried are marked, not reported again.
 - Weekends: no brief on days the market was shut.

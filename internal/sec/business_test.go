@@ -69,3 +69,13 @@ func TestPlainTextStripsMarkupAndEntities(t *testing.T) {
 		t.Errorf("entities were not decoded: %q", got)
 	}
 }
+
+// Taken from Micron's 10-K, where a hand-kept list of entities let these
+// through as written.
+func TestPlainTextDecodesEveryEntity(t *testing.T) {
+	got := plainText(`<p>Micron&#174; and Crucial&#174; brands; the 1&#947; node rose 12&#37; &#8212; &#8220;HBM&#8221; &#149; DDR5&nbsp;memory</p>`)
+	want := `Micron® and Crucial® brands; the 1γ node rose 12% -- "HBM" * DDR5 memory`
+	if got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}

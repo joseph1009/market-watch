@@ -324,14 +324,29 @@ func bullets(paragraph string) string {
 		if isBullet && previousWasBullet {
 			out = append(out, "")
 		}
-		if isBullet {
+		switch group := strings.TrimSpace(line); {
+		case isBullet:
 			out = append(out, "• "+emphasizeBulletLabel(strings.TrimSpace(trimmed[2:])))
-		} else {
+		case groupLabels[group]:
+			if previousWasBullet {
+				out = append(out, "")
+			}
+			out = append(out, "<b>"+group+"</b>")
+		default:
 			out = append(out, line)
 		}
 		previousWasBullet = isBullet
 	}
 	return strings.Join(out, "\n")
+}
+
+// groupLabels divide the analysis's case for and case against into the
+// business and the figures. They are bolded by name rather than by shape: a
+// short line ending in a colon is also how the brief introduces a list, and
+// that line is not a heading.
+var groupLabels = map[string]bool{
+	"In the business:": true,
+	"In the numbers:":  true,
 }
 
 // pack lays segments out across messages.
