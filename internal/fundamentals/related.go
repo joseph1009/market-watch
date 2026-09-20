@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/joseph1009/market-watch/internal/discover"
+	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // The analysis ends with the companies to read next to this one, because a
@@ -129,13 +130,15 @@ func VerifyRelated(ctx context.Context, v discover.Verifier, related []Related) 
 
 // RelatedFor is the instruction appended to the analysis prompt.
 func RelatedFor(snap Snapshot) string {
-	var b strings.Builder
-	b.WriteString("\nEnd with a final section under the exact heading ")
-	b.WriteString(RelatedMarker)
-	b.WriteString(", listing four to eight companies worth reading beside this one: its competitors, its suppliers, its customers, and where it fits, the fund or index that tracks its sector. Say for each, in a few words, what it would show -- a competitor's margin against this one, a supplier whose orders lead these sales, a customer whose spending pays for them.\n")
-	b.WriteString("Write that section as lines of name|ticker|exchange|what it would show, and nothing else -- no bullets, no prose around it. Use the same exchange codes: US, HK, JP, LN, NA, FP, GR, SP, AU, KS, TT, IN, CN, CH. Every ticker is checked against the exchange before the reader sees it, and one that fails is dropped, so write \"?\" rather than guess.\n")
-	if snap.Company != "" {
-		b.WriteString("Do not list " + snap.Company + " itself.\n")
+	text, err := prompts.Render("analysis.related", struct{ Marker, Company string }{
+		Marker:  RelatedMarker,
+		Company: snap.Company,
+	})
+	if err != nil {
+		// Checked at startup, so this is a prompts file changed underneath a
+		// running process. The analysis is still worth writing without the
+		// list, which is verified and trimmed separately anyway.
+		return ""
 	}
-	return b.String()
+	return "\n" + text
 }

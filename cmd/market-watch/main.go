@@ -19,6 +19,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/app"
 	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/logging"
+	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 func main() {
@@ -40,6 +41,13 @@ func main() {
 func run(once, check, clear bool) error {
 	cfg, err := config.Load()
 	if err != nil {
+		return err
+	}
+
+	// A prompts file that has lost a section stops the process here. The
+	// alternative is a brief that reads perfectly and cannot be split into
+	// messages, hours later.
+	if err := prompts.Load(); err != nil {
 		return err
 	}
 

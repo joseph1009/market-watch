@@ -5,9 +5,10 @@ you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Anthropic credit.** The API key's balance is too low, so the brief and
-  `/analyse` both fail at the first model call. Everything before that call
-  works. Top up under Plans & Billing in the Anthropic Console.
+- **Anthropic credit.** The API key's balance is too low, so a keyed run of the
+  brief or `/analyse` fails at the first model call. Everything before that call
+  works, and a relay run needs no credit at all -- see RUNBOOK.md. Top up under
+  Plans & Billing in the Anthropic Console.
 - **Deploy it.** The image now builds and runs: `--check` passes inside the
   container, the service starts, schedules the brief and stops cleanly. Two
   fixes were needed: the data directory was not writable by the container's
@@ -62,6 +63,17 @@ you, and why it is worth doing.
   free XBRL API and would cover Tokyo; Hong Kong and mainland Europe need a paid
   vendor.
 
+## Relay runs
+
+- **Subagent fan-out, in practice.** The runbook says one subagent per waiting
+  request, and the ledger reports sizes so it is obvious which need one. Worth
+  doing on the next relay brief and timing against the 10 minutes the first one
+  took.
+- **Smaller requests.** The brief prompt is 140KB, over half of it the 216
+  articles in the general block; the sorting pass re-rates stories already
+  reported and reads about 40 near-identical small-company filings. Each is a
+  straight cut to what a relay run costs to answer.
+
 ## Done
 
 - Triage: a small model rates and places every article before the cap.
@@ -80,6 +92,10 @@ you, and why it is worth doing.
 - What has been written lately: company news, filtered to pieces that actually
   name the company, spread across days, and used as reported claims rather than
   filed facts.
+- Relay runs: the brief and the analysis can be run with their model calls
+  answered from files, through the real pipeline, for no API spend.
+- Every prompt in one file, checked at startup for the markers its replies are
+  parsed by.
 - Citations: every claim carries a link to the article behind it.
 - Repeats: stories earlier briefs carried are marked, not reported again.
 - Weekends: no brief on days the market was shut.
