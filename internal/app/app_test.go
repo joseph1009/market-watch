@@ -578,14 +578,70 @@ func TestAFailureMessageCarriesNoCredentials(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramBotToken = "8955:secret-token"
-	a.Cfg.AnthropicAPIKey = "sk-ant-secret"
+	a.Cfg.ClaudeToken = "sk-ant-oat01-secret"
 
 	a.reportFailure(context.Background(),
-		errors.New(`Post "https://api.telegram.org/bot8955:secret-token/sendMessage": key sk-ant-secret rejected`))
+		errors.New(`Post "https://api.telegram.org/bot8955:secret-token/sendMessage": token sk-ant-oat01-secret rejected`))
 
 	text := (*sent)[0].Text
-	if strings.Contains(text, "secret-token") || strings.Contains(text, "sk-ant-secret") {
+	if strings.Contains(text, "secret-token") || strings.Contains(text, "sk-ant-oat01-secret") {
 		t.Errorf("a credential reached the chat: %s", text)
+	}
+}
+
+// The bot is public: anyone who finds it can send it a command, and every
+// command that writes something draws on the owner's Claude subscription. Once
+// it has an owner, a command from any other chat must do nothing -- not run,
+// not reply, and above all not take the brief over with /start.
+func TestCommandsFromAnotherChatAreIgnored(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+
+	for _, text := range []string{
+		"/start",
+		"/now",
+		"/analyse NVDA",
+		"/watchlist add semis-ai ZZZZ",
+		"/sources off cnbc-top",
+		"/help",
+	} {
+		a.HandleMessage(context.Background(), telegram.Message{
+			Text: text,
+			Chat: telegram.Chat{ID: 999, Type: "private"},
+		})
+	}
+
+	if got := a.Prefs().ChatID; got != 4242 {
+		t.Fatalf("ChatID = %d: another chat took the brief over", got)
+	}
+	if len(*sent) != 0 {
+		t.Errorf("the bot replied to a stranger: %+v", *sent)
+	}
+	for _, g := range a.Prefs().Groups {
+		for _, ticker := range g.Tickers {
+			if ticker == "ZZZZ" {
+				t.Error("a stranger edited the watchlists")
+			}
+		}
+	}
+	for _, s := range a.Prefs().Sources {
+		if s.ID == "cnbc-top" && !s.Enabled {
+			t.Error("a stranger turned a feed off")
+		}
+	}
+}
+
+// Before anyone owns it, the first /start is how an owner is recorded at all.
+func TestTheFirstChatToStartBecomesTheOwner(t *testing.T) {
+	a, sent := newTestApp(t)
+
+	a.HandleMessage(context.Background(), message("/start"))
+
+	if got := a.Prefs().ChatID; got != 4242 {
+		t.Errorf("ChatID = %d, want the first chat to /start", got)
+	}
+	if len(*sent) == 0 {
+		t.Error("the owner's /start went unanswered")
 	}
 }
 

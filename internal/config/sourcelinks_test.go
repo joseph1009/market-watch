@@ -8,7 +8,6 @@ import (
 func withRequiredEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 }
 
 // The daily brief keeps the short source list unless asked otherwise.

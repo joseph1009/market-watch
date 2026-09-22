@@ -98,7 +98,6 @@ var required = map[string][]string{
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "In the business:", "In the numbers:"},
-	"analysis.agent":   {"find_concepts", "read_concept", "compute"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }
 

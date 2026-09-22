@@ -38,11 +38,6 @@ const (
 	// one is skipped, and the point is to surface a few names worth a look.
 	DefaultMax = 8
 
-	// ReplyTokens is what the pass needs to answer: one line per company, and a
-	// heavy news day names a great many. The triage ceiling cut it off on its
-	// first real run.
-	ReplyTokens = 8000
-
 	// strongRating is the rating at which a single article is evidence enough,
 	// for a company whose ticker has been confirmed.
 	strongRating = 4

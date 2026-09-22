@@ -11,8 +11,8 @@ type Report struct {
 	SourceCount  int       `json:"source_count"`
 	Usage        Usage     `json:"usage"`
 
-	// Triage is what rating and placing the articles cost, kept apart from
-	// Usage because it is a different model at a different price.
+	// Triage is what rating and placing the articles took, kept apart from
+	// Usage because it is a different, smaller model.
 	Triage Usage `json:"triage,omitempty"`
 
 	// QuietGroups names the watchlists that had too little news to be worth a
@@ -35,20 +35,16 @@ type Report struct {
 	General []Article `json:"general,omitempty"`
 }
 
-// Usage is what one brief cost to generate.
+// Usage is how much text one run sent and got back.
 //
-// It is per-run only. The Messages API reports the tokens a request spent and
-// has no notion of an account balance, so nothing here can say how much credit
-// remains -- that lives in the Anthropic Console. What this does give is the
-// burn rate: multiply by thirty for a month of daily briefs.
+// Tokens, not dollars. The calls are answered through a Claude subscription,
+// which is not billed per token, so a price would be a figure nobody pays; the
+// token count is still what says how large a run was and how much of the
+// plan's allowance it drew on.
 type Usage struct {
 	InputTokens     int64 `json:"input_tokens"`
 	OutputTokens    int64 `json:"output_tokens"`
 	CacheReadTokens int64 `json:"cache_read_tokens,omitempty"`
-
-	// EstimatedUSD is priced from a table compiled into the binary, not quoted
-	// by the API, so it is an estimate and drifts if rates change.
-	EstimatedUSD float64 `json:"estimated_usd"`
 }
 
 // Total is the token count a reader thinks of as "how big was this run".

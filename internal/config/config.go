@@ -25,12 +25,16 @@ const (
 	DefaultReportAt   = "20:30"
 	DefaultDisplayTZ  = "Asia/Singapore"
 
-	DefaultModel = "claude-opus-5"
+	// RELAY_ANSWER values. Claude is the service as deployed: each model call
+	// runs Claude Code headless. Session waits for someone to write the reply,
+	// which is how a run is watched and answered by hand.
+	AnswerClaude  = "claude"
+	AnswerSession = "session"
 
-	// DefaultTriageModel rates and places every article before the brief is
-	// written. A small model: the judgment is coarse, and it runs over the
-	// whole day's intake rather than the capped set.
-	DefaultTriageModel = "claude-haiku-4-5"
+	// DefaultRelayConcurrency is how many sorting batches run at once. Each is
+	// its own Claude Code process, and a small machine runs out of memory
+	// before it runs out of patience.
+	DefaultRelayConcurrency = 2
 
 	// DefaultMaxArticles bounds one prompt. It is a ceiling for heavy days, not
 	// a routine filter: at 400 it cut 82 of 482 articles on an ordinary day, and
@@ -55,14 +59,34 @@ type Config struct {
 	TelegramBotToken string
 	TelegramChatID   int64 // 0 until /start records it into Prefs
 
-	AnthropicAPIKey string
-	Model           string
+	// Every model call goes through the relay: written to a file under
+	// RelayDir, answered, and the answer written beside it. RelayAnswer says who
+	// answers -- AnswerClaude or AnswerSession -- and ClaudeBin is the Claude
+	// Code executable the first of those runs.
+	RelayDir    string
+	RelayAnswer string
+	ClaudeBin   string
+
+	// StageModels overrides the model for a stage (triage, brief, names,
+	// analysis), by alias or full name, from MODEL_TRIAGE and the like. A stage
+	// not set here uses the relay's default: Haiku to sort and spot, Opus to
+	// write.
+	StageModels map[string]string
+
+	// RelayConcurrency bounds how many sorting batches are answered at once,
+	// and CallTimeout how long one call may take.
+	RelayConcurrency int
+	CallTimeout      time.Duration
+
+	// ClaudeToken is CLAUDE_CODE_OAUTH_TOKEN. The service never uses it: Claude
+	// Code reads it from the environment. It is held only so that logs and chat
+	// replies can scrub it out of anything that quotes it.
+	ClaudeToken string
 
 	// Triage has a small model rate and place every article before the cap and
-	// the brief. TriageModel names it. Off, ranking falls back to keyword
-	// matches and source weight alone.
-	Triage      bool
-	TriageModel string
+	// the brief. Off, ranking falls back to keyword matches and source weight
+	// alone.
+	Triage bool
 
 	// UserAgent identifies the service to publishers. Empty means the feed
 	// package's own default, which carries no contact address -- SEC EDGAR
@@ -124,9 +148,9 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		TelegramBotToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
-		AnthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
-		Model:            envOr("CLAUDE_MODEL", DefaultModel),
-		TriageModel:      envOr("TRIAGE_MODEL", DefaultTriageModel),
+		ClaudeToken:      os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"),
+		RelayAnswer:      strings.ToLower(envOr("RELAY_ANSWER", AnswerClaude)),
+		ClaudeBin:        envOr("CLAUDE_BIN", "claude"),
 		UserAgent:        envOr("USER_AGENT", ""),
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
@@ -138,9 +162,6 @@ func Load() (*Config, error) {
 	if cfg.TelegramBotToken == "" {
 		missing = append(missing, "TELEGRAM_BOT_TOKEN")
 	}
-	if cfg.AnthropicAPIKey == "" {
-		missing = append(missing, "ANTHROPIC_API_KEY")
-	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing required environment variables: %s", strings.Join(missing, ", "))
 	}
@@ -148,6 +169,32 @@ func Load() (*Config, error) {
 	var err error
 	if cfg.DataDir, err = filepath.Abs(cfg.DataDir); err != nil {
 		return nil, fmt.Errorf("resolve DATA_DIR: %w", err)
+	}
+	if cfg.RelayDir, err = filepath.Abs(envOr("RELAY_DIR", filepath.Join(cfg.DataDir, "relay"))); err != nil {
+		return nil, fmt.Errorf("resolve RELAY_DIR: %w", err)
+	}
+	switch cfg.RelayAnswer {
+	case AnswerClaude, AnswerSession:
+	default:
+		return nil, fmt.Errorf("RELAY_ANSWER: want claude or session, got %q", cfg.RelayAnswer)
+	}
+	cfg.StageModels = map[string]string{}
+	for stage, key := range stageModelVars {
+		if v := envOr(key, ""); v != "" {
+			cfg.StageModels[stage] = v
+		}
+	}
+	if cfg.RelayConcurrency, err = envInt("RELAY_CONCURRENCY", DefaultRelayConcurrency); err != nil {
+		return nil, err
+	}
+	// A person answering by hand may take hours; a headless call that has
+	// not answered in twenty minutes has hung.
+	defaultTimeout := 20 * time.Minute
+	if cfg.RelayAnswer == AnswerSession {
+		defaultTimeout = 3 * time.Hour
+	}
+	if cfg.CallTimeout, err = envDuration("CALL_TIMEOUT", defaultTimeout); err != nil {
+		return nil, err
 	}
 	if cfg.ScheduleLocation, err = loadLocation("SCHEDULE_TZ", DefaultScheduleTZ); err != nil {
 		return nil, err
@@ -192,6 +239,14 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// stageModelVars are the variables that override a stage's model.
+var stageModelVars = map[string]string{
+	"triage":   "MODEL_TRIAGE",
+	"brief":    "MODEL_BRIEF",
+	"names":    "MODEL_NAMES",
+	"analysis": "MODEL_ANALYSIS",
+}
+
 // PrefsPath is where the user-editable preferences file lives on the volume.
 func (c *Config) PrefsPath() string { return filepath.Join(c.DataDir, "prefs.yaml") }
 
@@ -220,8 +275,8 @@ func (c *Config) NextRun(from time.Time) time.Time {
 
 // isWeekend reports whether the brief would cover a day the US market was shut.
 // Holidays are not handled: they move every year and a quiet brief on Christmas
-// Day costs a dollar, where a wrong holiday table would silently skip a
-// trading day.
+// Day costs one brief's worth of the plan's allowance, where a wrong holiday
+// table would silently skip a trading day.
 func isWeekend(t time.Time) bool {
 	switch t.Weekday() {
 	case time.Saturday, time.Sunday:

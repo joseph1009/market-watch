@@ -52,14 +52,14 @@ QUOTED="  padded  "
 // The production case: secrets come from the platform, and a stale .env baked
 // into an image must never quietly replace them.
 func TestLoadDotEnvDoesNotOverrideTheRealEnvironment(t *testing.T) {
-	path := writeEnvFile(t, "ANTHROPIC_API_KEY=from-the-file\n")
+	path := writeEnvFile(t, "FRED_API_KEY=from-the-file\n")
 
-	t.Setenv("ANTHROPIC_API_KEY", "from-the-platform")
+	t.Setenv("FRED_API_KEY", "from-the-platform")
 	if err := LoadDotEnv(path); err != nil {
 		t.Fatalf("LoadDotEnv: %v", err)
 	}
-	if got := os.Getenv("ANTHROPIC_API_KEY"); got != "from-the-platform" {
-		t.Errorf("ANTHROPIC_API_KEY = %q, want the platform value to win", got)
+	if got := os.Getenv("FRED_API_KEY"); got != "from-the-platform" {
+		t.Errorf("FRED_API_KEY = %q, want the platform value to win", got)
 	}
 }
 

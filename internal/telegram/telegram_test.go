@@ -186,45 +186,36 @@ func TestRenderSeparatesSections(t *testing.T) {
 	}
 }
 
-func TestRenderShowsTokenUsageAndCost(t *testing.T) {
+func TestRenderShowsTokenUsage(t *testing.T) {
 	rep := testReport()
-	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204, EstimatedUSD: 0.187}
+	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	for _, want := range []string{"21,450 in", "3,204 out", "~$0.187"} {
+	for _, want := range []string{"21,450 in", "3,204 out"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("footer is missing %q in:\n%s", want, out)
 		}
 	}
+	// Answered through a subscription, which is not billed by the token: a
+	// price would be a figure nobody pays.
+	if strings.Contains(out, "$") {
+		t.Errorf("the footer quotes a price:\n%s", out)
+	}
 }
 
-// Triage is a different model at a different price, so it gets its own line
-// rather than being folded into the brief's tokens.
-func TestRenderShowsTriageCostOnItsOwnLine(t *testing.T) {
+// Triage is a different, smaller model, so it gets its own line rather than
+// being folded into the brief's tokens.
+func TestRenderShowsTriageOnItsOwnLine(t *testing.T) {
 	rep := testReport()
-	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204, EstimatedUSD: 0.187}
-	rep.Triage = model.Usage{InputTokens: 32_328, OutputTokens: 4_397, EstimatedUSD: 0.054}
+	rep.Usage = model.Usage{InputTokens: 21_450, OutputTokens: 3_204}
+	rep.Triage = model.Usage{InputTokens: 32_328, OutputTokens: 4_397}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	if !strings.Contains(out, "<i>triage 32,328 in · 4,397 out · ~$0.054</i>") {
+	if !strings.Contains(out, "<i>triage 32,328 in · 4,397 out</i>") {
 		t.Errorf("footer is missing the triage line in:\n%s", out)
 	}
-	if !strings.Contains(out, "<i>21,450 in · 3,204 out · ~$0.187</i>") {
+	if !strings.Contains(out, "<i>21,450 in · 3,204 out</i>") {
 		t.Errorf("the brief's own usage line changed in:\n%s", out)
-	}
-}
-
-// An unpriced model must not render a "$0.000" that reads as free.
-func TestRenderOmitsCostWhenUnpriced(t *testing.T) {
-	rep := testReport()
-	rep.Usage = model.Usage{InputTokens: 100, OutputTokens: 50}
-
-	out := strings.Join(Render(rep, time.UTC), "\n")
-	if strings.Contains(out, "$") {
-		t.Errorf("rendered a price with no estimate available:\n%s", out)
-	}
-	if !strings.Contains(out, "100 in") {
-		t.Errorf("token counts were dropped along with the price:\n%s", out)
 	}
 }
 
@@ -533,7 +524,7 @@ func TestSweepMessagesStopsAtTheStartOfTheChat(t *testing.T) {
 // brief ends on somewhere to read next rather than on a note about absence.
 func TestRenderPutsQuietAboveTheLastSectionsSources(t *testing.T) {
 	rep := testReport()
-	rep.Usage = model.Usage{InputTokens: 1000, OutputTokens: 500, EstimatedUSD: 0.02}
+	rep.Usage = model.Usage{InputTokens: 1000, OutputTokens: 500}
 	rep.QuietGroups = []string{"Energy", "Crypto & Digital Assets"}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")

@@ -151,7 +151,6 @@ func (t *Triager) Triage(ctx context.Context, articles []model.Article, groups [
 	for _, o := range outcomes {
 		usage.InputTokens += o.usage.InputTokens
 		usage.OutputTokens += o.usage.OutputTokens
-		usage.EstimatedUSD += o.usage.EstimatedUSD
 		if o.err != nil {
 			failed++
 			if first == nil {

@@ -20,12 +20,12 @@ func TestSummaryAnswersWhetherTheCapIsCuttingAnything(t *testing.T) {
 	r := tempRuns(t)
 	day := time.Date(2026, 9, 14, 20, 30, 0, 0, time.UTC)
 
-	_ = r.Add(Run{At: day, Kept: 400, Matched: 200, CutImportant: 0, USD: 0.60})
+	_ = r.Add(Run{At: day, Kept: 400, Matched: 200, CutImportant: 0})
 	if got := r.Summary(time.UTC); !strings.Contains(got, "Nothing important lost to the cap") {
 		t.Errorf("a clean run did not say so:\n%s", got)
 	}
 
-	_ = r.Add(Run{At: day.AddDate(0, 0, 1), Kept: 600, Matched: 300, CutImportant: 4, USD: 0.70})
+	_ = r.Add(Run{At: day.AddDate(0, 0, 1), Kept: 600, Matched: 300, CutImportant: 4})
 	got := r.Summary(time.UTC)
 	if !strings.Contains(got, "cut 4 article(s) rated 4 or 5") {
 		t.Errorf("the cap warning is missing:\n%s", got)
@@ -42,7 +42,7 @@ func TestSummaryNamesOnlyPersistentSourceFailures(t *testing.T) {
 	day := time.Date(2026, 9, 14, 20, 30, 0, 0, time.UTC)
 
 	for i := 0; i < 4; i++ {
-		run := Run{At: day.AddDate(0, 0, i), Kept: 400, USD: 0.6, Failed: []string{"dead-feed"}}
+		run := Run{At: day.AddDate(0, 0, i), Kept: 400, Failed: []string{"dead-feed"}}
 		if i == 0 {
 			run.Failed = append(run.Failed, "blipped-once")
 		}

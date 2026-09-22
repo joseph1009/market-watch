@@ -19,7 +19,13 @@ import (
 // The second is the refusal to advise. Asked whether to buy, a model will
 // answer; it cannot know the reader's holdings, horizon or tax position, and a
 // confident answer built on a balance sheet alone is worse than none.
-var systemPrompt = prompts.Get("analysis.system")
+//
+// The method follows it: how to read the accounts in order and which traps to
+// look for by sector. It was written as a playbook for the agent that could
+// look filings up as it wrote; that agent spoke to the API directly and went
+// when the API did, and the playbook is as much use to the analysis that
+// remains, which works from the table alone.
+var systemPrompt = prompts.Get("analysis.system") + "\n\n" + Method
 
 // Analysis is a written reading of one company's accounts.
 type Analysis struct {
@@ -29,7 +35,7 @@ type Analysis struct {
 }
 
 // Analyzer writes the analysis. It takes the same Completer the daily brief
-// uses, so the model, streaming and cost accounting are shared.
+// uses: in the service, the relay, answered by the analysis stage's model.
 type Analyzer struct {
 	Completer report.Completer
 	Now       func() time.Time
@@ -42,14 +48,11 @@ func (a *Analyzer) Analyze(ctx context.Context, snap Snapshot) (Analysis, error)
 		return Analysis{}, fmt.Errorf("analyze %s: %w", snap.Ticker, err)
 	}
 
-	usage := completion.Usage
-	usage.EstimatedUSD = report.EstimateCost(completion.Model, usage)
-
 	text := strings.TrimSpace(completion.Text)
 	if text == "" {
 		return Analysis{}, fmt.Errorf("analyze %s: the model returned nothing", snap.Ticker)
 	}
-	return Analysis{Snapshot: snap, Text: text, Usage: usage}, nil
+	return Analysis{Snapshot: snap, Text: text, Usage: completion.Usage}, nil
 }
 
 func (a *Analyzer) prompt(snap Snapshot) string {

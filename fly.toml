@@ -1,10 +1,19 @@
 # Fly.io deployment. One machine, one volume, no public port.
 #
-# The service opens connections out -- to the feeds, Anthropic and Telegram --
-# and listens for nothing, so it needs no HTTP service block and nothing should
-# be able to reach it from the internet.
+# The service opens connections out -- to the feeds, to Telegram, and through
+# Claude Code to Anthropic -- and listens for nothing, so it needs no HTTP
+# service block and nothing should be able to reach it from the internet.
+#
+# Secrets, set with `fly secrets set` or scripts/fly-deploy.sh, never here:
+#   TELEGRAM_BOT_TOKEN       from @BotFather
+#   CLAUDE_CODE_OAUTH_TOKEN  from `claude setup-token` on your own machine
+#   TELEGRAM_CHAT_ID         the chat the brief goes to, and the only one the
+#                            bot will answer
+#   USER_AGENT               "Market Watch you@example.com"; the SEC requires it
+#   FRED_API_KEY             market levels
+#   FINNHUB_API_KEY          share prices and company news
 
-app = "market-watch"
+app = "joseph-market-watch"
 primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are worldwide anyway
 
 [build]
@@ -22,16 +31,24 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
   TRIAGE = "true"
   DISCOVER = "true"
 
-# prefs.yaml, the covered-story record, the candidate names and the run history.
-# Without this the chat id is lost on every deploy and the brief has nowhere to
-# go until /start is sent again.
+  # Every model call is answered by Claude Code on this machine: Haiku to sort
+  # and spot names, Opus to write. Two sorting batches at a time.
+  RELAY_ANSWER = "claude"
+  RELAY_CONCURRENCY = "2"
+
+# prefs.yaml, the covered-story record, the candidate names, the run history,
+# and every run's requests and replies. Without this the chat id is lost on
+# every deploy and the brief has nowhere to go.
 [mounts]
   source = "market_watch_data"
   destination = "/data"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"   # the XBRL company-facts file for a large filer is tens of megabytes
+  # One headless Claude Code call peaked at 250MB, measured on a real sorting
+  # batch. Two at once, plus the service and a large filer's XBRL file for
+  # /analyse, fit in a gigabyte with room left over.
+  memory = "1gb"
 
 # The machine runs a scheduler, so it must never be stopped for being idle: a
 # stopped machine has no timer, and the brief would simply never fire. Nothing

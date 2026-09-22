@@ -1,5 +1,4 @@
-// Package report turns collected articles into a written market brief using
-// the Claude API.
+// Package report turns collected articles into a written market brief.
 package report
 
 import (

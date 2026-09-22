@@ -11,3 +11,7 @@ data/
 .git/
 .github/
 *.md
+
+# Claude Code's own settings for this checkout. The image's Claude Code must see
+# nothing but the request it is answering.
+.claude/

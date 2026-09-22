@@ -137,8 +137,8 @@ func TestTriageKeepsWhatATruncatedReplyReached(t *testing.T) {
 	}
 }
 
-// partialCompleter returns the reply text alongside its error, as the Claude
-// client does for a reply that hit the token limit.
+// partialCompleter returns the reply text alongside its error, as a reply that
+// was cut short does.
 type partialCompleter struct{ f *fakeCompleter }
 
 func (p partialCompleter) Complete(_ context.Context, _, prompt string) (string, model.Usage, error) {
@@ -153,7 +153,7 @@ func TestTriageFailedBatchLeavesOnlyItsArticlesUnrated(t *testing.T) {
 		{ID: "c", Title: "charlie"}, {ID: "d", Title: "delta"},
 	}
 	fc := &fakeCompleter{
-		usage: model.Usage{InputTokens: 100, OutputTokens: 10, EstimatedUSD: 0.01},
+		usage: model.Usage{InputTokens: 100, OutputTokens: 10},
 		reply: func(prompt string) (string, error) {
 			if strings.Contains(prompt, "charlie") {
 				return "", errors.New("overloaded")
@@ -173,7 +173,7 @@ func TestTriageFailedBatchLeavesOnlyItsArticlesUnrated(t *testing.T) {
 	if got[2].Rating != 0 || got[3].Rating != 0 {
 		t.Errorf("the failed batch was rated: %d, %d", got[2].Rating, got[3].Rating)
 	}
-	if usage.InputTokens != 100 || usage.EstimatedUSD != 0.01 {
+	if usage.InputTokens != 100 {
 		t.Errorf("usage = %+v, want only the successful batch counted", usage)
 	}
 }
@@ -184,7 +184,7 @@ func TestTriageSumsUsageAcrossBatches(t *testing.T) {
 		articles[i] = model.Article{ID: string(rune('a' + i))}
 	}
 	fc := &fakeCompleter{
-		usage: model.Usage{InputTokens: 1000, OutputTokens: 50, EstimatedUSD: 0.002},
+		usage: model.Usage{InputTokens: 1000, OutputTokens: 50},
 		reply: fixed("1|3|-\n2|3|-"),
 	}
 	tr := &Triager{Completer: fc, BatchSize: 2}

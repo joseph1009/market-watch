@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/prompts"
+	"github.com/joseph1009/market-watch/internal/relay"
 )
 
 func main() {
@@ -55,7 +57,7 @@ func run(once, check, clear bool) error {
 	// would mean finding every call site, and the leak that prompted this was
 	// one nobody had thought of: net/http puts the request URL into connection
 	// errors, and the bot token lives in that URL.
-	secrets := []string{cfg.TelegramBotToken, cfg.AnthropicAPIKey}
+	secrets := []string{cfg.TelegramBotToken, cfg.ClaudeToken}
 	log := slog.New(logging.New(
 		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}),
 		secrets...,
@@ -84,7 +86,9 @@ func run(once, check, clear bool) error {
 	}
 
 	log.Info("market-watch starting",
-		"model", cfg.Model,
+		"answer", cfg.RelayAnswer,
+		"models", stageModels(cfg),
+		"relay_dir", cfg.RelayDir,
 		"schedule", cfg.ReportAt.String()+" "+cfg.ScheduleLocation.String(),
 		"display_tz", cfg.DisplayLocation.String(),
 		"data_dir", cfg.DataDir,
@@ -110,9 +114,21 @@ func runClear(ctx context.Context, service *app.App, log *slog.Logger) error {
 	return service.ClearChat(ctx, prefs.ChatID)
 }
 
+// stageModels reads which model answers each stage, for the startup line: the
+// one place that says so before the first brief does.
+func stageModels(cfg *config.Config) string {
+	c := relay.Claude{Models: cfg.StageModels}
+	var parts []string
+	for _, stage := range []string{relay.Triage, relay.Brief, relay.Names, relay.Analysis} {
+		parts = append(parts, stage+"="+c.ModelFor(stage))
+	}
+	return strings.Join(parts, " ")
+}
+
 // runCheck proves the process could do its job without spending anything: it
-// confirms the bot token, the delivery target and the feeds, but never calls
-// the summarizer, which is the only part that costs money.
+// confirms the bot token, the delivery target, the feeds and that Claude Code
+// is there to answer, but never asks a model anything, which is the only part
+// that draws on the plan.
 func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
@@ -141,6 +157,24 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		"articles", len(articles))
 
 	log.Info("next brief due", "at", cfg.NextRun(time.Now()).In(cfg.DisplayLocation).Format(time.RFC1123))
+
+	if cfg.RelayAnswer == config.AnswerClaude {
+		version, err := relay.Claude{Bin: cfg.ClaudeBin}.Version(ctx)
+		if err != nil {
+			return err
+		}
+		// Whether it can also log in is only known once it is asked something,
+		// which is the one thing a check does not do. What can be said is which
+		// credential it will reach for.
+		login := "the login saved by /login on this machine"
+		if cfg.ClaudeToken != "" {
+			login = "CLAUDE_CODE_OAUTH_TOKEN"
+		}
+		log.Info("claude ok", "version", version, "credential", login, "models", stageModels(cfg))
+		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+			log.Warn("ANTHROPIC_API_KEY is set; it is withheld from Claude Code so every call stays on the subscription, and can be removed")
+		}
+	}
 
 	if len(errs) == len(sources) {
 		return fmt.Errorf("every source failed")

@@ -38,7 +38,7 @@ THE CASE FOR IT, THE CASE AGAINST IT, COMPANIES TO READ NEXT TO IT, name|ticker|
 	if err == nil {
 		t.Fatal("a file with a section missing and a marker dropped passed the check")
 	}
-	for _, want := range []string{"## OVERVIEW", "missing section analysis.agent"} {
+	for _, want := range []string{"## OVERVIEW", "missing section analysis.related"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the fault list does not mention %q:\n%v", want, err)
 		}

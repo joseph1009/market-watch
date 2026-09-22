@@ -56,8 +56,6 @@ type Run struct {
 
 	NewNames int      `json:"new_names"`
 	Failed   []string `json:"failed_sources,omitempty"`
-
-	USD float64 `json:"usd"`
 }
 
 // Runs is the record of recent briefs.
@@ -109,7 +107,6 @@ func (r *Runs) Summary(display *time.Location) string {
 
 	var (
 		kept, matched, cut, names, repeats, trivial, placed int
-		spend                                               float64
 		failures                                            = map[string]int{}
 	)
 	for _, run := range r.runs {
@@ -120,7 +117,6 @@ func (r *Runs) Summary(display *time.Location) string {
 		repeats += run.Repeats
 		trivial += run.Trivial
 		placed += run.Placed
-		spend += run.USD
 		for _, f := range run.Failed {
 			failures[f]++
 		}
@@ -135,8 +131,7 @@ func (r *Runs) Summary(display *time.Location) string {
 	fmt.Fprintf(&b, "%d articles kept, %d matched to a watchlist\n", kept/n, matched/n)
 	fmt.Fprintf(&b, "of those, %d placed by judgment rather than by a keyword\n", placed/n)
 	fmt.Fprintf(&b, "%d removed as trivia, %d already covered\n", trivial/n, repeats/n)
-	fmt.Fprintf(&b, "%d new names surfaced\n", names/n)
-	fmt.Fprintf(&b, "~$%.2f spent, ~$%.2f a month at this rate\n\n", spend/float64(n), spend/float64(n)*30)
+	fmt.Fprintf(&b, "%d new names surfaced\n\n", names/n)
 
 	// From the latest run rather than pooled across the fortnight: these are
 	// meant to be read as examples of what arrived, and a fortnight of them

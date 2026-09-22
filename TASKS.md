@@ -5,24 +5,13 @@ you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Anthropic credit.** The API key's balance is too low, so a keyed run of the
-  brief or `/analyse` fails at the first model call. Everything before that call
-  works, and a relay run needs no credit at all -- see RUNBOOK.md. Top up under
-  Plans & Billing in the Anthropic Console.
-- **Deploy it.** The image now builds and runs: `--check` passes inside the
-  container, the service starts, schedules the brief and stops cleanly. Two
-  fixes were needed: the data directory was not writable by the container's
-  user, and `fly.toml` had an invalid `[[vm.processes]]` block. `fly.toml` has
-  been checked against Fly's reference but never by `flyctl` itself. Steps:
-  1. `fly launch --no-deploy` (or `fly apps create market-watch`)
-  2. `fly volumes create market_watch_data --size 1 --region sin`
-  3. `fly secrets set TELEGRAM_BOT_TOKEN=... ANTHROPIC_API_KEY=... FRED_API_KEY=... FINNHUB_API_KEY=... TELEGRAM_CHAT_ID=509509492 USER_AGENT="Market Watch you@example.com"`
-  4. `fly deploy`
-  5. The new volume is empty, so the watchlists in `data/prefs.yaml` are not
-     there. Copy the file up with `fly ssh sftp shell` (`put data/prefs.yaml
-     /data/prefs.yaml`) and restart, or re-add them with `/watchlist`.
-  Stop any local copy first: two copies polling one bot token fight over every
-  message, and two schedulers send two briefs.
+- **Deploy it.** Scaffolded, not yet run: the image carries Claude Code from
+  Anthropic's signed apt repository, `fly.toml` gives the machine 1GB, and
+  `scripts/fly-deploy.sh` creates the app and volume, sets the secrets from
+  `.env` and deploys. RUNBOOK.md, "Deploying to Fly", has the steps. Needs from
+  you: flyctl installed and logged in, a token from `claude setup-token` in
+  `.env`, and the go-ahead. The new image has not been built yet either; Docker
+  was not running when it was written.
 - **Push the repository.** Every commit is still local only.
 
 ## Reliability
@@ -64,11 +53,18 @@ you, and why it is worth doing.
 
 ## /analyse — further
 
+- **Its tools back.** The analysis used to be written by an agent that could
+  look up any figure the company files and calculate exactly, rather than work
+  from the fixed table and do the arithmetic in its head. It spoke to the API
+  directly and was removed with it. Claude Code can be given tools of our own
+  through an MCP server (`--mcp-config`), so the Go side could serve
+  `find_concepts`, `read_concept` and `compute` to the analysis call. Until
+  then, every analysis works from the table, as every relay analysis so far
+  has.
 - **Charts.** The trading history is described in words. A picture of price
   against its averages, or free cash flow against capital spending, would carry
-  more of it in less space. Telegram takes images; drawing one means either a Go
-  plotting library or the code-execution container, which is the case for moving
-  the agent to the beta API.
+  more of it in less space. Telegram takes images; drawing one means a Go
+  plotting library.
 - **Companies with no US listing.** The analysis reads SEC filings, so Tencent,
   Keyence and anything without a US listing are not covered. Japan's EDINET is a
   free XBRL API and would cover Tokyo; Hong Kong and mainland Europe need a paid
@@ -76,10 +72,6 @@ you, and why it is worth doing.
 
 ## Relay runs
 
-- **Subagent fan-out, in practice.** The runbook says one subagent per waiting
-  request, and the ledger reports sizes so it is obvious which need one. Worth
-  doing on the next relay brief and timing against the 10 minutes the first one
-  took.
 - **Smaller requests.** The general block and the section caps have been dealt
   with; two cuts are left. The sorting pass re-rates stories earlier briefs
   already carried, when yesterday's rating would do. And a relay brief is still
@@ -93,20 +85,21 @@ you, and why it is worth doing.
 - Market levels from FRED: yields, the curve, fed funds, S&P 500, VIX.
 - `SOURCE_LINKS=off|short|full`.
 - The brief written for a non-specialist, with terms explained, in bullets.
-- `/analyse <ticker>`: SEC filings read and written up, agentic, any SEC filer
+- `/analyse <ticker>`: SEC filings read and written up, any SEC filer
   including foreign ones with a US listing, in their own currency, with the
-  current year so far beside the full years, and the share price against them.
-- The analysis calculates rather than estimates: a `compute` tool does every
-  ratio, growth rate and multiple in Go, so arithmetic is not done in the
-  model's head.
+  current year so far beside the full years, and the share price against them,
+  read with the method in `internal/fundamentals/method.md`.
 - What the share has done: returns over weeks and months, fifty and two-hundred
   day averages, the year's high and low, volume-weighted average price, volume
   against its averages, and volatility.
 - What has been written lately: company news, filtered to pieces that actually
   name the company, spread across days, and used as reported claims rather than
   filed facts.
-- Relay runs: the brief and the analysis can be run with their model calls
-  answered from files, through the real pipeline, for no API spend.
+- The relay is the only way the service calls a model. Each call is a file
+  answered by Claude Code headless, one process per call, Haiku to sort and
+  spot names and Opus to write, or answered by hand with subagents. No API
+  key, no API spend.
+- The bot answers only the chat that registered it.
 - Watchlists as sectors: each one says in a sentence what it covers, an article
   belongs to at most two of them, a section is written from at most 25, and the
   general block keeps only what was rated 4 or 5.
@@ -120,5 +113,5 @@ you, and why it is worth doing.
 - New names in the news, with every ticker checked against the exchange.
 - Share prices: benchmark funds and the companies in today's news.
 - Failure alerts: a brief that fails says so in the chat.
-- `/stats`: what recent briefs cost and did, kept on the data volume.
+- `/stats`: what recent briefs found and did, kept on the data volume.
 - CI: gofmt, vet, tests and build on every push.

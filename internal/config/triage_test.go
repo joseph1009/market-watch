@@ -2,10 +2,9 @@ package config
 
 import "testing"
 
-func TestTriageIsOnByDefaultWithTheSmallModel(t *testing.T) {
+func TestTriageIsOnByDefault(t *testing.T) {
 	withRequiredEnv(t)
 	t.Setenv("TRIAGE", "")
-	t.Setenv("TRIAGE_MODEL", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -13,9 +12,6 @@ func TestTriageIsOnByDefaultWithTheSmallModel(t *testing.T) {
 	}
 	if !cfg.Triage {
 		t.Error("triage is off without TRIAGE set")
-	}
-	if cfg.TriageModel != DefaultTriageModel {
-		t.Errorf("TriageModel = %q, want %q", cfg.TriageModel, DefaultTriageModel)
 	}
 }
 

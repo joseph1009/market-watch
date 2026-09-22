@@ -203,9 +203,9 @@ func renderSources(category string, articles []model.Article, limit int) []strin
 	return append(blocks, current)
 }
 
-// renderFooter reports the run's size and what it cost. The cost is an
-// estimate priced from a local table, never a balance -- the API reports what a
-// request spent, not what the account has left.
+// renderFooter reports the run's size: how many articles, and how much text went
+// to and from the models. Tokens rather than dollars, since the calls are
+// answered through a subscription that is not billed by the token.
 func renderFooter(rep model.Report) string {
 	lines := []string{fmt.Sprintf("<i>%d articles from %d sources</i>", rep.ArticleCount, rep.SourceCount)}
 
@@ -219,10 +219,6 @@ func renderFooter(rep model.Report) string {
 }
 
 func usageLine(label string, u model.Usage) string {
-	if u.EstimatedUSD > 0 {
-		return fmt.Sprintf("<i>%s%s in · %s out · ~$%.3f</i>",
-			label, thousands(u.InputTokens), thousands(u.OutputTokens), u.EstimatedUSD)
-	}
 	return fmt.Sprintf("<i>%s%s in · %s out</i>", label, thousands(u.InputTokens), thousands(u.OutputTokens))
 }
 

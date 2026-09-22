@@ -22,6 +22,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
+	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/report"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -76,17 +77,17 @@ type App struct {
 	Accounts *fundamentals.Client
 	Analyzer *fundamentals.Analyzer
 
-	// Agent is the same analysis with the filings open: it looks up whatever
-	// the company turns out to need. Nil falls back to Analyzer and its fixed
-	// table.
-	Agent *fundamentals.Agent
+	// Relay carries every model call: sorting, writing, spotting names, and
+	// the analysis. Each brief and each analysis is a run of its own, a
+	// directory of requests and replies with a ledger.
+	Relay *relay.Relay
 
 	mu    sync.RWMutex
 	prefs *config.Prefs
 
 	// running serializes report generation. A /now arriving while the daily
 	// brief is being written must wait rather than start a second run, which
-	// would double the API spend and interleave two deliveries.
+	// would draw twice on the plan and interleave two deliveries.
 	running sync.Mutex
 
 	// Now is injected for tests.
@@ -111,15 +112,18 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
+	rel := newRelay(cfg, log)
+
 	a := &App{
-		Cfg: cfg,
-		Log: log,
+		Cfg:   cfg,
+		Log:   log,
+		Relay: rel,
 		Fetcher: &feed.Fetcher{
 			Client:    &http.Client{Timeout: cfg.HTTPTimeout},
 			UserAgent: cfg.UserAgent,
 		},
 		Generator: &report.Generator{
-			Completer:       report.NewClaude(cfg.AnthropicAPIKey, cfg.Model),
+			Completer:       rel.Stage(relay.Brief),
 			DisplayLocation: cfg.DisplayLocation,
 		},
 		// Polling holds a request open for 30s, so this client must outlast it.
@@ -162,24 +166,24 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		HTTP:      &http.Client{Timeout: 30 * time.Second},
 		UserAgent: cfg.UserAgent,
 	}
-	a.Analyzer = &fundamentals.Analyzer{
-		Completer: report.NewClaude(cfg.AnthropicAPIKey, cfg.Model),
-	}
-	a.Agent = fundamentals.NewAgent(cfg.AnthropicAPIKey, cfg.Model, a.Accounts)
-	a.Agent.Log = func(format string, args ...any) {
-		log.Debug("analysis lookup", "detail", fmt.Sprintf(format, args...))
-	}
+	a.Analyzer = &fundamentals.Analyzer{Completer: rel.Stage(relay.Analysis)}
 	if cfg.Triage {
-		a.Triage = &triage.Triager{Completer: triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)}
+		a.Triage = &triage.Triager{
+			Completer:   rel.Plain(relay.Triage),
+			Concurrency: cfg.RelayConcurrency,
+			// The pass as a whole gets as long as one call may take. A batch
+			// that hangs costs its articles their ratings, never the brief.
+			Timeout: cfg.CallTimeout,
+		}
+		if cfg.RelayAnswer == config.AnswerSession {
+			// Each batch is a file someone has to answer, so fewer and larger
+			// is kinder than many and small.
+			a.Triage.BatchSize = 150
+		}
 	}
 	if cfg.Discover {
-		// The same small model triage uses -- this is extraction and
-		// classification, and the verification is done in code -- but a longer
-		// reply: one line per company, where triage writes one per article.
-		finder := triage.NewClaude(cfg.AnthropicAPIKey, cfg.TriageModel)
-		finder.MaxTokens = discover.ReplyTokens
 		a.Finder = &discover.Finder{
-			Completer: finder,
+			Completer: rel.Plain(relay.Names),
 			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
 		}
 		names, err := discover.LoadStore(filepath.Join(cfg.DataDir, "candidates.json"))
@@ -226,6 +230,17 @@ func (a *App) SendReport(ctx context.Context) error {
 	}
 
 	started := a.now()
+
+	// Every model call this brief makes lands in one directory, numbered in
+	// the order it was asked, so the whole run can be read afterwards.
+	if a.Relay != nil {
+		var run *relay.Run
+		var err error
+		if ctx, run, err = a.Relay.Begin(ctx, "brief"); err != nil {
+			return err
+		}
+		a.Log.Info("relay run", "dir", run.Dir)
+	}
 
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
@@ -275,7 +290,8 @@ func (a *App) SendReport(ctx context.Context) error {
 			"placements_added", collected.Placements,
 			"trivial_removed", collected.Trivial,
 			"cut_rated_4_plus", collected.CutImportant,
-			"estimated_usd", fmt.Sprintf("%.4f", collected.TriageUsage.EstimatedUSD))
+			"input_tokens", collected.TriageUsage.InputTokens,
+			"output_tokens", collected.TriageUsage.OutputTokens)
 	}
 
 	if collected.AllFailed() {
@@ -311,13 +327,12 @@ func (a *App) SendReport(ctx context.Context) error {
 
 	// New names are looked for after the brief is written, and a failure only
 	// costs the section: the brief is the product, and this is an addition to
-	// it. The cost joins the triage line in the footer, being the same small
+	// it. Its size joins the triage line in the footer, being the same small
 	// model doing the same kind of work.
 	if a.Finder != nil {
 		candidates, usage, err := a.Finder.Find(ctx, articles, watchedNames(prefs.Groups))
 		rep.Triage.InputTokens += usage.InputTokens
 		rep.Triage.OutputTokens += usage.OutputTokens
-		rep.Triage.EstimatedUSD += usage.EstimatedUSD
 
 		switch {
 		case err != nil:
@@ -333,7 +348,8 @@ func (a *App) SendReport(ctx context.Context) error {
 			a.Log.Info("new names",
 				"found", len(candidates),
 				"remembered", namesRemembered(a.Names),
-				"estimated_usd", fmt.Sprintf("%.4f", usage.EstimatedUSD))
+				"input_tokens", usage.InputTokens,
+				"output_tokens", usage.OutputTokens)
 		}
 	}
 
@@ -341,7 +357,6 @@ func (a *App) SendReport(ctx context.Context) error {
 		"sections", len(rep.Sections),
 		"input_tokens", rep.Usage.InputTokens,
 		"output_tokens", rep.Usage.OutputTokens,
-		"estimated_usd", rep.Usage.EstimatedUSD,
 		"took", time.Since(started).Round(time.Second))
 
 	messages := telegram.RenderWith(rep, telegram.Options{
@@ -393,7 +408,6 @@ func (a *App) SendReport(ctx context.Context) error {
 			Sections:     len(rep.Sections),
 			Messages:     len(messages),
 			NewNames:     len(rep.Candidates),
-			USD:          rep.Usage.EstimatedUSD + rep.Triage.EstimatedUSD,
 		}
 		if a.Covered != nil {
 			run.Repeats = a.Covered.Seen(collected.Articles)
@@ -522,6 +536,23 @@ func watchedNames(groups []model.Group) []string {
 	return out
 }
 
+// newRelay builds the relay the service's model calls go through, answered as
+// the configuration says: by Claude Code headless, or by a person.
+func newRelay(cfg *config.Config, log *slog.Logger) *relay.Relay {
+	note := func(format string, args ...any) {
+		log.Info("relay", "detail", fmt.Sprintf(format, args...))
+	}
+	var answer relay.Answerer = relay.Claude{
+		Bin:     cfg.ClaudeBin,
+		Models:  cfg.StageModels,
+		Timeout: cfg.CallTimeout,
+	}
+	if cfg.RelayAnswer == config.AnswerSession {
+		answer = relay.Session{Log: note}
+	}
+	return &relay.Relay{Root: cfg.RelayDir, Answer: answer, Log: note}
+}
+
 // exampleTitleRunes keeps an example to about one line on a phone.
 const exampleTitleRunes = 90
 
@@ -590,7 +621,7 @@ func (a *App) reportFailure(ctx context.Context, cause error) {
 
 	// The error is the other route a credential can take out of the process, so
 	// it is scrubbed exactly as the log is.
-	clean := logging.Scrub(cause.Error(), a.Cfg.TelegramBotToken, a.Cfg.AnthropicAPIKey)
+	clean := logging.Scrub(cause.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
 	next := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
 
 	text := fmt.Sprintf(

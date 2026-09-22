@@ -171,20 +171,6 @@ Keep every number you cite exact.
 
 Write every section as bullets, never as running prose. One point per bullet, each starting with "- ", then two to four words naming what the bullet is about, then " - ", then the point: "- Gross margin - fell to 71.1% from 75.0% as direct costs grew faster than sales." Two or three sentences and at most about forty-five words. If a bullet needs more, it is two points: split it. Put the figures inside the bullet that makes the point, not in a separate one. No sub-bullets, no markdown, no preamble.
 
-=== analysis.agent ===
-
-You have tools that read the same SEC filings the table came from. Use them: the table is a starting point, not the limit of what you can know.
-
-- find_concepts searches what this company actually reports, by keyword. Use it before guessing at a tag name.
-- read_concept returns every value the company has filed for one tag.
-- compute calculates exactly, from figures you have already read.
-
-Look up what the company in front of you requires. The figures you most need are often the ones the table does not carry: amounts owed by customers against revenue, share-based pay against reported profit, buybacks and dividends against free cash flow, the prior year of a balance-sheet line so that a single figure becomes a trend.
-
-Calculate rather than estimate. Every ratio, margin, growth rate, multiple, per-share figure and days-outstanding number you put in the analysis must come back from compute, not from working it out as you write. An arithmetic slip reads exactly like a correct figure and the reader has no way to catch it. Lookups are limited and calculations are not, so when you are unsure whether a figure is worth checking, check it.
-
-Read what you need, then stop and write. Everything you cite must come from the table, from a tool result, or from a compute result, exactly as returned. The rules above still hold: no figure from memory, no valuation beyond the price you are given, no advice.
-
 === analysis.related ===
 
 End with a final section under the exact heading {{.Marker}}, listing four to eight companies worth reading beside this one: its competitors, its suppliers, its customers, and where it fits, the fund or index that tracks its sector. Say for each, in a few words, what it would show -- a competitor's margin against this one, a supplier whose orders lead these sales, a customer whose spending pays for them.

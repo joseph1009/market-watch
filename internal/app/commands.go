@@ -10,6 +10,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -23,7 +24,7 @@ const helpText = `<b>📊 Market Watch</b>
 /sources — show the news feeds
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
-/stats — what recent briefs cost and did
+/stats — what recent briefs found and did
 /clear — remove the bot's earlier messages from this chat
 /help — this message
 
@@ -39,7 +40,7 @@ func BotCommands() []telegram.Command {
 		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
-		{Command: "stats", Description: "What recent briefs cost and did"},
+		{Command: "stats", Description: "What recent briefs found and did"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
 		{Command: "help", Description: "What I can do"},
 	}
@@ -52,6 +53,16 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 	command, args := splitCommand(msg.Text)
 	if command == "" {
 		return // ordinary chatter, not addressed to the bot
+	}
+
+	// Only the owner's chat is answered. The bot is public -- anyone can find it
+	// by name and send it a command -- and every one that writes something
+	// draws on the owner's Claude subscription, which is the owner's alone to
+	// use. Once a chat is registered, a command from any other chat is dropped
+	// without a reply, so the bot does not even confirm it is listening.
+	if owner := a.Prefs().ChatID; owner != 0 && msg.Chat.ID != owner {
+		a.Log.Warn("ignored a command from another chat", "command", command, "chat", msg.Chat.ID)
+		return
 	}
 
 	a.Log.Info("command", "command", command, "chat", msg.Chat.ID)
@@ -88,7 +99,7 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		// The reply is a second route out for an error's text, and errors are
 		// where a credential ends up. The logger scrubs its own output; this
 		// path has to scrub its own.
-		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.AnthropicAPIKey)
+		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
 		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
 	}
 }
@@ -408,7 +419,7 @@ func escape(s string) string { return escaper.Replace(s) }
 // today, and this answers a different question -- what the accounts say about a
 // company, whenever you happen to ask.
 func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []string) error {
-	if a.Accounts == nil || (a.Analyzer == nil && a.Agent == nil) {
+	if a.Accounts == nil || a.Analyzer == nil {
 		return a.Bot.SendMessage(ctx, msg.Chat.ID,
 			"Reading filings is not configured on this instance.")
 	}
@@ -428,7 +439,8 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 
 	// Its own budget: the SEC reads are quick, the writing is not, and this
 	// must not inherit however long the caller's context happens to have left.
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	// Five minutes for the reading, and then as long as one model call may take.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute+a.Cfg.CallTimeout)
 	defer cancel()
 
 	snapshot, err := a.Accounts.Fetch(ctx, ticker, accountYears)
@@ -457,7 +469,16 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 			escape(ticker)))
 	}
 
-	analysis, err := a.analyse(ctx, snapshot)
+	// The analysis is a run of its own, so its request and reply sit together
+	// in one directory rather than among a brief's.
+	if a.Relay != nil {
+		var run *relay.Run
+		if ctx, run, err = a.Relay.Begin(ctx, "analysis-"+ticker); err != nil {
+			return err
+		}
+		a.Log.Info("relay run", "dir", run.Dir)
+	}
+	analysis, err := a.Analyzer.Analyze(ctx, snapshot)
 	if err != nil {
 		return err
 	}
@@ -465,7 +486,8 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		"ticker", ticker,
 		"years", len(snapshot.Years),
 		"missing", len(snapshot.Missing),
-		"estimated_usd", fmt.Sprintf("%.4f", analysis.Usage.EstimatedUSD))
+		"input_tokens", analysis.Usage.InputTokens,
+		"output_tokens", analysis.Usage.OutputTokens)
 
 	// The related list is cut out of the prose and checked before it is shown:
 	// it is written as a pipe-delimited table, which reads badly in a chat, and
@@ -486,10 +508,9 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		messages = append(messages, block)
 	}
 	messages = append(messages, fmt.Sprintf(
-		"<i>%s, from filings up to %s · ~$%.2f</i>",
+		"<i>%s, from filings up to %s</i>",
 		escape(snapshot.Company),
-		escape(snapshot.Balance.AsOf.Format("2 Jan 2006")),
-		analysis.Usage.EstimatedUSD))
+		escape(snapshot.Balance.AsOf.Format("2 Jan 2006"))))
 
 	_, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages)
 	return err
@@ -498,29 +519,6 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 // accountYears is how much history the analysis gets. Five years covers a cycle
 // without burying the recent trend in a wall of columns.
 const accountYears = 5
-
-// analyse writes up a snapshot, preferring the agent.
-//
-// The agent looks up whatever this company's figures turn out to require --
-// receivables against revenue, a prior year of inventory, what the free cash
-// flow was spent on -- which is most of what makes the analysis about this
-// company rather than about companies in general. It costs several times a
-// single call, so a failure falls back to the fixed table rather than leaving
-// the reader with nothing.
-func (a *App) analyse(ctx context.Context, snapshot fundamentals.Snapshot) (fundamentals.Analysis, error) {
-	if a.Agent != nil {
-		analysis, err := a.Agent.Analyze(ctx, snapshot)
-		if err == nil {
-			return analysis, nil
-		}
-		a.Log.Warn("analysis agent failed; falling back to the fixed table",
-			"ticker", snapshot.Ticker, "error", err)
-		if a.Analyzer == nil {
-			return fundamentals.Analysis{}, err
-		}
-	}
-	return a.Analyzer.Analyze(ctx, snapshot)
-}
 
 // handleStats reads the run record back.
 //
