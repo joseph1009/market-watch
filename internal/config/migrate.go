@@ -9,7 +9,7 @@ import (
 // CurrentSchemaVersion is the newest migration below. A file written by
 // DefaultPrefs is stamped with it, so a fresh install never runs migrations
 // that only exist to correct older files.
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
 // migration is a one-time correction to an existing preferences file.
 //
@@ -165,7 +165,44 @@ var migrations = []migration{
 			}
 		},
 	},
+	{
+		version: 6,
+		name:    "give film and TV a watchlist of their own, and move Netflix to it",
+		apply: func(p *Prefs) {
+			// Found by the first brief posted to the channel: three stories on
+			// Paramount's merger with Warner Bros, and one on British
+			// broadcasters, were sorted into Big Tech. The sorting is told to
+			// file a company beside its rivals, Netflix was in Big Tech, and
+			// every studio competes with Netflix. Saying "not media" in Big
+			// Tech's sentence did not move them; a watchlist for media did.
+			//
+			// Netflix goes the way Tesla went in migration 1, to the more
+			// specific home. The Media & Entertainment watchlist itself is new,
+			// so MergeDefaults adds it after this runs. The two terms that
+			// matched any company's news go too.
+			//
+			// Only the sentence migration 4 wrote is replaced. An install that
+			// reached migration 4 after this change already has the new one,
+			// and nothing else should be overwritten.
+			if g := p.group("big-tech"); g != nil {
+				if g.Scope == bigTechScopeV4 {
+					g.Scope = bigTechScopeV6
+				}
+				g.Tickers = removeFold(g.Tickers, "NFLX")
+				g.Names = removeFold(g.Names, "Netflix")
+				g.Keywords = removeFold(g.Keywords, "antitrust")
+				g.Keywords = removeFold(g.Keywords, "earnings guidance")
+			}
+		},
+	},
 }
+
+// The Big Tech sentence as migration 4 wrote it and as migration 6 rewrites it.
+// Spelled out, so the migration means the same whatever the defaults say later.
+const (
+	bigTechScopeV4 = "The largest software and internet companies: cloud, advertising, devices, app stores and streaming, and the competition cases and regulation aimed at them."
+	bigTechScopeV6 = "The largest software and internet companies: cloud, advertising, AI models and assistants, devices and app stores, and the competition cases and regulation aimed at them."
+)
 
 // Migrate applies every migration newer than the file's recorded version and
 // returns what it did, so the run can say so out loud.

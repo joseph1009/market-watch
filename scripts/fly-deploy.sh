@@ -29,9 +29,10 @@ FLY="$(command -v fly || command -v flyctl || true)"
 [ -f fly.toml ] || die "run this from the repository root, where fly.toml is"
 "$FLY" auth whoami >/dev/null 2>&1 || die "not logged in to Fly: run 'fly auth login'"
 
-# The secrets the service reads. ANTHROPIC_API_KEY is deliberately not one of
-# them: nothing uses it, and Claude Code would prefer it to the subscription.
-SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_CHAT_ID|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY)='
+# The secrets the service reads, where .env gives them a value; an optional one
+# left empty is not sent. ANTHROPIC_API_KEY is deliberately not one of them:
+# nothing uses it, and Claude Code would prefer it to the subscription.
+SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_CHANNEL_ID|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY)=[^[:space:]]'
 # The chat id is required because it pins the one chat the bot will answer.
 # Without it, whoever sends /start first on the new machine becomes its owner.
 for name in TELEGRAM_BOT_TOKEN CLAUDE_CODE_OAUTH_TOKEN TELEGRAM_CHAT_ID USER_AGENT; do
@@ -64,8 +65,21 @@ echo "== deploy"
 
 # As the service's own user, not root: anything this writes to /data has to
 # stay writable by the service afterwards.
+#
+# On Windows, flyctl ends every ssh command with "The handle is invalid" and a
+# failing exit status when it is not attached to a console, which it is not
+# under Git Bash, even when the command succeeded. A command that really failed
+# says "Process exited with status" instead, so that is what decides.
 echo "== check"
-"$FLY" ssh console -a "$APP" -C "runuser -u app -- env HOME=/home/app /usr/local/bin/market-watch --check"
+status=0
+out="$("$FLY" ssh console -a "$APP" -C "runuser -u app -- env HOME=/home/app /usr/local/bin/market-watch --check" 2>&1)" || status=$?
+printf '%s\n' "$out" | grep -v 'The handle is invalid' || true
+if [ "$status" -ne 0 ]; then
+  if printf '%s' "$out" | grep -q 'Process exited with status' \
+    || ! printf '%s' "$out" | grep -q 'The handle is invalid'; then
+    die "the check failed on the machine"
+  fi
+fi
 
 cat <<EOF
 

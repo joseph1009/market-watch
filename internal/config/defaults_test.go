@@ -62,9 +62,10 @@ func TestAmbiguousSymbolsAreNotTrackedAsTickers(t *testing.T) {
 // ordinary word matches the word. These were found misfiling real articles.
 func TestOrdinaryWordsAreNotTrackedAsNames(t *testing.T) {
 	banned := map[string]string{
-		"Target": "every price target and revenue target",
-		"UPS":    `"start-ups", since a hyphen is a word boundary`,
-		"Arm":    "the body part",
+		"Target":    "every price target and revenue target",
+		"UPS":       `"start-ups", since a hyphen is a word boundary`,
+		"Arm":       "the body part",
+		"Paramount": `"of paramount importance"`,
 	}
 	for _, g := range DefaultPrefs().Groups {
 		for _, n := range g.Names {

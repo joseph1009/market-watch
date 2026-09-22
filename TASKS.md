@@ -5,13 +5,6 @@ you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Deploy it.** Scaffolded, not yet run: the image carries Claude Code from
-  Anthropic's signed apt repository, `fly.toml` gives the machine 1GB, and
-  `scripts/fly-deploy.sh` creates the app and volume, sets the secrets from
-  `.env` and deploys. RUNBOOK.md, "Deploying to Fly", has the steps. Needs from
-  you: flyctl installed and logged in, a token from `claude setup-token` in
-  `.env`, and the go-ahead. The new image has not been built yet either; Docker
-  was not running when it was written.
 - **Push the repository.** Every commit is still local only.
 
 ## Reliability
@@ -95,11 +88,15 @@ you, and why it is worth doing.
 - What has been written lately: company news, filtered to pieces that actually
   name the company, spread across days, and used as reported claims rather than
   filed facts.
+- Deployed to Fly as `joseph-market-watch` (personal organisation, Singapore),
+  with Claude Code on the machine logged in by `CLAUDE_CODE_OAUTH_TOKEN`.
 - The relay is the only way the service calls a model. Each call is a file
   answered by Claude Code headless, one process per call, Haiku to sort and
   spot names and Opus to write, or answered by hand with subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
+- A channel for other readers: the daily brief is posted there too, and
+  `/share` posts the latest brief or analysis. Readers can only read.
 - Watchlists as sectors: each one says in a sentence what it covers, an article
   belongs to at most two of them, a section is written from at most 25, and the
   general block keeps only what was rated 4 or 5.

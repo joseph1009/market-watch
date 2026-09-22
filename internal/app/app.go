@@ -90,6 +90,11 @@ type App struct {
 	// would draw twice on the plan and interleave two deliveries.
 	running sync.Mutex
 
+	// last is the most recent brief or analysis sent to the owner, which
+	// /share posts to the channel. See channel.go.
+	lastMu sync.Mutex
+	last   *delivery
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -218,15 +223,34 @@ func (a *App) UpdatePrefs(change func(*config.Prefs) error) error {
 // nowhere to deliver.
 var ErrNoChat = errors.New("no chat configured: send /start to the bot")
 
-// SendReport runs the whole pipeline and delivers the result.
+// SendReport runs the whole pipeline and delivers the result to the owner.
 func (a *App) SendReport(ctx context.Context) error {
+	_, err := a.sendReport(ctx)
+	return err
+}
+
+// Publish is what the schedule does each day: the brief to the owner, and then
+// the same brief to the channel if there is one. A channel that refuses it is
+// reported to the owner rather than returned, since the owner's copy arrived.
+func (a *App) Publish(ctx context.Context) error {
+	sent, err := a.sendReport(ctx)
+	if err != nil {
+		return err
+	}
+	a.shareBrief(ctx, sent)
+	return nil
+}
+
+// sendReport is SendReport, returning what was delivered so Publish can pass
+// the same brief on to the channel. It returns nil on a day with no news.
+func (a *App) sendReport(ctx context.Context) (*delivery, error) {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
 
 	prefs := a.Prefs()
 	if prefs.ChatID == 0 {
-		return ErrNoChat
+		return nil, ErrNoChat
 	}
 
 	started := a.now()
@@ -237,7 +261,7 @@ func (a *App) SendReport(ctx context.Context) error {
 		var run *relay.Run
 		var err error
 		if ctx, run, err = a.Relay.Begin(ctx, "brief"); err != nil {
-			return err
+			return nil, err
 		}
 		a.Log.Info("relay run", "dir", run.Dir)
 	}
@@ -295,7 +319,7 @@ func (a *App) SendReport(ctx context.Context) error {
 	}
 
 	if collected.AllFailed() {
-		return fmt.Errorf("every source failed (%d): %v", len(collected.Errors), collected.Errors[0])
+		return nil, fmt.Errorf("every source failed (%d): %v", len(collected.Errors), collected.Errors[0])
 	}
 
 	// Stories earlier briefs already carried are marked rather than dropped: a
@@ -317,11 +341,11 @@ func (a *App) SendReport(ctx context.Context) error {
 	if errors.Is(err, report.ErrNoArticles) {
 		// A genuinely empty day is worth saying out loud, rather than leaving
 		// the reader wondering whether the service died.
-		return a.Bot.SendMessage(ctx, prefs.ChatID,
+		return nil, a.Bot.SendMessage(ctx, prefs.ChatID,
 			"<b>📊 Market Watch</b>\nNo news was collected today. The feeds returned nothing usable.")
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rep.Triage = collected.TriageUsage
 
@@ -383,8 +407,9 @@ func (a *App) SendReport(ctx context.Context) error {
 		}
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
+	sent := a.remember("the brief of "+rep.GeneratedAt.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan"), messages)
 
 	// Recorded only after delivery: a brief that never reached the reader has
 	// not covered anything, and marking it would silence tomorrow's.
@@ -422,7 +447,7 @@ func (a *App) SendReport(ctx context.Context) error {
 	}
 
 	a.Log.Info("delivered", "messages", len(messages), "chat", prefs.ChatID)
-	return nil
+	return sent, nil
 }
 
 // RunScheduler fires the daily brief. It recomputes the next run each time
@@ -444,7 +469,9 @@ func (a *App) RunScheduler(ctx context.Context) error {
 		case <-timer.C:
 		}
 
-		if err := a.SendReport(ctx); err != nil {
+		// Only the scheduled brief goes to the channel by itself. One asked for
+		// with /now is usually a check, and waits for /share.
+		if err := a.Publish(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

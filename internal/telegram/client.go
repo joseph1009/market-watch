@@ -69,6 +69,7 @@ type sendMessageRequest struct {
 	Text                  string `json:"text"`
 	ParseMode             string `json:"parse_mode"`
 	DisableWebPagePreview bool   `json:"disable_web_page_preview"`
+	DisableNotification   bool   `json:"disable_notification,omitempty"`
 }
 
 // SendMessage delivers one HTML-formatted message.
@@ -84,6 +85,12 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, html string) err
 // Send delivers one message and returns its id, which is what a later delete
 // needs.
 func (c *Client) Send(ctx context.Context, chatID int64, html string) (int64, error) {
+	return c.send(ctx, chatID, html, false)
+}
+
+// send is Send with the choice of arriving silently: shown in the chat, but
+// without a sound or a banner.
+func (c *Client) send(ctx context.Context, chatID int64, html string, silent bool) (int64, error) {
 	var sent struct {
 		MessageID int64 `json:"message_id"`
 	}
@@ -92,6 +99,7 @@ func (c *Client) Send(ctx context.Context, chatID int64, html string) (int64, er
 		Text:                  html,
 		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
+		DisableNotification:   silent,
 	}, &sent)
 	return sent.MessageID, err
 }
@@ -101,9 +109,20 @@ func (c *Client) Send(ctx context.Context, chatID int64, html string) (int64, er
 // compounded by later parts arriving out of context -- and the ids of the parts
 // that did land are still returned, so they can be cleaned up.
 func (c *Client) SendReport(ctx context.Context, chatID int64, messages []string) ([]int64, error) {
+	return c.sendAll(ctx, chatID, messages, false)
+}
+
+// Broadcast is SendReport for a channel: only the first part makes a sound.
+// A brief is a dozen messages, and a dozen notifications a day for one brief
+// is how a channel gets muted by the people it was meant for.
+func (c *Client) Broadcast(ctx context.Context, chatID int64, messages []string) ([]int64, error) {
+	return c.sendAll(ctx, chatID, messages, true)
+}
+
+func (c *Client) sendAll(ctx context.Context, chatID int64, messages []string, quietAfterFirst bool) ([]int64, error) {
 	ids := make([]int64, 0, len(messages))
 	for i, m := range messages {
-		id, err := c.Send(ctx, chatID, m)
+		id, err := c.send(ctx, chatID, m, quietAfterFirst && i > 0)
 		if err != nil {
 			return ids, fmt.Errorf("send part %d of %d: %w", i+1, len(messages), err)
 		}
@@ -169,6 +188,43 @@ func (c *Client) Me(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return me.Username, nil
+}
+
+type chatRequest struct {
+	ChatID int64 `json:"chat_id"`
+}
+
+type chatMemberRequest struct {
+	ChatID int64 `json:"chat_id"`
+	UserID int64 `json:"user_id"`
+}
+
+// CanPost reports a channel's title and whether the bot may post there, which
+// takes being its creator or an admin with the right to post. It sends
+// nothing, so a check can find a missing permission before the evening brief
+// does.
+func (c *Client) CanPost(ctx context.Context, chatID int64) (title string, ok bool, err error) {
+	var me struct {
+		ID int64 `json:"id"`
+	}
+	if err := c.call(ctx, "getMe", nil, &me); err != nil {
+		return "", false, err
+	}
+	var chat struct {
+		Title string `json:"title"`
+	}
+	if err := c.call(ctx, "getChat", chatRequest{ChatID: chatID}, &chat); err != nil {
+		return "", false, err
+	}
+	var member struct {
+		Status          string `json:"status"`
+		CanPostMessages bool   `json:"can_post_messages"`
+	}
+	if err := c.call(ctx, "getChatMember", chatMemberRequest{ChatID: chatID, UserID: me.ID}, &member); err != nil {
+		return chat.Title, false, err
+	}
+	ok = member.Status == "creator" || (member.Status == "administrator" && member.CanPostMessages)
+	return chat.Title, ok, nil
 }
 
 func (c *Client) call(ctx context.Context, method string, body any, out any) error {

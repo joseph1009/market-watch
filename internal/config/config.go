@@ -59,6 +59,12 @@ type Config struct {
 	TelegramBotToken string
 	TelegramChatID   int64 // 0 until /start records it into Prefs
 
+	// TelegramChannelID is a channel the bot is an admin of, where the daily
+	// brief is posted for other people to read, and where /share posts a brief
+	// or an analysis on request. 0 means no channel. Readers of a channel can
+	// only read: the bot still takes commands from the owner's chat alone.
+	TelegramChannelID int64
+
 	// Every model call goes through the relay: written to a file under
 	// RelayDir, answered, and the answer written beside it. RelayAnswer says who
 	// answers -- AnswerClaude or AnswerSession -- and ClaudeBin is the Claude
@@ -206,6 +212,9 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parse REPORT_AT: %w", err)
 	}
 	if cfg.TelegramChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
+		return nil, err
+	}
+	if cfg.TelegramChannelID, err = envInt64("TELEGRAM_CHANNEL_ID", 0); err != nil {
 		return nil, err
 	}
 	switch links := strings.ToLower(envOr("SOURCE_LINKS", SourceLinksShort)); links {

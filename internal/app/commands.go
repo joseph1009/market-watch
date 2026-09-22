@@ -25,6 +25,7 @@ const helpText = `<b>📊 Market Watch</b>
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
 /stats — what recent briefs found and did
+/share — post the latest brief or analysis to the channel
 /clear — remove the bot's earlier messages from this chat
 /help — this message
 
@@ -41,6 +42,7 @@ func BotCommands() []telegram.Command {
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "stats", Description: "What recent briefs found and did"},
+		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
 		{Command: "help", Description: "What I can do"},
 	}
@@ -87,6 +89,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleSchedule(ctx, msg)
 	case "stats":
 		err = a.handleStats(ctx, msg)
+	case "share":
+		err = a.handleShare(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
 	default:
@@ -512,8 +516,11 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		escape(snapshot.Company),
 		escape(snapshot.Balance.AsOf.Format("2 Jan 2006"))))
 
-	_, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages)
-	return err
+	if _, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages); err != nil {
+		return err
+	}
+	a.remember("the "+snapshot.Ticker+" analysis", messages)
+	return nil
 }
 
 // accountYears is how much history the analysis gets. Five years covers a cycle

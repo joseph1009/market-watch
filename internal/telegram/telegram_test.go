@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -451,6 +452,81 @@ func TestSendReportReturnsIDsEvenWhenItFailsPartway(t *testing.T) {
 	}
 	if len(ids) != 2 {
 		t.Errorf("ids = %v, want the 2 parts that landed", ids)
+	}
+}
+
+// Posting to a channel takes admin rights with posting allowed; membership
+// alone, or admin rights without posting, is not enough.
+func TestCanPostNeedsAnAdminWhoMayPost(t *testing.T) {
+	for _, tc := range []struct {
+		member string
+		want   bool
+	}{
+		{`{"status":"creator"}`, true},
+		{`{"status":"administrator","can_post_messages":true}`, true},
+		{`{"status":"administrator","can_post_messages":false}`, false},
+		{`{"status":"member"}`, false},
+		{`{"status":"left"}`, false},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/getMe"):
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":77,"username":"bot"}}`))
+			case strings.HasSuffix(r.URL.Path, "/getChat"):
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":-100,"title":"Market Watch"}}`))
+			case strings.HasSuffix(r.URL.Path, "/getChatMember"):
+				body, _ := io.ReadAll(r.Body)
+				var req chatMemberRequest
+				_ = json.Unmarshal(body, &req)
+				if req.UserID != 77 {
+					t.Errorf("asked about user %d, want the bot's own id", req.UserID)
+				}
+				_, _ = w.Write([]byte(`{"ok":true,"result":` + tc.member + `}`))
+			}
+		}))
+
+		title, ok, err := newTestClient(srv).CanPost(context.Background(), -100)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.member, err)
+		}
+		if ok != tc.want || title != "Market Watch" {
+			t.Errorf("%s: ok=%v title=%q, want ok=%v", tc.member, ok, title, tc.want)
+		}
+	}
+}
+
+// A channel hears the first part of a brief and no more. The owner's own copy
+// is unchanged: every part arrives as it always has.
+func TestBroadcastRingsOnlyForTheFirstPart(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		silent []bool
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req sendMessageRequest
+		_ = json.Unmarshal(body, &req)
+		mu.Lock()
+		silent = append(silent, req.DisableNotification)
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1}}`))
+	}))
+	defer srv.Close()
+
+	if _, err := newTestClient(srv).Broadcast(context.Background(), -100, []string{"a", "b", "c"}); err != nil {
+		t.Fatalf("Broadcast: %v", err)
+	}
+	if got := fmt.Sprint(silent); got != "[false true true]" {
+		t.Errorf("silent per part = %s, want only the first to ring", got)
+	}
+
+	silent = nil
+	if _, err := newTestClient(srv).SendReport(context.Background(), 1, []string{"a", "b"}); err != nil {
+		t.Fatalf("SendReport: %v", err)
+	}
+	if got := fmt.Sprint(silent); got != "[false false]" {
+		t.Errorf("silent per part = %s, want the owner's copy to ring as before", got)
 	}
 }
 

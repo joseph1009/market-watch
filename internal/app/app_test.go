@@ -603,6 +603,7 @@ func TestCommandsFromAnotherChatAreIgnored(t *testing.T) {
 		"/analyse NVDA",
 		"/watchlist add semis-ai ZZZZ",
 		"/sources off cnbc-top",
+		"/share",
 		"/help",
 	} {
 		a.HandleMessage(context.Background(), telegram.Message{

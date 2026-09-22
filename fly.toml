@@ -9,6 +9,7 @@
 #   CLAUDE_CODE_OAUTH_TOKEN  from `claude setup-token` on your own machine
 #   TELEGRAM_CHAT_ID         the chat the brief goes to, and the only one the
 #                            bot will answer
+#   TELEGRAM_CHANNEL_ID      optional: a channel the brief is also posted to
 #   USER_AGENT               "Market Watch you@example.com"; the SEC requires it
 #   FRED_API_KEY             market levels
 #   FINNHUB_API_KEY          share prices and company news

@@ -26,21 +26,27 @@ import (
 
 func main() {
 	once := flag.Bool("once", false, "send one brief immediately and exit, instead of running the schedule")
+	share := flag.Bool("share", false, "with -once, also post the brief to the channel, as the daily one is")
 	check := flag.Bool("check", false, "verify configuration and credentials, then exit without sending anything")
 	clear := flag.Bool("clear", false, "delete the bot's earlier messages from the chat, then exit")
 	flag.Parse()
 
-	if err := run(*once, *check, *clear); err != nil {
+	if *share && !*once {
+		fmt.Fprintln(os.Stderr, "market-watch: -share only goes with -once")
+		os.Exit(2)
+	}
+
+	if err := run(*once, *share, *check, *clear); err != nil {
 		// The logger may not exist yet when configuration is what failed, so
 		// this path scrubs from the environment directly rather than relying on
 		// the handler.
 		fmt.Fprintln(os.Stderr, "market-watch:", logging.Scrub(err.Error(),
-			os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("ANTHROPIC_API_KEY")))
+			os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")))
 		os.Exit(1)
 	}
 }
 
-func run(once, check, clear bool) error {
+func run(once, share, check, clear bool) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -80,6 +86,12 @@ func run(once, check, clear bool) error {
 		return runCheck(ctx, service, cfg, log)
 	case clear:
 		return runClear(ctx, service, log)
+	case once && share:
+		if cfg.TelegramChannelID == 0 {
+			return fmt.Errorf("-share: no channel is set; set TELEGRAM_CHANNEL_ID")
+		}
+		log.Info("sending one brief to you and the channel, then exiting")
+		return service.Publish(ctx)
 	case once:
 		log.Info("sending one brief and exiting")
 		return service.SendReport(ctx)
@@ -92,7 +104,8 @@ func run(once, check, clear bool) error {
 		"schedule", cfg.ReportAt.String()+" "+cfg.ScheduleLocation.String(),
 		"display_tz", cfg.DisplayLocation.String(),
 		"data_dir", cfg.DataDir,
-		"max_articles", cfg.MaxArticles)
+		"max_articles", cfg.MaxArticles,
+		"channel", cfg.TelegramChannelID)
 
 	if err := service.Serve(ctx); err != nil {
 		return err
@@ -144,6 +157,20 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		log.Warn("no chat registered yet; send /start to the bot")
 	} else {
 		log.Info("delivery target", "chat", prefs.ChatID)
+	}
+
+	// The channel is optional, so a problem with it is a warning rather than a
+	// failed check: the owner's brief does not depend on it.
+	if channel := cfg.TelegramChannelID; channel != 0 {
+		title, ok, err := service.Bot.CanPost(ctx, channel)
+		switch {
+		case err != nil:
+			log.Warn("channel unreachable; is the bot a member, and is TELEGRAM_CHANNEL_ID right?", "channel", channel, "error", err)
+		case !ok:
+			log.Warn("the bot cannot post to the channel; make it an admin with the right to post", "channel", channel, "title", title)
+		default:
+			log.Info("channel ok", "channel", channel, "title", title)
+		}
 	}
 
 	sources := prefs.EnabledSources()

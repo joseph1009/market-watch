@@ -231,15 +231,33 @@ func basePrefs() *Prefs {
 				},
 			},
 			{
-				ID:      "big-tech",
-				Name:    "Big Tech",
-				Scope:   "The largest software and internet companies: cloud, advertising, devices, app stores and streaming, and the competition cases and regulation aimed at them.",
-				Tickers: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX"},
+				ID:    "big-tech",
+				Name:  "Big Tech",
+				Scope: "The largest software and internet companies: cloud, advertising, AI models and assistants, devices and app stores, and the competition cases and regulation aimed at them.",
+				// Netflix lives in Media & Entertainment. While it was here, the
+				// sorting filed its rivals beside it, as it is told to, and a
+				// studio merger became Big Tech news.
+				Tickers: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META"},
 				Names: []string{
 					"Apple", "Microsoft", "Alphabet", "Google", "Amazon",
-					"Meta", "Facebook", "Instagram", "Netflix",
+					"Meta", "Facebook", "Instagram",
 				},
-				Keywords: []string{"antitrust", "cloud revenue", "earnings guidance"},
+				// Not "antitrust" or "earnings guidance": both match any
+				// company's news, and a case against one of these names it.
+				Keywords: []string{"cloud revenue"},
+			},
+			{
+				ID:      "media",
+				Name:    "Media & Entertainment",
+				Scope:   "Film and television, streaming services, broadcasters and networks, music, and the deals and rules that shape who owns them.",
+				Tickers: []string{"NFLX", "DIS", "CMCSA", "WBD"},
+				// Paramount is left to the sector sentence: as a name it would
+				// match "of paramount importance". Spotify's ticker, SPOT, is a
+				// word in any all-caps headline about spot prices.
+				Names: []string{
+					"Netflix", "Disney", "Comcast", "NBCUniversal", "Warner Bros", "Spotify",
+				},
+				Keywords: []string{"box office"},
 			},
 			{
 				ID:      "energy",

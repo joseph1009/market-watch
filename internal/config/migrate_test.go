@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,7 +56,9 @@ func TestMigrationExpandsSemisAndMovesTesla(t *testing.T) {
 	if contains(big.Tickers, "TSLA") || contains(big.Names, "Tesla") {
 		t.Errorf("Tesla is still in Big Tech: %v / %v", big.Tickers, big.Names)
 	}
-	if !contains(big.Tickers, "AAPL") || !contains(big.Names, "Netflix") {
+	// Netflix leaves too, but in migration 6 and on purpose; Apple is what
+	// shows that migration 1 took only Tesla.
+	if !contains(big.Tickers, "AAPL") || !contains(big.Names, "Apple") {
 		t.Errorf("the migration removed more than Tesla: %v / %v", big.Tickers, big.Names)
 	}
 }
@@ -252,5 +255,101 @@ func TestMigrationDropsTermsThatMatchedOrdinaryWords(t *testing.T) {
 	}
 	if !contains(p.group("consumer-retail").Names, "Walmart") || !contains(p.group("financials").Tickers, "JPM") {
 		t.Error("the migration removed more than the three terms")
+	}
+}
+
+// Found by the first brief posted to the channel. The fix has to reach an
+// install that stored the old sentence and terms, and must leave the rest of
+// the watchlist alone.
+func TestMigrationTakesNetflixAndTheCatchAllTermsOutOfBigTech(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 5,
+		Groups: []model.Group{{
+			ID:       "big-tech",
+			Scope:    bigTechScopeV4,
+			Tickers:  []string{"AAPL", "NFLX"},
+			Names:    []string{"Apple", "Netflix"},
+			Keywords: []string{"antitrust", "cloud revenue", "Earnings Guidance"},
+		}},
+	}
+
+	p.Migrate()
+
+	g := p.group("big-tech")
+	if g.Scope != bigTechScopeV6 {
+		t.Errorf("Scope = %q, want the new sentence", g.Scope)
+	}
+	if contains(g.Tickers, "NFLX") || contains(g.Names, "Netflix") {
+		t.Errorf("big-tech = %v / %v, want Netflix gone to Media", g.Tickers, g.Names)
+	}
+	if contains(g.Keywords, "antitrust") || contains(g.Keywords, "earnings guidance") {
+		t.Errorf("Keywords = %v, want the two catch-all terms gone", g.Keywords)
+	}
+	if !contains(g.Keywords, "cloud revenue") || !contains(g.Tickers, "AAPL") || !contains(g.Names, "Apple") {
+		t.Errorf("big-tech = %+v, want everything else kept", g)
+	}
+}
+
+// Loading an existing file is the path that matters: the migration moves
+// Netflix out, and the merge that follows brings the new watchlist in with
+// Netflix in it, so no install is left with Netflix tracked nowhere.
+func TestAnUpgradedInstallGetsTheMediaWatchlist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.yaml")
+	old := DefaultPrefs()
+	old.SchemaVersion = 5
+	var kept []model.Group
+	for _, g := range old.Groups {
+		switch g.ID {
+		case "media":
+			continue // did not exist yet
+		case "big-tech":
+			g.Scope = bigTechScopeV4
+			g.Tickers = append(g.Tickers, "NFLX")
+			g.Names = append(g.Names, "Netflix")
+			g.Keywords = []string{"antitrust", "cloud revenue", "earnings guidance"}
+		}
+		kept = append(kept, g)
+	}
+	old.Groups = kept
+	if err := old.Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := LoadPrefs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	media := p.group("media")
+	if media == nil || !contains(media.Tickers, "NFLX") || !contains(media.Names, "Netflix") {
+		t.Fatalf("media = %+v, want it added with Netflix in it", media)
+	}
+	if g := p.group("big-tech"); contains(g.Tickers, "NFLX") || g.Scope != bigTechScopeV6 {
+		t.Errorf("big-tech = %+v, want Netflix out and the new sentence", g)
+	}
+}
+
+// A sentence that is not the one migration 4 wrote is not this migration's to
+// replace.
+func TestMigrationLeavesAnotherBigTechSentenceAlone(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 5,
+		Groups:        []model.Group{{ID: "big-tech", Scope: "Only the six giants."}},
+	}
+
+	p.Migrate()
+
+	if got := p.group("big-tech").Scope; got != "Only the six giants." {
+		t.Errorf("Scope = %q, want it untouched", got)
+	}
+}
+
+// A fresh install and an upgraded one must end up describing Big Tech the
+// same way.
+func TestTheDefaultBigTechSentenceIsTheMigratedOne(t *testing.T) {
+	for _, g := range DefaultPrefs().Groups {
+		if g.ID == "big-tech" && g.Scope != bigTechScopeV6 {
+			t.Errorf("default Scope = %q, want the one migration 6 writes", g.Scope)
+		}
 	}
 }

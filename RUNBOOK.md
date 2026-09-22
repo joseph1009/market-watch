@@ -170,6 +170,44 @@ messages can use it.
 even when they are set. Claude Code would otherwise prefer them to the
 subscription.
 
+## A channel for other readers
+
+Other people can read the brief in a Telegram channel. The bot posts there;
+readers can only read. It still takes commands from your chat alone, so the
+channel shares the brief and nothing else.
+
+What goes to the channel:
+
+- **The daily brief**, by itself, as soon as it reaches you. `--once --share`
+  does the same for a brief run by hand.
+- **`/share`**, whichever of your brief or analysis arrived last. A brief from
+  `/now` or `--once`, and every `/analyse`, stays in your chat until you share
+  it, so you can read it first. The bot remembers only the latest one, and
+  forgets it on a restart.
+
+In the channel, only the first message of each post makes a sound; the rest
+arrive silently. Nothing is deleted there: `REPLACE_PREVIOUS` clears your chat
+only, and readers keep every day's brief.
+
+Readers cannot ask the bot for anything, and that is deliberate. Every brief
+and analysis runs on your Claude subscription, and Anthropic's terms do not
+allow routing other people's requests through a Pro or Max plan. A brief that
+was written for you and then posted is your own use. An analysis someone else
+asked for would not be. If readers ever need to run their own, that needs an
+API key, paid per call.
+
+Setting one up:
+
+1. Create the channel in Telegram. Private, with an invite link, is simplest.
+2. Add the bot as an admin with the right to post messages.
+3. Find the channel's id. Open the channel at <https://web.telegram.org/a/>:
+   the address ends in `#-100` and a string of digits, and that whole number is
+   the id. If it does not start with `-100`, put `-100` in front of the digits.
+4. Put it in `.env` as `TELEGRAM_CHANNEL_ID=-100...`, and on Fly run
+   `scripts/fly-deploy.sh` again, which sends it as a secret.
+5. `--check` says `channel ok` with the channel's title, or says what is
+   missing.
+
 ## Deploying to Fly
 
 The image carries Claude Code, installed from Anthropic's signed apt
@@ -183,7 +221,10 @@ repository, and runs every call through it as on a desktop. It logs in with
    answer; without it, whoever sends `/start` first becomes the owner.
 4. Stop any copy of the service running elsewhere. Two copies polling one bot
    token fight over every message, and two schedulers send two briefs. A local
-   `--once` or `LIVE_BRIEF` run is fine; `market-watch` left running is not.
+   `--once` or `LIVE_BRIEF` run is fine; `market-watch` left running is not,
+   and neither is a container left over from testing the image: `docker ps`
+   shows one. On the server, `telegram poll failed ... 409 Conflict` in the
+   logs every ten seconds means another copy is running somewhere.
 5. From the repository root, run `scripts/fly-deploy.sh`. It creates the app and
    its volume if they are missing, sets the secrets from `.env` without printing
    them, deploys, and runs `--check` on the machine.
