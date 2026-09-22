@@ -80,3 +80,41 @@ func TestSummaryWithNoHistorySaysSo(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// Widening a watchlist from a list of tickers to a sector can only be judged by
+// reading what it caught, which means /stats has to show a few of them.
+func TestSummaryShowsWhatJudgmentPlaced(t *testing.T) {
+	r := tempRuns(t)
+	day := time.Date(2026, 9, 20, 20, 30, 0, 0, time.UTC)
+
+	_ = r.Add(Run{At: day, Kept: 300, Matched: 150, Placed: 40})
+	_ = r.Add(Run{At: day.AddDate(0, 0, 1), Kept: 300, Matched: 150, Placed: 60,
+		PlacedExamples: []string{"Saudi Arabia cuts Europe off from October crude → Energy"}})
+
+	got := r.Summary(time.UTC)
+	if !strings.Contains(got, "50 placed by judgment") {
+		t.Errorf("the average is missing:\n%s", got)
+	}
+	if !strings.Contains(got, "Saudi Arabia cuts Europe off") {
+		t.Errorf("the examples are missing:\n%s", got)
+	}
+}
+
+// Headlines come from news feeds, and a run of them is written into a message
+// Telegram parses as HTML. One ampersand would otherwise cost the whole reply.
+func TestSummaryEscapesHeadlines(t *testing.T) {
+	r := tempRuns(t)
+	_ = r.Add(Run{
+		At:             time.Date(2026, 9, 21, 20, 30, 0, 0, time.UTC),
+		Placed:         1,
+		PlacedExamples: []string{"Johnson & Johnson wins <appeal> → Healthcare & Pharma"},
+	})
+
+	got := r.Summary(time.UTC)
+	if strings.Contains(got, "<appeal>") || strings.Contains(got, "Johnson & Johnson") {
+		t.Errorf("a headline reached the message unescaped:\n%s", got)
+	}
+	if !strings.Contains(got, "Johnson &amp; Johnson wins &lt;appeal&gt;") {
+		t.Errorf("the headline is not readable once escaped:\n%s", got)
+	}
+}

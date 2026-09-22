@@ -16,6 +16,15 @@ type Group struct {
 	Tickers  []string `yaml:"tickers,omitempty" json:"tickers,omitempty"`
 	Names    []string `yaml:"names,omitempty" json:"names,omitempty"`
 	Keywords []string `yaml:"keywords,omitempty" json:"keywords,omitempty"`
+
+	// Scope says in a sentence what the sector covers, for the model that
+	// places articles by substance. Tickers and keywords describe a watchlist
+	// by example, which is precise about the companies named and silent about
+	// everything else: a story about a rival nobody listed, or a supplier two
+	// steps back, matched nothing and read as belonging nowhere. A sentence
+	// describes the sector itself, so the judgment has something to judge
+	// against. Empty falls back to examples drawn from Names and Keywords.
+	Scope string `yaml:"scope,omitempty" json:"scope,omitempty"`
 }
 
 // GroupID normalizes a display name into an ID usable as a map key and in bot

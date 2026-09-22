@@ -485,6 +485,12 @@ var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "
 
 func escape(s string) string { return escaper.Replace(s) }
 
+// Escape is the same, for the places outside this package that build a message
+// of their own. /stats now quotes headlines straight from the feeds, and a
+// headline with an ampersand in it would otherwise be rejected by Telegram as
+// broken markup rather than shown.
+func Escape(s string) string { return escape(s) }
+
 func runeLen(s string) int { return len([]rune(s)) }
 
 // RenderPlain lays out a heading and a block of model prose as messages.

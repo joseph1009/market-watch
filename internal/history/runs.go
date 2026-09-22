@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
 // RunsKept is how many runs the record holds. Enough to see a fortnight of
@@ -40,6 +42,17 @@ type Run struct {
 	// the cap discarded anyway. Persistently above zero means the cap is too
 	// low.
 	CutImportant int `json:"cut_important"`
+
+	// Placed is how many articles a watchlist claimed on substance alone,
+	// having matched none of its tickers or keywords, and PlacedExamples a few
+	// of them written as "headline -> sector".
+	//
+	// These are the numbers that say whether describing a watchlist as a
+	// sector was a good idea. The count alone cannot: sixty placements is
+	// either sixty stories keywords would have missed or sixty stretches, and
+	// only reading a few tells you which.
+	Placed         int      `json:"placed,omitempty"`
+	PlacedExamples []string `json:"placed_examples,omitempty"`
 
 	NewNames int      `json:"new_names"`
 	Failed   []string `json:"failed_sources,omitempty"`
@@ -95,9 +108,9 @@ func (r *Runs) Summary(display *time.Location) string {
 	}
 
 	var (
-		kept, matched, cut, names, repeats, trivial int
-		spend                                       float64
-		failures                                    = map[string]int{}
+		kept, matched, cut, names, repeats, trivial, placed int
+		spend                                               float64
+		failures                                            = map[string]int{}
 	)
 	for _, run := range r.runs {
 		kept += run.Kept
@@ -106,6 +119,7 @@ func (r *Runs) Summary(display *time.Location) string {
 		names += run.NewNames
 		repeats += run.Repeats
 		trivial += run.Trivial
+		placed += run.Placed
 		spend += run.USD
 		for _, f := range run.Failed {
 			failures[f]++
@@ -119,9 +133,24 @@ func (r *Runs) Summary(display *time.Location) string {
 
 	fmt.Fprintf(&b, "<b>Per brief, on average</b>\n")
 	fmt.Fprintf(&b, "%d articles kept, %d matched to a watchlist\n", kept/n, matched/n)
+	fmt.Fprintf(&b, "of those, %d placed by judgment rather than by a keyword\n", placed/n)
 	fmt.Fprintf(&b, "%d removed as trivia, %d already covered\n", trivial/n, repeats/n)
 	fmt.Fprintf(&b, "%d new names surfaced\n", names/n)
 	fmt.Fprintf(&b, "~$%.2f spent, ~$%.2f a month at this rate\n\n", spend/float64(n), spend/float64(n)*30)
+
+	// From the latest run rather than pooled across the fortnight: these are
+	// meant to be read as examples of what arrived, and a fortnight of them
+	// would be a wall of headlines nobody reads.
+	if ex := r.runs[0].PlacedExamples; len(ex) > 0 {
+		// Headlines are feed text, so they are escaped here rather than where
+		// they were recorded: what is stored stays readable, and the escaping
+		// belongs to the format it is being written into.
+		lines := make([]string, len(ex))
+		for i, e := range ex {
+			lines[i] = telegram.Escape(e)
+		}
+		fmt.Fprintf(&b, "<b>Placed by judgment, most recently</b>\n%s\n\n", strings.Join(lines, "\n"))
+	}
 
 	if cut > 0 {
 		fmt.Fprintf(&b, "<b>⚠ The cap cut %d article(s) rated 4 or 5</b>\nRaise MAX_ARTICLES if this keeps happening.\n\n", cut)

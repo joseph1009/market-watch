@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -337,6 +338,11 @@ func TestRenderWatchlistsShowsEveryGroup(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
+	// The sentence decides most of the placing, so it belongs where the
+	// watchlist is managed rather than only in the file on the volume.
+	if !strings.Contains(out, "anything that disrupts supply") {
+		t.Errorf("the sector sentences are not shown:\n%s", out)
+	}
 }
 
 func TestRenderSourcesMarksEnabledState(t *testing.T) {
@@ -580,5 +586,35 @@ func TestAFailureMessageCarriesNoCredentials(t *testing.T) {
 	text := (*sent)[0].Text
 	if strings.Contains(text, "secret-token") || strings.Contains(text, "sk-ant-secret") {
 		t.Errorf("a credential reached the chat: %s", text)
+	}
+}
+
+// An example is read by a person asking whether the sector descriptions are
+// working, so it names the watchlist rather than printing its id, and stays
+// short enough to read on a phone.
+func TestPlacedExamplesNameTheWatchlistAndStayShort(t *testing.T) {
+	groups := []model.Group{
+		{ID: "energy", Name: "Energy"},
+		{ID: "macro-rates", Name: "Macro & Rates"},
+	}
+	long := strings.Repeat("a very long headline ", 10)
+	got := placedExamples([]feed.Placement{
+		{Title: "Saudi Arabia cuts Europe off from October crude", Groups: []string{"energy", "macro-rates"}},
+		{Title: long, Groups: []string{"deleted-since"}},
+	}, groups)
+
+	if len(got) != 2 {
+		t.Fatalf("got %d examples, want 2", len(got))
+	}
+	want := "Saudi Arabia cuts Europe off from October crude → Energy, Macro & Rates"
+	if got[0] != want {
+		t.Errorf("example = %q, want %q", got[0], want)
+	}
+	if runes := []rune(got[1]); len(runes) > exampleTitleRunes+len(" → deleted-since")+1 {
+		t.Errorf("a long headline was not clipped: %q", got[1])
+	}
+	// A watchlist deleted since the run still has to render as something.
+	if !strings.Contains(got[1], "deleted-since") {
+		t.Errorf("an unknown watchlist id was dropped: %q", got[1])
 	}
 }

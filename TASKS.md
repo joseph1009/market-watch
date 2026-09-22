@@ -35,6 +35,17 @@ you, and why it is worth doing.
 
 ## Brief quality
 
+- **Judge the wider watchlists after a week.** Each watchlist now describes its
+  sector in a sentence, so an article is placed by what it bears on rather than
+  by the words it happens to contain. `/stats` reports how many were placed that
+  way and shows five of them. Read those for a week. If they are stories you
+  would want, the net is set right; if they are stretches, tighten the sentences
+  or raise `MinPlacementRating`. Only once that is settled is it worth adding
+  sector feeds -- chip trade press, energy and shipping, drug development,
+  freight -- since a gate that works makes extra sources cheap and a gate that
+  does not makes them mush. The test for any new feed is the one that condemned
+  the 8-K firehose: after a fortnight, how many of its articles were placed, and
+  how many were cited.
 - **Prices outside the US.** Every keyed free tier turned out to be US-only:
   Twelve Data answers London with "available starting with the Grow plan" and
   does not resolve Hong Kong or Tokyo at all. A company quoted elsewhere
@@ -69,10 +80,12 @@ you, and why it is worth doing.
   request, and the ledger reports sizes so it is obvious which need one. Worth
   doing on the next relay brief and timing against the 10 minutes the first one
   took.
-- **Smaller requests.** The brief prompt is 140KB, over half of it the 216
-  articles in the general block; the sorting pass re-rates stories already
-  reported and reads about 40 near-identical small-company filings. Each is a
-  straight cut to what a relay run costs to answer.
+- **Smaller requests.** The general block and the section caps have been dealt
+  with; two cuts are left. The sorting pass re-rates stories earlier briefs
+  already carried, when yesterday's rating would do. And a relay brief is still
+  four sorting batches of 40KB, which is the bulk of the reading: batching by
+  source, so the near-identical items arrive together, would make each one
+  quicker to answer.
 
 ## Done
 
@@ -94,6 +107,11 @@ you, and why it is worth doing.
   filed facts.
 - Relay runs: the brief and the analysis can be run with their model calls
   answered from files, through the real pipeline, for no API spend.
+- Watchlists as sectors: each one says in a sentence what it covers, an article
+  belongs to at most two of them, a section is written from at most 25, and the
+  general block keeps only what was rated 4 or 5.
+- Keyword matches are rated too: one rated 1 or 2 is not written about, which
+  keeps broker notes, board appointments and listicles out of the sections.
 - Every prompt in one file, checked at startup for the markers its replies are
   parsed by.
 - Citations: every claim carries a link to the article behind it.

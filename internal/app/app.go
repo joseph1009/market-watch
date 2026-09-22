@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -388,6 +389,7 @@ func (a *App) SendReport(ctx context.Context) error {
 			Dropped:      collected.Dropped,
 			Trivial:      collected.Trivial,
 			CutImportant: collected.CutImportant,
+			Placed:       collected.NewlyMatched,
 			Sections:     len(rep.Sections),
 			Messages:     len(messages),
 			NewNames:     len(rep.Candidates),
@@ -396,6 +398,7 @@ func (a *App) SendReport(ctx context.Context) error {
 		if a.Covered != nil {
 			run.Repeats = a.Covered.Seen(collected.Articles)
 		}
+		run.PlacedExamples = placedExamples(collected.Placed, prefs.Groups)
 		for _, e := range collected.Errors {
 			run.Failed = append(run.Failed, e.SourceID)
 		}
@@ -517,6 +520,49 @@ func watchedNames(groups []model.Group) []string {
 		out = append(out, g.Names...)
 	}
 	return out
+}
+
+// exampleTitleRunes keeps an example to about one line on a phone.
+const exampleTitleRunes = 90
+
+// placedExamples writes the sampled placements as "headline → sector", which is
+// what /stats shows.
+//
+// Watchlists are named rather than given by id, because this is read by a
+// person deciding whether the sector descriptions are working, and "Energy"
+// answers that faster than "energy" did as an id.
+func placedExamples(placed []feed.Placement, groups []model.Group) []string {
+	if len(placed) == 0 {
+		return nil
+	}
+
+	names := make(map[string]string, len(groups))
+	for _, g := range groups {
+		names[g.ID] = g.Name
+	}
+
+	out := make([]string, 0, len(placed))
+	for _, p := range placed {
+		sectors := make([]string, 0, len(p.Groups))
+		for _, id := range p.Groups {
+			if name, ok := names[id]; ok {
+				sectors = append(sectors, name)
+				continue
+			}
+			sectors = append(sectors, id) // a watchlist deleted since the run
+		}
+		out = append(out, fmt.Sprintf("%s → %s",
+			clipRunes(p.Title, exampleTitleRunes), strings.Join(sectors, ", ")))
+	}
+	return out
+}
+
+func clipRunes(s string, n int) string {
+	r := []rune(strings.Join(strings.Fields(s), " "))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
 }
 
 func namesRemembered(s *discover.Store) int {

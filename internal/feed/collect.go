@@ -44,10 +44,32 @@ type Result struct {
 	CutImportant int
 	TriageUsage  model.Usage
 
+	// Placed is a sample of the articles judgment put in a watchlist that
+	// keyword matching had missed entirely, strongest first.
+	//
+	// The counts above say how often that happened; they cannot say whether it
+	// was right. A watchlist described as a sector is a wider net than a list
+	// of tickers, and the only way to tell a good catch from a stretch is to
+	// read a few of them, which means keeping a few where they can be read
+	// tomorrow rather than in a log line that scrolls away tonight.
+	Placed []Placement
+
 	// TriageErr reports a partial or total triage failure. It is not fatal:
 	// unrated articles rank on the other signals and the brief still goes out.
 	TriageErr error
 }
+
+// Placement is one article a watchlist claimed on substance rather than on any
+// word it contained.
+type Placement struct {
+	Title  string
+	Rating int
+	Groups []string
+}
+
+// PlacedSamples is how many placements are kept for later inspection. Enough to
+// see what kind of thing is arriving, few enough to read in a chat message.
+const PlacedSamples = 5
 
 // AllFailed reports whether every source errored, the one case where sending a
 // report would misrepresent an outage as a quiet news day.
@@ -134,8 +156,9 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 }
 
 // triage runs the triager, records what it changed, and removes the trivia: an
-// article rated 1 that no watchlist claims. A keyword match is kept whatever its
-// rating, since the reader asked for that subject by name.
+// article rated 1 that no watchlist claims. A keyword match is kept here
+// whatever its rating, so it is counted and ranked with everything else; whether
+// it is worth writing about is decided later, by report.MinSectionRating.
 func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article, groups []model.Group) []model.Article {
 	before := make(map[string]int, len(articles))
 	for _, a := range articles {
@@ -154,6 +177,14 @@ func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article
 			r.Placements += added
 			if before[a.ID] == 0 {
 				r.NewlyMatched++
+				// Only the ones keywords missed entirely are worth sampling:
+				// an article that already matched a watchlist and gained a
+				// second says nothing about whether the wider net works.
+				r.Placed = append(r.Placed, Placement{
+					Title:  a.Title,
+					Rating: a.Rating,
+					Groups: append([]string(nil), a.GroupIDs...),
+				})
 			}
 		}
 		if a.Rating == 1 && len(a.GroupIDs) == 0 {
@@ -161,6 +192,13 @@ func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article
 			continue
 		}
 		out = append(out, a)
+	}
+
+	// Strongest first, so the sample shows the placements that actually reach
+	// a section rather than whatever happened to be fetched first.
+	sort.SliceStable(r.Placed, func(i, j int) bool { return r.Placed[i].Rating > r.Placed[j].Rating })
+	if len(r.Placed) > PlacedSamples {
+		r.Placed = r.Placed[:PlacedSamples]
 	}
 	return out
 }

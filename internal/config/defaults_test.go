@@ -47,11 +47,31 @@ func TestAmbiguousSymbolsAreNotTrackedAsTickers(t *testing.T) {
 		"MA":  "a US state",
 		"CB":  "an abbreviation in wider use",
 		"LNG": "already an Energy keyword",
+		"MS":  "the network that renamed itself MS NOW",
 	}
 	for _, g := range DefaultPrefs().Groups {
 		for _, ticker := range g.Tickers {
 			if why, bad := banned[ticker]; bad {
 				t.Errorf("%s is tracked as a ticker in %s, but it matches %s", ticker, g.ID, why)
+			}
+		}
+	}
+}
+
+// Names match case-blind on word boundaries, so a company whose name is also an
+// ordinary word matches the word. These were found misfiling real articles.
+func TestOrdinaryWordsAreNotTrackedAsNames(t *testing.T) {
+	banned := map[string]string{
+		"Target": "every price target and revenue target",
+		"UPS":    `"start-ups", since a hyphen is a word boundary`,
+		"Arm":    "the body part",
+	}
+	for _, g := range DefaultPrefs().Groups {
+		for _, n := range g.Names {
+			for word, why := range banned {
+				if strings.EqualFold(n, word) {
+					t.Errorf("%q is tracked as a name in %s, but it matches %s", n, g.ID, why)
+				}
 			}
 		}
 	}

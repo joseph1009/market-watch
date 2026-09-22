@@ -7,7 +7,9 @@
 // sanctions notices over a surge in oil and borrowing costs. A small model reads
 // every article once, rates its market relevance and places it in the
 // watchlists its substance bears on. Keyword matches are never removed: the
-// model can only add to what the rules already found.
+// model can only add to what the rules already found. Its rating still counts
+// against them later -- a keyword match rated 1 or 2 is not written about (see
+// report.MinSectionRating) -- but that is the report's decision, not this one's.
 package triage
 
 import (
@@ -57,6 +59,20 @@ const (
 	// keywords genuinely missed. Below this, an article still informs the
 	// overview; it just does not pad a section.
 	MinPlacementRating = 4
+
+	// MaxPlacements is how many watchlists one article may belong to.
+	//
+	// A watchlist described as a sector rather than a list of tickers is a
+	// wider net, and the same story starts to fit several: export controls on
+	// chips bear on semiconductors, geopolitics, big tech and industrials at
+	// once. Placed in all four it is written up four times, in four sections,
+	// saying the same thing. Two keeps the cross-sector link that makes a
+	// story worth reading twice, and stops the third and fourth retelling.
+	//
+	// Keyword matches count towards it and are never removed: the reader named
+	// those subjects, so an article that already matched two of them keeps
+	// both and takes nothing further from judgment.
+	MaxPlacements = 2
 )
 
 // Triager rates and places articles.
@@ -197,6 +213,11 @@ func apply(batch []model.Article, verdicts map[int]verdict, known map[string]boo
 			continue
 		}
 		for _, id := range v.groups {
+			if len(a.GroupIDs) >= MaxPlacements {
+				// The reply lists its best fit first, so what is dropped here
+				// is the weakest link the model saw.
+				break
+			}
 			if known[id] && !a.InGroup(id) {
 				// Clip first: GroupIDs is shared with the caller's copy of the
 				// article, and appending into spare capacity would change it.
@@ -212,6 +233,13 @@ func systemPrompt(groups []model.Group) (string, error) {
 	var list strings.Builder
 	for _, g := range groups {
 		fmt.Fprintf(&list, "- %s: %s", g.ID, g.Name)
+		// The sector sentence first, the examples after it. That order is the
+		// instruction: judge the article against what the sector covers, and
+		// read the examples as some of what lives there rather than as the
+		// whole of it.
+		if g.Scope != "" {
+			fmt.Fprintf(&list, " -- %s", g.Scope)
+		}
 		if hints := groupHints(g); len(hints) > 0 {
 			fmt.Fprintf(&list, " (for example %s)", strings.Join(hints, ", "))
 		}

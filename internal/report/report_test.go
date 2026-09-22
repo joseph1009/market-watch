@@ -480,6 +480,178 @@ func TestGeneralNewsIncludesArticlesFromQuietWatchlists(t *testing.T) {
 	}
 }
 
+// A section is written in a handful of blocks whatever it is handed, so past a
+// couple of dozen articles the rest are sent, paid for and discarded.
+func TestPromptCapsHowManyArticlesASectionIsWrittenFrom(t *testing.T) {
+	base := testTime().Add(-6 * time.Hour)
+	articles := make([]model.Article, 0, MaxSectionArticles+4)
+	for i := range cap(articles) {
+		articles = append(articles, model.Article{
+			ID: fmt.Sprintf("s%d", i), Title: fmt.Sprintf("Chip story %d", i),
+			SourceID: "cnbc", SourceName: "CNBC", Published: base,
+			GroupIDs: []string{"semis-ai"}, Rating: 5,
+		})
+	}
+
+	prompt := buildPrompt(articles, reportGroups(), nil, nil, testTime(), time.UTC)
+
+	if want := fmt.Sprintf("(semis-ai) -- %d articles", MaxSectionArticles); !strings.Contains(prompt, want) {
+		t.Errorf("prompt does not say %q:\n%s", want, prompt)
+	}
+	if !strings.Contains(prompt, "Chip story 0") {
+		t.Error("the strongest article was cut")
+	}
+	if last := fmt.Sprintf("Chip story %d", MaxSectionArticles+3); strings.Contains(prompt, last) {
+		t.Errorf("%q is past the cap and should not be in the prompt", last)
+	}
+	// An article cut from a full section must not come back as general news:
+	// its sector is being written about.
+	if strings.Contains(prompt, "General market news") {
+		t.Error("an article the cap cut reappeared as general news")
+	}
+	if want := fmt.Sprintf("Articles: %d from", MaxSectionArticles); !strings.Contains(prompt, want) {
+		t.Errorf("the header counts articles the model was not shown:\n%s", prompt)
+	}
+}
+
+// The general block is the biggest thing in the prompt and the least cited. A
+// story outside every watchlist can still matter, but it is never a 2.
+func TestGeneralNewsKeepsOnlyWhatCouldReachTheOverview(t *testing.T) {
+	articles := append(testArticles(),
+		model.Article{ID: "8", Title: "Bakery opens on the high street", SourceID: "cnbc",
+			SourceName: "CNBC", Published: testTime(), Rating: 2},
+		model.Article{ID: "9", Title: "Dollar rallies on rate bets", SourceID: "cnbc",
+			SourceName: "CNBC", Published: testTime(), Rating: 4},
+	)
+
+	prompt := buildPrompt(articles, reportGroups(), nil, nil, testTime(), time.UTC)
+
+	if strings.Contains(prompt, "Bakery opens") {
+		t.Error("a rated-2 article was offered as general news")
+	}
+	if !strings.Contains(prompt, "Dollar rallies") {
+		t.Error("a rated-4 article was cut from general news")
+	}
+	// Article 7 was never rated -- sorting off, or a failed batch -- and that
+	// means unjudged, not unimportant.
+	if !strings.Contains(prompt, "Retail sales tick higher") {
+		t.Error("an unrated article was cut from general news")
+	}
+}
+
+// A keyword match proves the name appears, not that the article is about it.
+// "Morgan Stanley sees Shell hitting new highs" names a bank and is about an oil
+// company, and the sorting had already rated it a 2.
+func TestSectionsLeaveOutKeywordMatchesRatedAsNoise(t *testing.T) {
+	base := testTime().Add(-6 * time.Hour)
+	fin := []string{"financials"}
+	articles := []model.Article{
+		{ID: "a", Title: "Morgan Stanley sees Shell hitting new highs", SourceID: "yahoo",
+			SourceName: "Yahoo Finance", Published: base, GroupIDs: fin, Rating: 2},
+		{ID: "b", Title: "Citigroup appoints a new head of China sales", SourceID: "yahoo",
+			SourceName: "Yahoo Finance", Published: base, GroupIDs: fin, Rating: 1},
+		{ID: "c", Title: "Visa moves to close a card rewards loophole", SourceID: "cnbc",
+			SourceName: "CNBC", Published: base, GroupIDs: fin, Rating: 3},
+		{ID: "d", Title: "JPMorgan lifts its loan-loss reserves", SourceID: "cnbc",
+			SourceName: "CNBC", Published: base, GroupIDs: fin, Rating: 4},
+		// Never rated: sorting off, or a failed batch. Not judged is not noise.
+		{ID: "e", Title: "Goldman Sachs trading revenue jumps", SourceID: "cnbc",
+			SourceName: "CNBC", Published: base, GroupIDs: fin},
+	}
+	groups := []model.Group{{ID: "financials", Name: "Financials & Banks"}}
+
+	prompt := buildPrompt(articles, groups, nil, nil, testTime(), time.UTC)
+
+	for _, gone := range []string{"Shell hitting new highs", "head of China sales"} {
+		if strings.Contains(prompt, gone) {
+			t.Errorf("%q was rated as noise and is still in the section", gone)
+		}
+	}
+	for _, kept := range []string{"card rewards loophole", "loan-loss reserves", "trading revenue jumps"} {
+		if !strings.Contains(prompt, kept) {
+			t.Errorf("%q was cut, but only 1s and 2s should be", kept)
+		}
+	}
+	if !strings.Contains(prompt, "(financials) -- 3 articles") {
+		t.Errorf("the section header counts articles it no longer carries:\n%s", prompt)
+	}
+}
+
+// A sector whose only news was noise is quiet. Saying so is better than a
+// section padded out of board appointments.
+func TestAWatchlistWithOnlyNoiseIsQuiet(t *testing.T) {
+	base := testTime().Add(-6 * time.Hour)
+	articles := append(testArticles(),
+		model.Article{ID: "n1", Title: "Retailer appoints a director", SourceID: "sec", GroupIDs: []string{"consumer-retail"}, Published: base, Rating: 2},
+		model.Article{ID: "n2", Title: "Coffee chain launches a seasonal cup", SourceID: "cnbc", GroupIDs: []string{"consumer-retail"}, Published: base, Rating: 2},
+		model.Article{ID: "n3", Title: "Five retail stocks to buy now", SourceID: "yahoo", GroupIDs: []string{"consumer-retail"}, Published: base, Rating: 2},
+	)
+	groups := append(reportGroups(), model.Group{ID: "consumer-retail", Name: "Consumer & Retail"})
+
+	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
+	for _, g := range active {
+		if g.ID == "consumer-retail" {
+			t.Fatal("a watchlist of three noise articles was given a section")
+		}
+	}
+	if len(quiet) != 1 || quiet[0] != "Consumer & Retail" {
+		t.Errorf("quiet = %v, want Consumer & Retail named as quiet", quiet)
+	}
+}
+
+// The cap counts what is left after the noise is taken out, so a 2 can never
+// hold a place a real story needed.
+func TestTheSectionCapIsFilledAfterTheNoiseIsRemoved(t *testing.T) {
+	base := testTime().Add(-6 * time.Hour)
+	var articles []model.Article
+	for i := range 5 {
+		articles = append(articles, model.Article{
+			ID: fmt.Sprintf("noise%d", i), Title: fmt.Sprintf("Noise %d", i),
+			Published: base, GroupIDs: []string{"semis-ai"}, Rating: 2,
+		})
+	}
+	for i := range MaxSectionArticles {
+		articles = append(articles, model.Article{
+			ID: fmt.Sprintf("real%d", i), Title: fmt.Sprintf("Real %d", i),
+			Published: base, GroupIDs: []string{"semis-ai"}, Rating: 4,
+		})
+	}
+
+	got := sectionArticles(articles, "semis-ai")
+	if len(got) != MaxSectionArticles {
+		t.Fatalf("section has %d articles, want %d", len(got), MaxSectionArticles)
+	}
+	for _, a := range got {
+		if a.Rating < MinSectionRating {
+			t.Errorf("%q is rated %d and took a place in the section", a.Title, a.Rating)
+		}
+	}
+}
+
+// The sources under a section are meant to be what it was written from, so a
+// capped section may not list articles the model never saw.
+func TestSectionSourcesAreOnlyWhatTheModelWasShown(t *testing.T) {
+	base := testTime().Add(-6 * time.Hour)
+	articles := make([]model.Article, 0, MaxSectionArticles+4)
+	for i := range cap(articles) {
+		articles = append(articles, model.Article{
+			ID: fmt.Sprintf("s%d", i), Title: fmt.Sprintf("Chip story %d", i),
+			SourceID: "cnbc", SourceName: "CNBC", Published: base,
+			GroupIDs: []string{"semis-ai"}, Rating: 5,
+		})
+	}
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips."}
+	g := &Generator{Completer: fake, Now: testTime}
+
+	rep, err := g.Generate(context.Background(), articles, reportGroups())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(rep.Sections) != 1 || len(rep.Sections[0].Articles) != MaxSectionArticles {
+		t.Fatalf("section articles = %d, want %d", len(rep.Sections[0].Articles), MaxSectionArticles)
+	}
+}
+
 // The reader asked not to be handed trade shorthand: the brief has to explain
 // its terms rather than assume them.
 func TestSystemPromptDemandsPlainLanguage(t *testing.T) {

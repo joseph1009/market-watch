@@ -92,7 +92,10 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 			GroupID:   grp.ID,
 			GroupName: grp.Name,
 			Body:      body,
-			Articles:  articlesInGroup(articles, grp.ID),
+			// The same set the prompt showed, capped included: the rendered
+			// sources are meant to be what the section was written from, and
+			// listing articles the model never saw would misstate that.
+			Articles: sectionArticles(articles, grp.ID),
 		})
 	}
 
@@ -103,7 +106,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 
 	// The same set the prompt offered as general market news, so the rendered
 	// sources can show everything the overview had to work with.
-	rep.General = uncovered(articles, active)
+	rep.General = generalArticles(articles, active)
 
 	// The same order newNumbering used, so citation [n] resolves to the article
 	// the model was looking at.

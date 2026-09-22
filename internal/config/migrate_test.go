@@ -173,3 +173,84 @@ func TestMigrationFollowsMarketWatchToItsNewHost(t *testing.T) {
 		t.Errorf("SchemaVersion = %d, want %d", p.SchemaVersion, CurrentSchemaVersion)
 	}
 }
+
+// Tickers say which companies a watchlist follows and nothing about the sector
+// around them. The sentence is what the sorting model places articles against,
+// so an existing install has to get it too.
+func TestMigrationDescribesEachWatchlistsSector(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 3,
+		Groups: []model.Group{
+			{ID: "energy", Name: "Energy"},
+			{ID: "mine", Name: "My own watchlist", Scope: "Only what I said."},
+		},
+	}
+
+	p.Migrate()
+
+	if got := p.group("energy").Scope; got == "" || !strings.Contains(got, "refining") {
+		t.Errorf("energy scope = %q, want the sector described", got)
+	}
+	if got := p.group("mine").Scope; got != "Only what I said." {
+		t.Errorf("a hand-written scope was overwritten: %q", got)
+	}
+}
+
+// Every watchlist a fresh install ships with has to carry one, since a
+// watchlist without a sentence falls back to matching example words.
+func TestEveryDefaultWatchlistDescribesItsSector(t *testing.T) {
+	for _, g := range DefaultPrefs().Groups {
+		if g.Scope == "" {
+			t.Errorf("%s has no scope sentence", g.ID)
+		}
+	}
+}
+
+// Forty filings a day, none of them ever cited. Turning it off in the defaults
+// does nothing for an install that already stored it.
+func TestMigrationStopsTheFilingFirehose(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 3,
+		Sources: []model.Source{
+			{ID: "sec-8k", Enabled: true},
+			{ID: "sec-press", Enabled: true},
+		},
+	}
+
+	p.Migrate()
+
+	if p.Sources[0].Enabled {
+		t.Error("sec-8k is still enabled")
+	}
+	if !p.Sources[1].Enabled {
+		t.Error("the targeted SEC feed was turned off with it")
+	}
+}
+
+// The three collisions the first sector brief turned up. The fix has to reach an
+// install that already stored them, and must take only those terms.
+func TestMigrationDropsTermsThatMatchedOrdinaryWords(t *testing.T) {
+	p := &Prefs{
+		SchemaVersion: 4,
+		Groups: []model.Group{
+			{ID: "consumer-retail", Tickers: []string{"TGT"}, Names: []string{"Walmart", "Target"}},
+			{ID: "industrials-defense", Tickers: []string{"UPS"}, Names: []string{"FedEx", "UPS"}},
+			{ID: "financials", Tickers: []string{"JPM", "MS"}, Names: []string{"Morgan Stanley"}},
+		},
+	}
+
+	p.Migrate()
+
+	if g := p.group("consumer-retail"); contains(g.Names, "Target") || !contains(g.Tickers, "TGT") {
+		t.Errorf("consumer-retail = %v / %v, want the name gone and the ticker kept", g.Names, g.Tickers)
+	}
+	if g := p.group("industrials-defense"); contains(g.Names, "UPS") || !contains(g.Tickers, "UPS") {
+		t.Errorf("industrials-defense = %v / %v, want the name gone and the ticker kept", g.Names, g.Tickers)
+	}
+	if g := p.group("financials"); contains(g.Tickers, "MS") || !contains(g.Names, "Morgan Stanley") {
+		t.Errorf("financials = %v / %v, want the ticker gone and the name kept", g.Tickers, g.Names)
+	}
+	if !contains(p.group("consumer-retail").Names, "Walmart") || !contains(p.group("financials").Tickers, "JPM") {
+		t.Error("the migration removed more than the three terms")
+	}
+}

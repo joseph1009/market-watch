@@ -34,11 +34,55 @@ var systemPrompt = prompts.Get("brief.system")
 // section at all.
 const MinSectionArticles = 3
 
+// MaxSectionArticles is how many articles one section is written from.
+//
+// The other end of the same question. Sections are written in three to six
+// blocks whatever they are handed, so the articles past the first couple of
+// dozen are read, paid for and discarded: one night's semiconductor section
+// was given fifty-three and used five. Articles arrive ranked, so the cut
+// falls on the weakest claim in the section, and the cost of being wrong is
+// that a story is left out of a sector that already has twenty-five better
+// ones.
+const MaxSectionArticles = 25
+
+// MinGeneralRating is the lowest rating an article needs to be offered as
+// general market news.
+//
+// The general block is everything no section claimed, and it is the largest
+// thing in the prompt: on the night it was measured, 216 articles and over
+// half the tokens, with not one of the brief's 113 citations drawn from it.
+// It exists so a story outside every watchlist can still reach the overview,
+// which is worth keeping -- but that story is never a 2. Unrated articles
+// stay: with sorting off, or after a failed batch, a rating of nothing means
+// nothing was judged, not that it was judged unimportant.
+const MinGeneralRating = 4
+
+// MinSectionRating is the lowest rating an article needs to be written about in
+// a section.
+//
+// It only ever turns away keyword matches: an article placed by judgment is
+// rated 4 or more before it is placed at all. Until this, a keyword match was
+// in whatever its rating, on the grounds that the reader had named the subject.
+// The first brief read article by article showed what that let in -- a third of
+// the keyword matches were rated 1 or 2, and every one was noise: board
+// appointments, product features, listicles, and above all broker notes that
+// name a bank and are about something else. "Morgan Stanley sees Shell hitting
+// new highs" matched Financials; the reader named Morgan Stanley to follow
+// Morgan Stanley, not its analysts' view of an oil company.
+//
+// Three rather than four, so a named company keeps the benefit of the doubt
+// that judgment does not get. Unrated articles stay, as in the general block.
+const MinSectionRating = 3
+
 // splitByCoverage divides watchlists into those with enough news to be worth a
 // section and those to be named as quiet.
+//
+// It counts what a section would be written from, not what matched: a sector
+// whose only news was three board appointments is quiet, and saying so is
+// better than a section padded out of them.
 func splitByCoverage(articles []model.Article, groups []model.Group, minimum int) (active []model.Group, quiet []string) {
 	for _, g := range groups {
-		if len(articlesInGroup(articles, g.ID)) >= minimum {
+		if len(worthWriting(articles, g.ID)) >= minimum {
 			active = append(active, g)
 			continue
 		}
@@ -55,12 +99,27 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 		display = time.UTC
 	}
 
+	// Numbered over every article kept, not just the ones written out below,
+	// so a citation number means the same thing whatever the caps do. The
+	// numbers the prompt shows are therefore not contiguous, which costs
+	// nothing: they are identifiers, not a count.
 	nums := newNumbering(articles)
+
+	// Chosen before anything is written, so the header can say how much the
+	// model is actually looking at.
+	shown := make([]model.Article, 0, len(articles))
+	sections := make([][]model.Article, len(groups))
+	for i, g := range groups {
+		sections[i] = sectionArticles(articles, g.ID)
+		shown = append(shown, sections[i]...)
+	}
+	general := generalArticles(articles, groups)
+	shown = append(shown, general...)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Date: %s\n", now.In(display).Format("Monday, 2 January 2006"))
 	fmt.Fprintf(&b, "Articles: %d from %d sources, each numbered for citation\n\n",
-		len(articles), countSources(articles))
+		len(shown), countSources(shown))
 
 	// Market levels come first and are labelled as levels, not as news. The
 	// articles say what people wrote; this says where things actually are, and
@@ -87,8 +146,8 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 		b.WriteString("\n")
 	}
 
-	for _, g := range groups {
-		matched := articlesInGroup(articles, g.ID)
+	for i, g := range groups {
+		matched := sections[i]
 		fmt.Fprintf(&b, "\n=== %s (%s) -- %d articles ===\n", g.Name, g.ID, len(matched))
 		if len(matched) == 0 {
 			b.WriteString("(no articles matched this watchlist today)\n")
@@ -97,17 +156,62 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 		writeArticles(&b, matched, display, nums)
 	}
 
-	// Everything no section claimed still informs the overview, so it is offered
-	// separately rather than dropped. That has to mean "claimed by a section
-	// being written", not "matched something": an article belonging only to a
-	// watchlist too quiet for a section would otherwise fall out of the prompt
-	// entirely, which is how a sector goes silently missing.
-	if general := uncovered(articles, groups); len(general) > 0 {
+	if len(general) > 0 {
 		fmt.Fprintf(&b, "\n=== General market news -- %d articles ===\n", len(general))
 		writeArticles(&b, general, display, nums)
 	}
 
 	return b.String()
+}
+
+// sectionArticles is what one section is written from: the articles the
+// watchlist claimed and rated well enough to write about, strongest first,
+// capped at MaxSectionArticles.
+//
+// The order is the ranking the collector already did, so the cap takes the tail
+// rather than an arbitrary slice, and it is applied after the rating so noise
+// cannot take a place a real story needed. An article cut here does not
+// reappear as general news: its sector is being written about, and offering it
+// back as uncovered would put a semiconductor story in the overview because the
+// semiconductor section was full.
+func sectionArticles(articles []model.Article, groupID string) []model.Article {
+	matched := worthWriting(articles, groupID)
+	if len(matched) > MaxSectionArticles {
+		matched = matched[:MaxSectionArticles]
+	}
+	return matched
+}
+
+// worthWriting is the watchlist's articles less the ones rated below
+// MinSectionRating. Unrated articles are kept: with sorting off, or after a
+// failed batch, no rating means nothing was judged.
+func worthWriting(articles []model.Article, groupID string) []model.Article {
+	matched := articlesInGroup(articles, groupID)
+	out := make([]model.Article, 0, len(matched))
+	for _, a := range matched {
+		if a.Rating == 0 || a.Rating >= MinSectionRating {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// generalArticles is everything no section claimed and worth the overview's
+// attention.
+//
+// Offered separately rather than dropped, because an article belonging only to
+// a watchlist too quiet for a section would otherwise fall out of the prompt
+// entirely, which is how a sector goes silently missing. "Claimed" means
+// claimed by a section being written, not merely matched.
+func generalArticles(articles []model.Article, groups []model.Group) []model.Article {
+	rest := uncovered(articles, groups)
+	out := make([]model.Article, 0, len(rest))
+	for _, a := range rest {
+		if a.Rating == 0 || a.Rating >= MinGeneralRating {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // numbering gives every article a citation number, stable across the whole

@@ -234,6 +234,61 @@ func TestTriagePromptDescribesWatchlistsAndTreatsArticlesAsData(t *testing.T) {
 	}
 }
 
+// A watchlist described as a sector catches the same story several times over.
+// Two placements keep the cross-sector link worth having; the third and fourth
+// would only have the brief tell the story again in another section.
+func TestTriagePlacesAnArticleInAtMostTwoWatchlists(t *testing.T) {
+	groups := append(testGroups(), model.Group{ID: "geo", Name: "Geopolitics & Trade"})
+	articles := []model.Article{{ID: "a", Title: "Export controls widened to chipmaking tools"}}
+	tr := &Triager{Completer: &fakeCompleter{reply: fixed("1|5|semis,geo,energy")}}
+
+	got, _, _ := tr.Triage(context.Background(), articles, groups)
+	if len(got[0].GroupIDs) != MaxPlacements {
+		t.Fatalf("groups = %v, want %d of them", got[0].GroupIDs, MaxPlacements)
+	}
+	if !got[0].InGroup("semis") || !got[0].InGroup("geo") {
+		t.Errorf("groups = %v, want the two the model put first", got[0].GroupIDs)
+	}
+}
+
+// The reader named the keywords, so their matches hold the two places.
+func TestTriageAddsNothingToAnArticleKeywordsAlreadyPlacedTwice(t *testing.T) {
+	groups := append(testGroups(), model.Group{ID: "geo", Name: "Geopolitics & Trade"})
+	articles := []model.Article{
+		{ID: "a", Title: "Exxon and Nvidia both named in the order", GroupIDs: []string{"energy", "semis"}},
+	}
+	tr := &Triager{Completer: &fakeCompleter{reply: fixed("1|5|geo")}}
+
+	got, _, _ := tr.Triage(context.Background(), articles, groups)
+	if len(got[0].GroupIDs) != 2 || !got[0].InGroup("energy") || !got[0].InGroup("semis") {
+		t.Errorf("groups = %v, want both keyword matches kept and nothing added", got[0].GroupIDs)
+	}
+}
+
+// The sector sentence is what an article is judged against, so it has to reach
+// the model, and the examples have to read as examples rather than as the list.
+func TestTriagePromptDescribesTheSectorBeforeItsExamples(t *testing.T) {
+	groups := []model.Group{{
+		ID:    "energy",
+		Name:  "Energy",
+		Scope: "Oil, gas, fuel and power, and anything that disrupts supply.",
+		Names: []string{"Exxon Mobil"},
+	}}
+	fc := &fakeCompleter{reply: fixed("1|3|-")}
+	tr := &Triager{Completer: fc}
+
+	_, _, _ = tr.Triage(context.Background(), []model.Article{{ID: "a"}}, groups)
+	system := fc.systems[0]
+
+	want := "- energy: Energy -- Oil, gas, fuel and power, and anything that disrupts supply. (for example Exxon Mobil)"
+	if !strings.Contains(system, want) {
+		t.Errorf("system prompt does not describe the sector:\nwant %q\ngot:\n%s", want, system)
+	}
+	if !strings.Contains(system, "at most two watchlists") {
+		t.Errorf("system prompt does not limit placements:\n%s", system)
+	}
+}
+
 // A newline smuggled into a headline must not read as a new numbered item.
 func TestUserPromptKeepsEachArticleOnItsOwnNumber(t *testing.T) {
 	prompt := userPrompt([]model.Article{

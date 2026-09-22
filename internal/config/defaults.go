@@ -31,7 +31,13 @@ func basePrefs() *Prefs {
 	return &Prefs{
 		Sources: []model.Source{
 			// --- Filings ----------------------------------------------------
-			{ID: "sec-8k", Name: "SEC EDGAR 8-K", Weight: 10, Enabled: true,
+			// Disabled 2026-09-21: this is every 8-K filed by every filer,
+			// about forty a day and almost all of them small companies nobody
+			// here follows. Across the briefs measured it was cited zero
+			// times, while the targeted SEC feeds below were cited repeatedly.
+			// Kept as an entry rather than deleted so /sources can bring it
+			// back if the sorting ever gets good enough to use it.
+			{ID: "sec-8k", Name: "SEC EDGAR 8-K", Weight: 10, Enabled: false,
 				URL: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=40&output=atom"},
 			{ID: "sec-press", Name: "SEC Press Releases", Weight: 9, Enabled: true,
 				URL: "https://www.sec.gov/news/pressreleases.rss"},
@@ -200,8 +206,9 @@ func basePrefs() *Prefs {
 		// meaning anything.
 		Groups: []model.Group{
 			{
-				ID:   "semis-ai",
-				Name: "Semiconductors & AI",
+				ID:    "semis-ai",
+				Name:  "Semiconductors & AI",
+				Scope: "Chips and the hardware artificial intelligence runs on: design, manufacturing, memory, equipment and packaging, data centre build-outs, and the companies that supply or buy from them.",
 				Tickers: []string{
 					"NVDA", "AMD", "AVGO", "TSM", "ASML", "MU", "INTC", "ARM",
 					"QCOM", "MRVL", "AMAT", "LRCX", "KLAC", "GFS", "SMCI", "ANET",
@@ -226,6 +233,7 @@ func basePrefs() *Prefs {
 			{
 				ID:      "big-tech",
 				Name:    "Big Tech",
+				Scope:   "The largest software and internet companies: cloud, advertising, devices, app stores and streaming, and the competition cases and regulation aimed at them.",
 				Tickers: []string{"AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX"},
 				Names: []string{
 					"Apple", "Microsoft", "Alphabet", "Google", "Amazon",
@@ -236,6 +244,7 @@ func basePrefs() *Prefs {
 			{
 				ID:      "energy",
 				Name:    "Energy",
+				Scope:   "Oil, gas, fuel and power: production, refining, pipelines and shipping, inventories and prices, the producer decisions behind them, and anything that disrupts supply.",
 				Tickers: []string{"XOM", "CVX", "COP", "EOG", "OXY", "SLB", "HAL"},
 				Names: []string{
 					"Exxon", "ExxonMobil", "Chevron", "ConocoPhillips",
@@ -248,12 +257,16 @@ func basePrefs() *Prefs {
 				},
 			},
 			{
-				ID:   "financials",
-				Name: "Financials & Banks",
+				ID:    "financials",
+				Name:  "Financials & Banks",
+				Scope: "Banks, insurers, payments and asset managers: lending and deposits, credit quality, trading and dealmaking, capital rules, and the regulators that write them.",
 				// C and V are Citigroup and Visa. They only match when written
 				// as a symbol -- "$C" or "(NYSE: C)" -- because bare single
 				// letters match C-suite and V-shaped recovery.
-				Tickers: []string{"JPM", "BAC", "GS", "MS", "WFC", "BLK", "SCHW", "V", "C"},
+				// MS is left out: it is Morgan Stanley and also the network
+				// that renamed itself MS NOW, and as a bare two-letter symbol
+				// it matched that. The name catches the bank either way.
+				Tickers: []string{"JPM", "BAC", "GS", "WFC", "BLK", "SCHW", "V", "C"},
 				Names: []string{
 					"JPMorgan", "Bank of America", "Goldman Sachs", "Morgan Stanley",
 					"Wells Fargo", "BlackRock", "Charles Schwab", "Visa", "Citigroup", "Citi",
@@ -267,6 +280,7 @@ func basePrefs() *Prefs {
 			{
 				ID:      "healthcare",
 				Name:    "Healthcare & Pharma",
+				Scope:   "Medicines, devices and care: trial results and regulatory decisions, pricing and reimbursement, insurers and providers, and the companies developing or selling treatments.",
 				Tickers: []string{"LLY", "JNJ", "UNH", "ABBV", "MRK", "PFE", "NVO", "ISRG"},
 				Names: []string{
 					"Eli Lilly", "Johnson & Johnson", "UnitedHealth", "AbbVie",
@@ -281,11 +295,15 @@ func basePrefs() *Prefs {
 			{
 				ID:      "industrials-defense",
 				Name:    "Industrials & Defense",
+				Scope:   "Things that are built and moved: machinery, aerospace, defense contracts and budgets, factory orders and production, freight and logistics, and large construction and infrastructure work.",
 				Tickers: []string{"CAT", "DE", "GE", "HON", "RTX", "LMT", "BA", "UPS", "FDX", "NOC"},
+				// "UPS" is a ticker only. As a name it matched case-blind, and
+				// a hyphen is a word boundary, so every "start-ups" and
+				// "hold-ups" in a summary was filed under Industrials.
 				Names: []string{
 					"Caterpillar", "Deere", "GE Aerospace", "Honeywell", "RTX",
 					"Raytheon", "Lockheed Martin", "Northrop Grumman", "Boeing",
-					"UPS", "FedEx",
+					"FedEx",
 				},
 				Keywords: []string{
 					"defense contract", "defense spending", "aerospace",
@@ -296,10 +314,15 @@ func basePrefs() *Prefs {
 			{
 				ID:      "consumer-retail",
 				Name:    "Consumer & Retail",
+				Scope:   "What households buy and what it costs them: retailers and restaurants, food, drink, clothing and household goods, spending, confidence and wages as a consumer signal.",
 				Tickers: []string{"WMT", "COST", "HD", "LOW", "MCD", "NKE", "SBUX", "KO", "PEP", "TGT"},
+				// Target the retailer is left to its ticker and to the sector
+				// sentence. As a name it matched every price target, revenue
+				// target and climate target in the feed: four of one night's
+				// ten Consumer & Retail articles, none of them about the shop.
 				Names: []string{
 					"Walmart", "Costco", "Home Depot", "Lowe's", "McDonald's",
-					"Nike", "Starbucks", "Coca-Cola", "PepsiCo", "Target",
+					"Nike", "Starbucks", "Coca-Cola", "PepsiCo",
 				},
 				Keywords: []string{
 					"retail sales", "consumer spending", "consumer confidence",
@@ -309,6 +332,7 @@ func basePrefs() *Prefs {
 			{
 				ID:      "autos-ev",
 				Name:    "Autos & EV",
+				Scope:   "Cars and the shift to electric ones: vehicle sales and production, batteries and their supply chain, charging, self-driving, and the tariffs and subsidies that shape them.",
 				Tickers: []string{"TSLA", "GM", "RIVN", "LCID", "F"},
 				// Tesla sits here rather than in Big Tech: it matches both, and
 				// one section reads better than the same story told twice.
@@ -321,6 +345,7 @@ func basePrefs() *Prefs {
 			{
 				ID:      "crypto",
 				Name:    "Crypto & Digital Assets",
+				Scope:   "Digital assets and the businesses around them: prices and flows, exchanges and custodians, stablecoins, listed funds that hold them, mining, and the rules being written for all of it.",
 				Tickers: []string{"COIN", "MSTR", "MARA", "RIOT"},
 				Names: []string{
 					"Coinbase", "MicroStrategy", "Marathon Digital", "Riot Platforms", "Tether",
@@ -331,8 +356,9 @@ func basePrefs() *Prefs {
 				},
 			},
 			{
-				ID:   "macro-rates",
-				Name: "Macro & Rates",
+				ID:    "macro-rates",
+				Name:  "Macro & Rates",
+				Scope: "The economy as a whole and the price of money: central bank decisions and speeches, inflation, jobs, growth and confidence data, government borrowing and bond yields, and currencies.",
 				Keywords: []string{
 					"Federal Reserve", "FOMC", "interest rate", "rate cut", "rate hike",
 					"inflation", "CPI", "PCE", "PPI", "JOLTS", "jobs report",
@@ -341,8 +367,9 @@ func basePrefs() *Prefs {
 				},
 			},
 			{
-				ID:   "geopolitics-trade",
-				Name: "Geopolitics & Trade",
+				ID:    "geopolitics-trade",
+				Name:  "Geopolitics & Trade",
+				Scope: "Politics that moves trade: tariffs, export controls and sanctions, industrial policy and subsidies, supply chains that cross borders, the relationship between the United States and China, and conflict or shipping disruption with an economic cost.",
 				// Themes only, no tickers. Listing the semiconductor names here
 				// would tag every chip earnings story as geopolitics and make
 				// this section a duplicate of Semiconductors & AI.

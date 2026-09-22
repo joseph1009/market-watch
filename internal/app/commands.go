@@ -351,6 +351,11 @@ func renderWatchlists(groups []model.Group) string {
 	b.WriteString("<b>Watchlists</b>\n")
 	for _, g := range groups {
 		fmt.Fprintf(&b, "\n<b>%s</b> <i>(%s)</i>\n", escape(g.Name), escape(g.ID))
+		// The sector sentence is what most of the placing now runs on, so it
+		// is shown above the terms rather than left to whoever opens the file.
+		if g.Scope != "" {
+			fmt.Fprintf(&b, "%s\n", escape(g.Scope))
+		}
 		if len(g.Tickers) > 0 {
 			fmt.Fprintf(&b, "%s\n", escape(strings.Join(g.Tickers, " ")))
 		}

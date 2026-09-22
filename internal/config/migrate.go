@@ -9,7 +9,7 @@ import (
 // CurrentSchemaVersion is the newest migration below. A file written by
 // DefaultPrefs is stamped with it, so a fresh install never runs migrations
 // that only exist to correct older files.
-const CurrentSchemaVersion = 3
+const CurrentSchemaVersion = 5
 
 // migration is a one-time correction to an existing preferences file.
 //
@@ -117,6 +117,51 @@ var migrations = []migration{
 					strings.Contains(s.URL, "feeds.marketwatch.com") {
 					p.Sources[i].URL = "https://feeds.content.dowjones.io/public/rss/mw_topstories"
 				}
+			}
+		},
+	},
+	{
+		version: 4,
+		name:    "describe each watchlist as a sector, and stop the 8-K firehose",
+		apply: func(p *Prefs) {
+			// Scope is the exception to the rule above about not syncing from
+			// the defaults. That rule protects lists of terms, where taking
+			// today's version would silently undo the reader's own edits. A
+			// scope is one sentence describing a sector, it has no prior
+			// value to overwrite, and if the wording improves later the newer
+			// sentence is the one an upgrading install should get.
+			for _, base := range basePrefs().Groups {
+				if g := p.group(base.ID); g != nil && g.Scope == "" {
+					g.Scope = base.Scope
+				}
+			}
+
+			// See defaults.go for why: forty filings a day, none of them ever
+			// cited. Disabled rather than removed, so it can be turned back on.
+			for i, s := range p.Sources {
+				if s.ID == "sec-8k" {
+					p.Sources[i].Enabled = false
+				}
+			}
+		},
+	},
+	{
+		version: 5,
+		name:    "drop three terms that matched ordinary words",
+		apply: func(p *Prefs) {
+			// Found by the first brief written against the sector sentences.
+			// Every article placed by judgment that night held up; every one
+			// misfiled came in on one of these. With the sector sentence doing
+			// the wide catching, a term that is also an ordinary word now
+			// costs more than it adds. See defaults.go for each.
+			if g := p.group("consumer-retail"); g != nil {
+				g.Names = removeFold(g.Names, "Target")
+			}
+			if g := p.group("industrials-defense"); g != nil {
+				g.Names = removeFold(g.Names, "UPS")
+			}
+			if g := p.group("financials"); g != nil {
+				g.Tickers = removeFold(g.Tickers, "MS")
 			}
 		},
 	},

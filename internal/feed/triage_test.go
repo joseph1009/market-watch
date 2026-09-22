@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,6 +82,54 @@ func TestCollectCountsWhatTriagePlaced(t *testing.T) {
 	}
 	if res.Rated != 2 {
 		t.Errorf("Rated = %d, want 2", res.Rated)
+	}
+}
+
+// The counts say how often judgment placed something; they cannot say whether
+// it was right. A few of them are kept so that can be read later.
+func TestCollectSamplesWhatJudgmentPlaced(t *testing.T) {
+	res := collectSample(t, 10, fakeTriager{rate: always(4), place: "macro-rates"})
+
+	if len(res.Placed) != 1 {
+		t.Fatalf("Placed = %+v, want the one article keywords missed", res.Placed)
+	}
+	got := res.Placed[0]
+	if got.Title != "Fed holds rates steady" {
+		t.Errorf("Title = %q, want the Fed story", got.Title)
+	}
+	if len(got.Groups) != 1 || got.Groups[0] != "macro-rates" {
+		t.Errorf("Groups = %v, want macro-rates", got.Groups)
+	}
+	if got.Rating != 4 {
+		t.Errorf("Rating = %d, want 4", got.Rating)
+	}
+}
+
+// A sample is for reading, so it stays short and shows the placements that
+// actually reach a section.
+func TestPlacementSamplesAreTheStrongestAndFewEnoughToRead(t *testing.T) {
+	ratings := map[string]int{}
+	articles := make([]model.Article, 0, PlacedSamples+3)
+	for i := range cap(articles) {
+		id := fmt.Sprintf("a%d", i)
+		// Ascending, so the strongest arrive last and have to be sorted up.
+		ratings[id] = 2 + i%4
+		articles = append(articles, model.Article{ID: id, Title: "Story " + id})
+	}
+
+	var res Result
+	tr := fakeTriager{rate: func(a model.Article) int { return ratings[a.ID] }, place: "energy"}
+	res.triage(context.Background(), tr, articles, nil)
+
+	if len(res.Placed) != PlacedSamples {
+		t.Fatalf("kept %d samples, want %d", len(res.Placed), PlacedSamples)
+	}
+	if res.Placed[0].Rating != 5 {
+		t.Errorf("first sample is rated %d, want the strongest at 5", res.Placed[0].Rating)
+	}
+	if res.NewlyMatched != len(articles) {
+		t.Errorf("NewlyMatched = %d, want all %d counted even though few are sampled",
+			res.NewlyMatched, len(articles))
 	}
 }
 

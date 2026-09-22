@@ -47,8 +47,10 @@ The stages are `triage` (sorting the day's articles), `brief` (writing it),
 ## Answering a relay run
 
 The rule: **the answering session never reads a large request itself.** A day's
-sorting is 40KB a batch and the brief prompt is 140KB. Read those in the main
-session and there is no room left for the work.
+sorting is 40KB a batch, and the brief prompt is the largest single request even
+after the caps in `internal/report/prompt.go` cut the general block and the
+longest sections. Read those in the main session and there is no room left for
+the work.
 
 1. Read `ledger.md`. It says which stages are waiting and how large each is.
 2. For each waiting request, spawn one subagent, told to:
