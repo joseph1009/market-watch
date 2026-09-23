@@ -110,6 +110,13 @@ type Config struct {
 	// universal, so an empty key omits the block rather than failing the run.
 	FREDAPIKey string
 
+	// TavilyAPIKey adds news found by searching to the news found in the
+	// feeds: one search per watchlist and three general ones, restricted to a
+	// list of outlets (see the search package). Empty leaves the brief to the
+	// feeds alone. Each search costs one credit; the free plan is 1,000 a
+	// month and a brief uses about fifteen.
+	TavilyAPIKey string
+
 	DataDir string
 
 	// ScheduleLocation and ReportAt together fix when the daily report fires.
@@ -167,6 +174,7 @@ func Load() (*Config, error) {
 		UserAgent:        envOr("USER_AGENT", ""),
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
+		TavilyAPIKey:     envOr("TAVILY_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 

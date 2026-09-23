@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"regexp"
+	"strconv"
+	"time"
+)
 
 // Report is one generated market brief, ready to be rendered and sent.
 type Report struct {
@@ -70,4 +74,37 @@ func (r Report) IsEmpty() bool {
 		}
 	}
 	return true
+}
+
+// citation matches the "[12]" the brief cites an article with.
+var citation = regexp.MustCompile(`\[(\d{1,4})\]`)
+
+// Referenced returns the articles the prose actually cites, each once, in the
+// order they were numbered.
+//
+// Cited is everything the model was offered, most of which it leaves alone.
+// What it chose to cite is the measure of which sources earn their place: a
+// source whose stories are fetched every day and never cited is costing
+// tokens and giving nothing.
+func (r Report) Referenced() []Article {
+	used := make(map[int]bool)
+	scan := func(text string) {
+		for _, m := range citation.FindAllStringSubmatch(text, -1) {
+			if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 && n <= len(r.Cited) {
+				used[n] = true
+			}
+		}
+	}
+	scan(r.Overview)
+	for _, s := range r.Sections {
+		scan(s.Body)
+	}
+
+	var out []Article
+	for i, a := range r.Cited {
+		if used[i+1] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

@@ -56,6 +56,24 @@ type Run struct {
 
 	NewNames int      `json:"new_names"`
 	Failed   []string `json:"failed_sources,omitempty"`
+
+	// What news search contributed, all zero when it is off. Searched is how
+	// many articles the searches returned and SearchCredits what they cost.
+	// SearchOnly is how many kept stories no feed carried, and Cited how many
+	// stories the brief cited, of which CitedSearchOnly came from search alone.
+	// MissedBySearch counts the cited stories no search found, by the source
+	// that carried them.
+	//
+	// Together these answer whether search can replace the media feeds. If
+	// what search misses is only ever government releases and company
+	// newsrooms, which it was never meant to find, the media feeds can go; if
+	// CNBC or the FT keep appearing in it, they cannot yet.
+	Searched        int            `json:"searched,omitempty"`
+	SearchCredits   int            `json:"search_credits,omitempty"`
+	SearchOnly      int            `json:"search_only,omitempty"`
+	Cited           int            `json:"cited,omitempty"`
+	CitedSearchOnly int            `json:"cited_search_only,omitempty"`
+	MissedBySearch  map[string]int `json:"missed_by_search,omitempty"`
 }
 
 // Runs is the record of recent briefs.
@@ -153,6 +171,8 @@ func (r *Runs) Summary(display *time.Location) string {
 		b.WriteString("<b>Nothing important lost to the cap</b>\nMAX_ARTICLES is high enough.\n\n")
 	}
 
+	b.WriteString(r.searchSummary())
+
 	// A source that fails every run has moved or died, and is worth removing;
 	// one that fails occasionally is just an outage.
 	var persistent []string
@@ -167,6 +187,67 @@ func (r *Runs) Summary(display *time.Location) string {
 			strings.Join(persistent, "\n"))
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// missedShown is how many sources the search block names. The long tail is one
+// story each and says nothing about which feeds matter.
+const missedShown = 8
+
+// searchSummary is the side-by-side of search and feeds, over the briefs that
+// searched. Empty until one has.
+func (r *Runs) searchSummary() string {
+	var (
+		n, found, credits, only, cited, citedOnly int
+		missed                                    = map[string]int{}
+	)
+	for _, run := range r.runs {
+		if run.Searched == 0 {
+			continue
+		}
+		n++
+		found += run.Searched
+		credits += run.SearchCredits
+		only += run.SearchOnly
+		cited += run.Cited
+		citedOnly += run.CitedSearchOnly
+		for source, times := range run.MissedBySearch {
+			missed[source] += times
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "<b>News search, over %d brief(s)</b>\n", n)
+	fmt.Fprintf(&b, "%d articles found per brief, for %d credits\n", found/n, credits/n)
+	fmt.Fprintf(&b, "%d kept stories per brief that no feed carried\n", only/n)
+	fmt.Fprintf(&b, "%d of %d cited stories came from search alone\n", citedOnly, cited)
+
+	// Most-missed first: the top of this list is what the feeds give that
+	// search does not, and so what would be lost by turning them off.
+	sources := make([]string, 0, len(missed))
+	for s := range missed {
+		sources = append(sources, s)
+	}
+	sort.Slice(sources, func(i, j int) bool {
+		if missed[sources[i]] != missed[sources[j]] {
+			return missed[sources[i]] > missed[sources[j]]
+		}
+		return sources[i] < sources[j]
+	})
+	if len(sources) > 0 {
+		if len(sources) > missedShown {
+			sources = sources[:missedShown]
+		}
+		lines := make([]string, len(sources))
+		for i, s := range sources {
+			lines[i] = fmt.Sprintf("%s %d", s, missed[s])
+		}
+		fmt.Fprintf(&b, "Cited stories search did not find, by source:\n%s\n", strings.Join(lines, ", "))
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
 func (r *Runs) save() error {

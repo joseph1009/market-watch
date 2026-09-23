@@ -1,6 +1,7 @@
 package feed
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -494,5 +495,36 @@ func TestMatchStillFindsOrdinaryTickersUnmarked(t *testing.T) {
 	got := Match([]model.Article{{Title: "NVDA beats on data center revenue"}}, testGroups())
 	if len(got[0].Tickers) != 1 {
 		t.Errorf("Tickers = %v, want NVDA still matched bare", got[0].Tickers)
+	}
+}
+
+// Dedupe keeps one copy of a story, but the record of every route it came by
+// survives in Also: the only way to tell afterwards whether a search found what
+// a feed found.
+func TestDedupeRemembersEverySourceThatCarriedTheStory(t *testing.T) {
+	base := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	url := "https://cnbc.com/oil"
+	articles := []model.Article{
+		// The same address from a feed and a search: folded by URL.
+		{ID: model.ArticleID(url), Title: "Brent crude tops $100 a barrel as US-Iran tensions escalate",
+			SourceID: "aggregator", Published: base},
+		{ID: model.ArticleID(url + "?utm=x"), Title: "Brent crude tops $100 a barrel as US-Iran tensions escalate",
+			SourceID: "web:cnbc.com", Published: base},
+		// Another outlet's version: folded by headline, and heavier, so it
+		// takes over the cluster and must inherit what was folded before it.
+		{ID: "other", Title: "Brent crude tops $100 per barrel amid escalating US-Iran tensions",
+			SourceID: "cnbc", Published: base.Add(time.Hour)},
+	}
+
+	got := Dedupe(articles, testSources())
+	if len(got) != 1 {
+		t.Fatalf("got %d articles, want 1", len(got))
+	}
+	if got[0].SourceID != "cnbc" {
+		t.Fatalf("survivor from %q, want cnbc", got[0].SourceID)
+	}
+	carriers := strings.Join(got[0].Carriers(), ",")
+	if carriers != "cnbc,aggregator,web:cnbc.com" && carriers != "cnbc,web:cnbc.com,aggregator" {
+		t.Errorf("Carriers = %s, want cnbc and both folded copies", carriers)
 	}
 }

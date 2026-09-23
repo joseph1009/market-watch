@@ -360,13 +360,19 @@ func clusterByTitle(articles []model.Article, weights map[string]int, threshold 
 // unioned because outlets word headlines differently -- one may name the ticker
 // where another only names the company -- and the story qualifies if any of
 // them matched. The earliest publication wins as the closest thing to when the
-// story broke.
+// story broke. The discarded copy's source is remembered in Also, so the kept
+// one still says every route the story came by.
 func merge(keep, drop model.Article) model.Article {
 	for _, t := range drop.Tickers {
 		keep.Tickers = appendUnique(keep.Tickers, t)
 	}
 	for _, g := range drop.GroupIDs {
 		keep.GroupIDs = appendUnique(keep.GroupIDs, g)
+	}
+	for _, s := range drop.Carriers() {
+		if s != keep.SourceID {
+			keep.Also = appendUnique(keep.Also, s)
+		}
 	}
 	if !drop.Published.IsZero() && drop.Published.Before(keep.Published) {
 		keep.Published = drop.Published

@@ -24,6 +24,7 @@ Rules:
 - Prefer what changed and why it matters over a list of headlines. Group related stories into a single thread rather than repeating each one.
 - If the articles genuinely do not support a claim, leave it out. A short section is fine; an invented one is not.
 - Where sources disagree or a story is only a report or rumour, say so plainly.
+- The reader lives in Singapore. On a crowded day, Singapore's own news -- its economic data, the Monetary Authority of Singapore, companies listed on the Singapore Exchange, deals involving Singapore companies -- keeps its place ahead of foreign stories of similar weight.
 - No preamble, no sign-off, no "here is your brief". Start with the substance.
 - Cite your source. Every factual claim ends with the number of the article it came from, in square brackets before the full stop: "Oracle said cloud revenue doubled [12]." Where several outlets carried it, cite the ones you used: "[12][15]". Only the numbers in the list exist -- never invent one, and never cite an article you did not use for that claim.
 - An article marked as already reported was in an earlier brief. The reader has read it. Leave it out unless something has moved since, and then write the development rather than the story.

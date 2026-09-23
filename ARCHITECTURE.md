@@ -10,8 +10,9 @@ This is the map. [RUNBOOK.md](RUNBOOK.md) is how to operate the thing;
 
 ## The one-paragraph version
 
-The service wakes on a schedule, pulls about forty news feeds and the SEC's
-recent filings, throws away what is stale or duplicated, has a small model rate
+The service wakes on a schedule, pulls about forty news feeds, runs about
+fifteen news searches and reads the SEC's recent filings, throws away what is
+stale or duplicated, has a small model rate
 and file every article, has a large model write a brief from what survived,
 renders that into Telegram messages and sends them to one chat. Then it posts
 the same brief to a channel for other readers, and finally — for the owner
@@ -33,6 +34,7 @@ headless Claude Code process, and the answer written beside it.
 | [internal/model](internal/model/) | The plain data everything else passes around. Depends on nothing |
 | [internal/feed](internal/feed/) | Fetching RSS, parsing it, deduplicating, matching to watchlists, ranking |
 | [internal/sec](internal/sec/) | EDGAR: recent filings as articles, and the annual report for `/analyse` |
+| [internal/search](internal/search/) | Tavily: news found by searching, one search per watchlist, as articles |
 | [internal/triage](internal/triage/) | The small model that rates and files every article |
 | [internal/report](internal/report/) | Building the brief's prompt and parsing the brief back out |
 | [internal/discover](internal/discover/) | "New names in the news", and checking every ticker against an exchange |
@@ -58,10 +60,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](internal/app/app.go#L503) recomputes the next run every time
+[`RunScheduler`](internal/app/app.go#L518) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 20:30 US
 Eastern across a daylight-saving change. When the timer fires it calls
-[`Publish`](internal/app/app.go#L259) → [`brief(ctx, share: true)`](internal/app/app.go#L266).
+[`Publish`](internal/app/app.go#L268) → [`brief(ctx, share: true)`](internal/app/app.go#L275).
 
 `brief` does three things before any work starts:
 
@@ -70,7 +72,7 @@ Eastern across a daylight-saving change. When the timer fires it calls
 - calls [`Relay.Begin`](internal/relay/relay.go#L91), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](internal/app/app.go#L308), which is the pipeline.
+- then calls [`sendReport`](internal/app/app.go#L317), which is the pipeline.
 
 ### 2. Gathering
 
@@ -81,6 +83,19 @@ ticker up in EDGAR's ticker index, reads its recent submissions, keeps only the
 8-K item codes that matter ([`materialCodes`](internal/sec/sec.go#L252)), and
 turns each into an `model.Article` via [`Filing.article`](internal/sec/sec.go#L160).
 
+[`collectSearch`](internal/app/search.go#L26) runs next, for the same reason.
+It builds the searches with [`search.Queries`](internal/search/queries.go#L51)
+— three general ones (markets, the economy, Asia), then one per watchlist,
+worded from the watchlist's sector sentence — and runs them through
+[`search.Client.Collect`](internal/search/search.go#L93). Each is a Tavily news
+search restricted to the publications in
+[`search.Outlets`](internal/search/outlets.go#L44), reaching back to the
+previous brief ([`searchSince`](internal/app/search.go#L56)), so Monday's
+covers the weekend. Every result becomes an article whose source id is
+`web:` plus the outlet's domain — `web:reuters.com` — and which ranks with that
+outlet's weight. Search is an addition, like the filings: without a key, or on
+a day Tavily is down, the brief comes from the feeds alone.
+
 Then [`feed.Collect`](internal/feed/collect.go#L109) — the heart of the
 gathering — runs this sequence:
 
@@ -88,13 +103,15 @@ gathering — runs this sequence:
    concurrently. Each response goes through [`feed.Parse`](internal/feed/parse.go#L37),
    which handles RSS and Atom, bad charsets, HTML in summaries and a dozen date
    formats. A source that fails becomes a `SourceError` and does not stop the run.
-2. The filings are appended.
+2. The filings and search results are appended.
 3. [`DropStale`](internal/feed/collect.go#L220) removes anything older than a week.
 4. [`Dedupe`](internal/feed/collect.go#L243) removes the same story twice: first
    by canonical URL, then by title similarity using
    [`similar.go`](internal/feed/similar.go)'s token overlap, keeping whichever
-   copy came from the better-weighted source.
-5. [`Match`](internal/feed/collect.go#L388) tags each article with the watchlists
+   copy came from the better-weighted source. The kept copy remembers the
+   sources of the copies folded into it (`Article.Also`), which is how the run
+   record can tell a story only search found from one the feeds had too.
+5. [`Match`](internal/feed/collect.go#L394) tags each article with the watchlists
    whose tickers, names or keywords it mentions.
 6. [`Result.triage`](internal/feed/collect.go#L162) hands everything to
    [`triage.Triager.Triage`](internal/triage/triage.go#L90), which sends the
@@ -102,7 +119,7 @@ gathering — runs this sequence:
    rating of 1–5 and up to two watchlist placements for each. Articles rated 1
    that no watchlist claims are dropped here. A triage failure is logged and the
    run continues on keyword matches alone.
-7. [`Limit`](internal/feed/collect.go#L584) ranks by [`score`](internal/feed/collect.go#L535)
+7. [`Limit`](internal/feed/collect.go#L590) ranks by [`score`](internal/feed/collect.go#L541)
    — rating, watchlist match, source weight, recency — and cuts to `MAX_ARTICLES`.
 
 ### 3. Context, not content
@@ -177,8 +194,14 @@ are recorded in prefs so the next run can delete them if `REPLACE_PREVIOUS` is o
 
 Afterwards: [`history.Store.Record`](internal/history/history.go#L89) marks what
 this brief covered — only after delivery, because a brief that never arrived has
-not covered anything — and [`history.Runs.Add`](internal/history/runs.go#L86)
-records what the run cost and did, for `/stats`.
+not covered anything — and [`history.Runs.Add`](internal/history/runs.go#L104)
+records what the run cost and did, for `/stats`. When search is on,
+[`recordSearch`](internal/app/search.go#L80) adds what it contributed: how many
+kept stories no feed carried, how many of the brief's citations came from
+search alone, and — by source — the cited stories no search found. The
+citations are read back out of the prose by
+[`Report.Referenced`](internal/model/report.go#L89). Those numbers are what
+decides whether search can take over from the media feeds.
 
 ### 7. The channel
 
@@ -215,7 +238,7 @@ commands from the owner's chat alone.
 [`main`](cmd/market-watch/main.go#L27) parses four flags — `--once`, `--share`,
 `--check`, `--clear` — and calls [`run`](cmd/market-watch/main.go#L49), which:
 
-- [`config.Load`](internal/config/config.go#L155) reads the environment (and
+- [`config.Load`](internal/config/config.go#L162) reads the environment (and
   `.env` via [`LoadDotEnv`](internal/config/dotenv.go#L22)), reporting every
   missing variable at once rather than one per run;
 - [`prompts.Load`](internal/prompts/prompts.go#L61) checks the prompts file
@@ -224,12 +247,16 @@ commands from the owner's chat alone.
 - wraps the log handler in [`logging.New`](internal/logging/scrub.go#L35) so
   every line passes through the scrubber. This exists because `net/http` puts
   the request URL into connection errors, and the bot token lives in that URL;
-- [`app.New`](internal/app/app.go#L113) builds the service, loading prefs from
+- [`app.New`](internal/app/app.go#L118) builds the service, loading prefs from
   the data volume and seeding them on first run;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
 `--check` runs [`runCheck`](cmd/market-watch/main.go#L149): Telegram, the
-channel, the feeds, the schedule and Claude Code, each reported separately. This
+channel, the feeds, the search key, the schedule and Claude Code, each reported
+separately. The search key is proved with
+[`search.Client.Usage`](internal/search/search.go#L279), which costs nothing; a
+test search would spend a credit. Tavily's count of credits used runs late, so
+the run record keeps its own, from each search's reply. This
 is what the deploy script runs on the machine afterwards.
 
 ### The bot loop
@@ -364,6 +391,14 @@ reads the benchmark's price at the time; `handleScorecard` answers `/scorecard`;
 guarding against a double post; `shareBrief` is what the scheduler calls;
 `handleShare` is the command.
 
+**[search.go](internal/app/search.go)** — news search beside the feeds.
+`collectSearch` runs the searches under a two-minute budget and logs what they
+found and cost; `searchSince` is where they start — the previous brief, at
+least a day and at most a week back; `recordSearch` writes the comparison with
+the feeds into the run record, using `onlySearch` and `anySearch` to sort each
+story by who carried it. `searchFailure` is the one id a failed round of
+searches is recorded under.
+
 **[filings.go](internal/app/filings.go)** — SEC filings and FRED.
 `collectFilings` gathers filings as articles; `watchedTickers` is every symbol
 across every watchlist; `SECSourceEntry` gives filings a source entry so they can
@@ -397,10 +432,13 @@ Plain data, no behaviour to speak of, imported by everything.
 
 **[article.go](internal/model/article.go)** — `Article`, plus `ArticleID` and
 `CanonicalURL`, which strip tracking parameters so the same story from two
-places deduplicates.
+places deduplicates. `Also` holds the sources dedupe folded into an article,
+and `Carriers` lists every source a story arrived from.
 **[group.go](internal/model/group.go)** — `Group`, a watchlist: tickers, names,
 keywords and a sentence of scope.
 **[report.go](internal/model/report.go)** — `Report`, `Section`, `Usage`.
+`Referenced` returns the articles the prose actually cites, as opposed to
+`Cited`, which is everything the model was offered.
 **[candidate.go](internal/model/candidate.go)** — `Candidate`, a new name in the
 news, and `Symbol`, which writes it as `700.HK` or `NVDA`.
 **[idea.go](internal/model/idea.go)** — `Idea` and the verdict constants.
@@ -421,11 +459,13 @@ feed failed without failing the run.
 file is defensive: `looksLikeHTML` catches a feed that has become a web page,
 `stripComments` and `charsetReader` handle malformed XML and Latin-1,
 `parseTime` tries a dozen date formats, `stripHTML` and `unescape` clean the
-summaries.
+summaries. `Summarize` is exported so search snippets are cleaned and cut to
+the same 400 characters as feed summaries.
 
 **[collect.go](internal/feed/collect.go)** — the gathering pipeline.
 `Collect` runs it; `Result` is what it reports. `DropStale`, `Dedupe`
-(`dedupeByURL`, `dedupeByTitle`, `clusterByTitle`, `merge`, `better`), `Match`
+(`dedupeByURL`, `dedupeByTitle`, `clusterByTitle`, `merge` — which also records
+the folded copy's source in `Also` — and `better`), `Match`
 (`mentionsTicker`, `mentionsWord`), `score` and `Limit`.
 
 **[similar.go](internal/feed/similar.go)** — the title-similarity test dedup
@@ -441,6 +481,48 @@ company's submissions; `materialCodes` keeps only the 8-K items that matter;
 
 **[business.go](internal/sec/business.go)** — pulls Item 1 out of an annual
 report's HTML: `businessText`, `plainText`.
+
+### internal/search
+
+The media half of the feed list is the half that breaks: outlets move feeds,
+put them behind bot protection, or never offer one. This package asks Tavily
+for the news instead. It does not replace the government and company feeds,
+which carry the documents themselves rather than articles about them.
+
+**[search.go](internal/search/search.go)** — the Tavily client.
+`Client.Collect` runs the searches four at a time and keeps each article once
+across them; `searchOne` sends one — a `news` search, `basic` depth (one
+credit), twenty results, restricted to the outlets, over the past day or from
+the previous brief's date — and turns the results into articles. A result with
+no date is dropped, since that is a quote page or a section front rather than a
+report, and so is a dated page that is not one story (see pages.go). `Usage` reads the month's credit use for free. `statusError` turns
+Tavily's refusals into advice, including `ErrOutOfCredits` for its 432 and 433.
+`parseDate` and `cleanSnippet` handle Tavily's date format and extracted text.
+
+**[pages.go](internal/search/pages.go)** — `isStory` keeps a result only if it
+is one report. It drops section and topic fronts, quote pages and live blogs by
+their address, and the recording of a whole programme by its title, which is
+only a show's name and a date ("Post Market Wrap: September 23, 2026"). A live
+blog goes because its headline follows its latest entry, so the link stops
+leading to what the brief cited. A video clip about one story is kept: in the
+first brief written with search, three of them carried facts no article did.
+
+**[outlets.go](internal/search/outlets.go)** — `Outlets`, the publications a
+search may return, each with the name the brief shows and a weight on the feed
+list's scale; `Domains` sends them as the restriction, and `Sources` gives the
+scorer a weight for each. `IDPrefix` (`web:`) and `IsSearch` mark a source id as
+a search result. `outletFor` maps an address to its outlet; `trimOutlet` takes
+" - Reuters" off the end of a headline, which would otherwise make every
+headline from one outlet look a little alike to the dedupe.
+
+**[queries.go](internal/search/queries.go)** — `Queries` builds the round:
+`General` first, then one search per watchlist from `groupQuery`, which uses the
+sector sentence and falls back to the watchlist's names and keywords. `MaxQueries`
+caps a round at twenty, so adding watchlists cannot run up the bill.
+
+**[live_test.go](internal/search/live_test.go)** — with `SEARCH_LIVE=1`, runs the
+real searches beside the real feeds and reports what each found that the other
+did not. Spends about fifteen credits and sends nothing.
 
 ### internal/triage
 
@@ -573,7 +655,9 @@ rebuild.
 `Store.Mark` flags repeats, `Seen` counts them, `Record` writes them. Three weeks
 of retention.
 **[runs.go](internal/history/runs.go)** — `Runs.Add` records a run; `Summary`
-renders `/stats`. The last thirty are kept.
+renders `/stats`. The last thirty are kept. `searchSummary` is the news-search
+block of `/stats`: articles and credits per brief, stories only search found,
+and the cited stories it missed by source, most-missed first.
 
 ### internal/logging
 
@@ -601,13 +685,14 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 ## Configuration
 
 Everything is environment variables, read once by
-[`config.Load`](internal/config/config.go#L155). The deployed values are in
+[`config.Load`](internal/config/config.go#L162). The deployed values are in
 [fly.toml](fly.toml); the secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](scripts/fly-deploy.sh) without being printed.
 [.env.example](.env.example) documents every one.
 
 The shape of it: a missing **secret** usually disables a feature rather than
 failing the run. No `FRED_API_KEY` means no market-levels block. No
+`TAVILY_API_KEY` means no news searches — the brief comes from the feeds alone. No
 `FINNHUB_API_KEY` means no US quotes and no company news — but listings outside
 the US are still priced, because the chart source needs no key. No `USER_AGENT`
 means no SEC filings, because EDGAR answers an anonymous request with 403.
@@ -628,8 +713,8 @@ new names, closer-look companies, the analysis's related list — has been check
 against OpenFIGI first. A verification failure returns nothing rather than an
 unchecked symbol.
 
-**Order matters in `sendReport`.** Filings before feeds, so they are deduplicated
-with everything else. Prices after the articles, so a price outage costs no
+**Order matters in `sendReport`.** Filings and searches before feeds, so they are
+deduplicated with everything else. Prices after the articles, so a price outage costs no
 prose. Clearing the last brief after generating the new one, so a failed run
 does not also throw away what it failed to replace. Recording what was covered
 after delivery, not before.

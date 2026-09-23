@@ -13,6 +13,7 @@
 #   USER_AGENT               "Market Watch you@example.com"; the SEC requires it
 #   FRED_API_KEY             market levels
 #   FINNHUB_API_KEY          share prices and company news
+#   TAVILY_API_KEY           news found by searching, beside the feeds
 
 app = "joseph-market-watch"
 primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are worldwide anyway

@@ -143,9 +143,9 @@ func stageModels(cfg *config.Config) string {
 }
 
 // runCheck proves the process could do its job without spending anything: it
-// confirms the bot token, the delivery target, the feeds and that Claude Code
-// is there to answer, but never asks a model anything, which is the only part
-// that draws on the plan.
+// confirms the bot token, the delivery target, the feeds, the search key and
+// that Claude Code is there to answer, but never asks a model anything or
+// runs a search, the two parts that draw on an allowance.
 func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
@@ -186,6 +186,18 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		"sources", len(sources),
 		"failed", len(errs),
 		"articles", len(articles))
+
+	// Search is optional, so a problem with it is a warning. The usage lookup
+	// proves the key without spending a credit. Tavily's count of credits used
+	// runs late; /stats has the count from each search's own reply.
+	if service.Search.Enabled() {
+		usage, err := service.Search.Usage(ctx)
+		if err != nil {
+			log.Warn("news search unavailable; the brief will use the feeds alone", "error", err)
+		} else {
+			log.Info("search ok", "plan", usage.Plan, "credits_used", usage.Used, "credits_limit", usage.Limit)
+		}
+	}
 
 	log.Info("next brief due", "at", cfg.NextRun(time.Now()).In(cfg.DisplayLocation).Format(time.RFC1123))
 

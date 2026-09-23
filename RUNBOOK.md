@@ -97,9 +97,9 @@ LIVE_BRIEF=1 go test ./internal/app -run TestLiveBrief -v -timeout 1h
 LIVE_ANALYSIS=MU go test ./internal/app -run TestLiveAnalysis -v -timeout 1h
 ```
 
-`go run ./cmd/market-watch --check` confirms the bot, the feeds and that Claude
-Code is installed, and shows which model will answer each stage. It asks no
-model anything.
+`go run ./cmd/market-watch --check` confirms the bot, the feeds, the search key
+and that Claude Code is installed, and shows which model will answer each
+stage. It asks no model anything and spends no search credits.
 
 ## Answering a run yourself
 
@@ -230,6 +230,67 @@ closer look, so nothing reaches readers until you have read it.
 moved against the index since. BUY counts as right when it is ahead of the
 index, SELL when it is behind. The verdicts are twelve-month calls, so read the
 scorecard for a pattern over months, not for any one name.
+
+## News search
+
+With `TAVILY_API_KEY` set, each brief searches for the news as well as polling
+the feeds: three general searches (markets, the economy, Asia) and one per
+watchlist, worded from the watchlist's sector sentence, each restricted to the
+publications in `internal/search/outlets.go`. The results join the feeds before
+dedupe and are rated, ranked and cited like any other article. Their source ids
+start with `web:`, as in `web:reuters.com`.
+
+**Cost.** One credit per search, about fifteen per brief. The free plan is 1,000
+credits a month; weekday briefs use about 330, which leaves room for `/now`.
+`market-watch --check` proves the key without spending a credit, and shows
+Tavily's count of credits used, but that count runs late: on 23 September it
+still read 0 after 27 searches. `/stats` shows the credits each brief spent, as
+each search reported them.
+When the month's credits run out, the log says so and the brief carries on
+from the feeds; if it keeps happening, `/stats` lists `tavily-search` among the
+sources failing regularly.
+
+**What it is for.** The media feeds are the part of the source list that breaks,
+and several outlets worth reading (Reuters, Bloomberg, the WSJ, Nikkei Asia)
+have no feed at all. Search does not replace the government and company feeds:
+those carry the release itself, and search only finds articles about it, later,
+if anyone wrote one.
+
+**Deciding whether it can replace the media feeds.** Both run side by side, and
+`/stats` has a "News search" block. After two weeks, read its last line,
+"Cited stories search did not find, by source":
+
+- If it names only government and company sources (`bls-*`, `fed-*`,
+  `fedreg-*`, `fda-*`, `dod-*`, `eia-*`, `sec-*`, the newsrooms), search is
+  finding everything the brief uses from the media feeds. Turn those feeds off
+  one at a time with `/sources off <id>`.
+- If media feeds (`cnbc-*`, `ft-home`, `cna-*`, `straitstimes-business` and so
+  on) keep appearing, search is missing stories the brief relies on. Keep those
+  feeds, or add their outlets to `outlets.go` if they are missing from it.
+
+The first comparison, on 23 September 2026, found the two mostly finding
+different things: of the past day's 387 stories, 120 came from search alone,
+246 from the feeds alone and 21 from both. Search found 8 of CNBC's 30 stories
+and none of the Guardian's 27. That count includes stories the brief never
+uses, which is why the decision rests on citations over a fortnight, not on
+one day's overlap.
+
+The first brief written with search, on 24 September 2026, was set beside one
+written from the feeds alone, from the same news. With search it cited 109
+stories against 90, 41 of them found by search alone, and it caught a wrong
+figure the feeds had carried: Disney+ at $27.50 a month, where Bloomberg and
+Deadline both said $21.49. Two things were fixed after it. Four of those 41 were
+pages rather than stories (a section front, a live blog, two programme
+recordings), which search now skips. And with more to choose from, the brief
+dropped Singapore's inflation figure, which both feed-only briefs had carried,
+so its instructions now say Singapore's own news keeps its place. That news
+comes from the Straits Times and CNA feeds, not from search, so keep those
+feeds even if the rest of the media feeds go.
+
+To run that comparison again locally, spending about fifteen credits and
+sending nothing:
+
+    SEARCH_LIVE=1 go test ./internal/search -run TestLive -v -timeout 5m
 
 ## A channel for other readers
 

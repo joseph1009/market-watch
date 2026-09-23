@@ -26,6 +26,12 @@ type Article struct {
 	// outlets covering something is itself evidence that it mattered.
 	Corroborations int `json:"corroborations,omitempty"`
 
+	// Also are the other sources whose copies of this story dedupe folded into
+	// it. Ranking does not use them -- Corroborations does that -- but they
+	// are the only record, after dedupe, of every route a story arrived by,
+	// which is what says whether search found what the feeds found.
+	Also []string `json:"also,omitempty"`
+
 	// Covered is when an earlier brief first used this article. Zero means the
 	// reader has not seen it: stories stay eligible for a week, so without this
 	// Monday can report Friday's news exactly as Friday did.
@@ -35,6 +41,12 @@ type Article struct {
 	// to 5 (moves markets). Zero means unrated: triage was off, or the batch
 	// carrying this article failed.
 	Rating int `json:"rating,omitempty"`
+}
+
+// Carriers are every source the story arrived from: its own, then the ones
+// dedupe folded into it.
+func (a Article) Carriers() []string {
+	return append([]string{a.SourceID}, a.Also...)
 }
 
 // InGroup reports whether the article was matched to the given watchlist group.

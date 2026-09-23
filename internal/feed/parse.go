@@ -146,7 +146,7 @@ func (doc rawFeed) items() []Item {
 		items = append(items, Item{
 			Title:     collapseSpace(it.Title),
 			URL:       strings.TrimSpace(it.Link),
-			Summary:   summarize(firstNonEmpty(it.Description, it.Encoded)),
+			Summary:   Summarize(firstNonEmpty(it.Description, it.Encoded)),
 			Published: parseTime(firstNonEmpty(it.PubDate, it.Date, it.Updated)),
 		})
 	}
@@ -154,7 +154,7 @@ func (doc rawFeed) items() []Item {
 		items = append(items, Item{
 			Title:     collapseSpace(e.Title),
 			URL:       e.link(),
-			Summary:   summarize(firstNonEmpty(e.Summary, e.Content)),
+			Summary:   Summarize(firstNonEmpty(e.Summary, e.Content)),
 			Published: parseTime(firstNonEmpty(e.Published, e.Updated)),
 		})
 	}
@@ -254,8 +254,10 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// summarize turns a feed description into plain, bounded prose.
-func summarize(s string) string {
+// Summarize turns a feed description into plain, bounded prose. It is exported
+// for the other routes articles arrive by, so a search result's snippet reaches
+// the summarizer in the same shape and at the same length as a feed's.
+func Summarize(s string) string {
 	return truncate(stripHTML(s), maxSummaryRunes)
 }
 

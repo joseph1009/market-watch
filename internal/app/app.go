@@ -25,6 +25,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/report"
+	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
 	"github.com/joseph1009/market-watch/internal/triage"
@@ -45,6 +46,10 @@ type App struct {
 
 	// Levels reads market data. Disabled without a FRED key.
 	Levels *marketdata.Client
+
+	// Search finds news by searching rather than polling, beside the feeds.
+	// Disabled without a Tavily key.
+	Search *search.Client
 
 	// Quotes reads share prices, so the brief can say how the market answered
 	// the news. Disabled without a Finnhub key.
@@ -145,6 +150,10 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		Levels: &marketdata.Client{
 			APIKey: cfg.FREDAPIKey,
 			HTTP:   &http.Client{Timeout: 20 * time.Second},
+		},
+		Search: &search.Client{
+			APIKey: cfg.TavilyAPIKey,
+			HTTP:   &http.Client{Timeout: 30 * time.Second},
 		},
 		Quotes: &prices.Client{
 			APIKey: cfg.FinnhubAPIKey,
@@ -317,12 +326,15 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	// footing: deduped, matched and scored with everything else rather than
 	// bolted on afterwards.
 	filings := a.collectFilings(ctx, prefs)
+	// Search results join the same way, and for the same reason.
+	found := a.collectSearch(ctx, prefs)
 
+	sources := append(prefs.EnabledSources(), SECSourceEntry())
 	opts := feed.Options{
-		Sources: append(prefs.EnabledSources(), SECSourceEntry()),
+		Sources: append(sources, search.Sources()...),
 		Groups:  prefs.Groups,
 		Max:     a.Cfg.MaxArticles,
-		Extra:   filings,
+		Extra:   append(filings, found.Articles...),
 	}
 	// Assigned only when set: a nil *Triager stored in the interface would not
 	// compare equal to nil, and Collect would call through it.
@@ -487,6 +499,9 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 		run.PlacedExamples = placedExamples(collected.Placed, prefs.Groups)
 		for _, e := range collected.Errors {
 			run.Failed = append(run.Failed, e.SourceID)
+		}
+		if a.Search.Enabled() {
+			recordSearch(&run, found, collected.Articles, rep.Referenced())
 		}
 		if err := a.Runs.Add(run); err != nil {
 			a.Log.Warn("could not record the run", "error", err)

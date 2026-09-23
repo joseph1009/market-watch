@@ -6,12 +6,21 @@ you, and why it is worth doing.
 ## Waiting on you
 
 - **Push the repository.** Every commit is still local only.
+- **Deploy news search.** Built and checked locally, not yet deployed.
+  `scripts/fly-deploy.sh` now sends `TAVILY_API_KEY` from `.env` as a Fly
+  secret along with the others.
 
 ## Reliability
 
 - **Weekly source health.** A failed brief now messages you, and `/stats` names
   feeds that fail regularly, but nothing volunteers it: you have to ask. A
   weekly message would close that.
+- **Decide on the media feeds after a fortnight of search.** Search runs beside
+  the feeds, and `/stats` shows which cited stories it failed to find, by the
+  source that carried them. If that list holds only government and company
+  releases, the eighteen media feeds can be turned off, and with them the part
+  of the source list that breaks. RUNBOOK.md, "News search", says how to read
+  it.
 - **`marketwatch-top` returns HTTP 400.** One feed of 44, failing consistently.
   Worth replacing or turning off.
 

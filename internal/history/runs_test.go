@@ -118,3 +118,37 @@ func TestSummaryEscapesHeadlines(t *testing.T) {
 		t.Errorf("the headline is not readable once escaped:\n%s", got)
 	}
 }
+
+// The search block is the evidence for turning the media feeds off, so it has
+// to say what search missed and by whom, and stay out of the way until search
+// has run.
+func TestSummaryComparesSearchWithTheFeeds(t *testing.T) {
+	r := tempRuns(t)
+	day := time.Date(2026, 9, 14, 20, 30, 0, 0, time.UTC)
+
+	_ = r.Add(Run{At: day, Kept: 400})
+	if got := r.Summary(time.UTC); strings.Contains(got, "News search") {
+		t.Errorf("a record with no searches reported on search:\n%s", got)
+	}
+
+	_ = r.Add(Run{At: day.AddDate(0, 0, 1), Kept: 400, Searched: 180, SearchCredits: 15,
+		SearchOnly: 30, Cited: 60, CitedSearchOnly: 9,
+		MissedBySearch: map[string]int{"bls-cpi": 2, "cnbc-markets": 3}})
+	_ = r.Add(Run{At: day.AddDate(0, 0, 2), Kept: 400, Searched: 220, SearchCredits: 15,
+		SearchOnly: 40, Cited: 40, CitedSearchOnly: 5,
+		MissedBySearch: map[string]int{"cnbc-markets": 1, "fed-speeches": 1}})
+
+	got := r.Summary(time.UTC)
+	for _, want := range []string{
+		"News search, over 2 brief(s)",
+		"200 articles found per brief, for 15 credits",
+		"35 kept stories per brief that no feed carried",
+		"14 of 100 cited stories came from search alone",
+		// Most-missed first, ties by name.
+		"cnbc-markets 4, bls-cpi 2, fed-speeches 1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+}
