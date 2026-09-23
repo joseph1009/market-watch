@@ -185,3 +185,61 @@ func TestSummariseFlagsAnUnfinishedSession(t *testing.T) {
 		t.Error("a finished session should be comparable with the averages")
 	}
 }
+
+// A listing outside the US has no keyed quote on any free tier, so its price
+// has to come from the same history the averages do -- carrying the currency it
+// was struck in, because a Hong Kong level read as dollars is off by a factor
+// of about eight.
+func TestLatestPricesAListingFromItsHistory(t *testing.T) {
+	s := series(40, 1_000_000)
+	s.Symbol, s.Currency = "0700.HK", "HKD"
+
+	got, ok := Latest(s)
+	if !ok {
+		t.Fatal("no price from forty sessions of history")
+	}
+	if got.Symbol != "0700.HK" {
+		t.Errorf("symbol = %q, want 0700.HK", got.Symbol)
+	}
+	if got.Currency != "HKD" || got.Unit() != "HKD" {
+		t.Errorf("currency = %q, unit = %q, want HKD for both", got.Currency, got.Unit())
+	}
+	// The series rises by one a day, from 100.
+	if got.Price != 139 || got.Previous != 138 {
+		t.Errorf("price = %v, previous = %v, want 139 from 138", got.Price, got.Previous)
+	}
+	if got.Change != 1 {
+		t.Errorf("change = %v, want 1", got.Change)
+	}
+	if math.Abs(got.Percent-1.0/138*100) > 1e-9 {
+		t.Errorf("percent = %v, want the move from 138 to 139", got.Percent)
+	}
+	if got.AsOf != s.Bars[len(s.Bars)-1].Date {
+		t.Errorf("as at %v, want the last session %v", got.AsOf, s.Bars[len(s.Bars)-1].Date)
+	}
+}
+
+// A US quote says nothing about its currency because it never has to. Anything
+// printing a price still needs an answer, so the empty case is dollars.
+func TestAPriceWithoutACurrencyIsInDollars(t *testing.T) {
+	got, ok := Latest(series(40, 1_000_000))
+	if !ok {
+		t.Fatal("no price from forty sessions of history")
+	}
+	if got.Unit() != "USD" {
+		t.Errorf("unit = %q, want USD", got.Unit())
+	}
+}
+
+// One session gives a level and no move, and a move is the half of a quote the
+// brief is actually about. Better no price than a change of zero that reads as
+// a flat day.
+func TestLatestNeedsASessionToCompareAgainst(t *testing.T) {
+	s := series(1, 1_000_000)
+	if _, ok := Latest(s); ok {
+		t.Error("a single session was priced as though it had a move")
+	}
+	if _, ok := Latest(Series{}); ok {
+		t.Error("an empty history was priced")
+	}
+}

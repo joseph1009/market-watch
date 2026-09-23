@@ -314,6 +314,46 @@ func TestClaudeUsesTheModelConfiguredForAStage(t *testing.T) {
 	}
 }
 
+// Research may search the web and read pages, and nothing else: no shell, no
+// files, no connectors. Every other stage, the verdicts included, still gets no
+// tools at all.
+func TestOnlyResearchMaySearchTheWeb(t *testing.T) {
+	bin := fakeClaude(t)
+	rec := filepath.Join(t.TempDir(), "record.json")
+	t.Setenv("FAKE_CLAUDE_RECORD", rec)
+	t.Setenv("FAKE_CLAUDE_MODE", "ok")
+	r := &Relay{Root: t.TempDir(), Answer: Claude{Bin: bin}}
+
+	if _, _, err := r.Plain(Ideas).Complete(context.Background(), "s", "p"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	got := recorded(t, rec)
+	joined := strings.Join(got.Args, " ")
+	for _, want := range []string{"--tools WebSearch,WebFetch", "--allowedTools WebSearch,WebFetch", "--strict-mcp-config"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("research args are missing %q: %v", want, got.Args)
+		}
+	}
+	if strings.Contains(joined, "--disallowedTools") {
+		t.Errorf("research had every tool taken away, web search included: %v", got.Args)
+	}
+	if got.Model != "opus" {
+		t.Errorf("research model = %q, want opus", got.Model)
+	}
+	if strings.Contains(joined, "alwaysThinkingEnabled") {
+		t.Errorf("research ran with thinking off: %v", got.Args)
+	}
+
+	if _, _, err := r.Plain(Verdicts).Complete(context.Background(), "s", "p"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	got = recorded(t, rec)
+	joined = strings.Join(got.Args, " ")
+	if !strings.Contains(joined, "--disallowedTools *") || strings.Contains(joined, "WebSearch") {
+		t.Errorf("verdicts must run with no tools: %v", got.Args)
+	}
+}
+
 // TestLiveClaude asks the real Claude Code one small question per quick stage,
 // through the same answerer the service uses. It is the proof that this
 // machine can answer at all -- installed, logged in, and taking the flags --
@@ -341,6 +381,24 @@ func TestLiveClaude(t *testing.T) {
 		usage.InputTokens, usage.OutputTokens, run.Dir)
 	if !strings.HasPrefix(strings.TrimSpace(text), "1|") {
 		t.Errorf("reply is not in the requested form: %q", text)
+	}
+}
+
+// A run the plan's limit stops still calls itself a success and puts the
+// reason in the result. What the reader needs is that reason, not the word
+// "success" above it.
+func TestThePlanLimitIsReportedAsItself(t *testing.T) {
+	bin := fakeClaude(t)
+	t.Setenv("FAKE_CLAUDE_RECORD", "")
+	t.Setenv("FAKE_CLAUDE_MODE", "limit")
+
+	r := &Relay{Root: t.TempDir(), Answer: Claude{Bin: bin}}
+	_, _, err := r.Plain(Ideas).Complete(context.Background(), "s", "p")
+	if err == nil {
+		t.Fatal("a run stopped by the limit was taken for an answer")
+	}
+	if got := err.Error(); !strings.Contains(got, "session limit") || strings.Contains(got, "reported success") {
+		t.Errorf("err = %q, want the limit as the reason and no talk of success", got)
 	}
 }
 

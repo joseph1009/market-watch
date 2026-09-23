@@ -19,18 +19,25 @@ and waits for nothing. It exists to check formatting and delivery.
 
 ## The stages
 
-A brief makes three kinds of call, and an analysis makes one:
+A brief makes five kinds of call, and an analysis makes one:
 
 | Stage | What it does | Prompt | Default model | Override | Reply format |
 |---|---|---|---|---|---|
 | `triage` | Rates every article 1-5 and places it in up to two watchlists | `triage.system` | Haiku | `MODEL_TRIAGE` | `number\|rating\|watchlist ids` |
 | `brief` | Writes the brief | `brief.system` | Opus | `MODEL_BRIEF` | `## OVERVIEW` then `## SECTION: <id>` blocks |
 | `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Haiku | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
+| `ideas` | Researches companies worth a closer look, **with web search** | `ideas.system` | Opus | `MODEL_IDEAS` | `name\|ticker\|exchange\|news or connected\|article numbers\|how the news bears on it` |
+| `verdicts` | Gives each of them BUY, HOLD or SELL from the facts fetched for it | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `CASE:`, `NUMBERS:`, `RISK:` |
 | `analysis` | Writes up one company's accounts for `/analyse` | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with capitalised headings |
 
 Sorting sends the day's articles in batches of 60, two at a time
 (`RELAY_CONCURRENCY`). When a person is answering, the batches are 150 each, so
 there are fewer files to deal with.
+
+`ideas` is the only stage with tools: web search and reading pages, and
+nothing else, no shell, no files and no connectors. Every other stage runs
+with none. A subagent answering an `ideas` request by hand needs web access
+too.
 
 ## The prompts
 
@@ -169,6 +176,60 @@ messages can use it.
 `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are never passed to Claude Code,
 even when they are set. Claude Code would otherwise prefer them to the
 subscription.
+
+## Worth a closer look
+
+After each brief, a second message comes to your chat: up to six listed
+companies today's news bears on, each with a verdict.
+
+1. **Research** (`ideas`, Opus with web search) starts from the brief and its
+   new names, and picks companies of two kinds: ones the stories are about, and
+   ones they bear on without naming, such as a supplier, a customer or a rival.
+   Every ticker is checked against the exchange, and one that does not check out
+   is dropped.
+2. **Facts** are fetched for each: a year of daily prices from the chart source
+   on any of the fourteen exchanges, today's move — from the quote feed for a US
+   listing, and from the last two closes, in the local currency, for a listing
+   anywhere else — and for a company that files with the SEC, three years of
+   accounts and what its price implies. A company with no SEC filings is judged
+   on its price and trading alone, and the message says so.
+3. **Verdicts** (`verdicts`, Opus, no tools) give BUY, HOLD or SELL over twelve
+   months with a confidence, the case, the deciding figures and the main risk.
+   BUY and SELL mean better or worse than the S&P 500.
+
+The message is sent after the brief, and the brief reaches the channel before
+the research starts, so neither waits on it. It adds about five to fifteen
+minutes to a run, most of it the research. `IDEAS=false` turns it off.
+
+**It goes to the channel with the daily brief.** Not through `/share`, which
+only ever posts a brief or an analysis, and not from a brief asked for with
+`/now`: a verdict reaches the channel on the scheduled run, or on `-once
+-share`, or not at all.
+
+This was owner-only until 23 September 2026, and the reason it was is still
+the reason to be careful. Publishing buy and sell calls to other people is
+investment advice to others: in Singapore that can be regulated activity, and
+Anthropic's usage policy asks two things of AI-written advice given to others
+— that a person reviews it, and that readers are told a model wrote it.
+
+Posting automatically gives up the first. What carries the second is the note
+at the head of the channel's copy (`channelNote` in
+`internal/telegram/ideas.go`), which says a model wrote it, that nobody checked
+it, that it is often wrong, and that it is not a recommendation to act. That
+note is the whole basis on which the section is allowed out, and a test
+asserts it is there. **If you ever remove it, put the section back to owner
+only.**
+
+If you want the review back without losing the channel, the change is small:
+have `sendIdeas` deliver to the owner alone and let `/share` pass on the
+closer look, so nothing reaches readers until you have read it.
+
+**`/scorecard`** says how past verdicts have done. Every verdict is written to
+`scorecard.json` on the data volume with the price it was given at and the S&P
+500 fund's beside it. Once a verdict is a week old it is scored: how the share
+moved against the index since. BUY counts as right when it is ahead of the
+index, SELL when it is behind. The verdicts are twelve-month calls, so read the
+scorecard for a pattern over months, not for any one name.
 
 ## A channel for other readers
 

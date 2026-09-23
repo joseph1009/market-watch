@@ -52,19 +52,57 @@ const historyBudget = 25 * time.Second
 // may not be quoted under the same letters -- neither is a reason to fail an
 // analysis whose substance is the filings.
 func (a *App) tradingFor(ctx context.Context, ticker string) *model.Trading {
-	if a.Market == nil {
+	series, ok := a.seriesFor(ctx, ticker)
+	if !ok {
 		return nil
+	}
+	return a.summarise(ticker, series)
+}
+
+// marketFor reads one listing's history and returns both what the share has
+// been doing and where it last traded, from the single fetch.
+//
+// It is what gives a company outside the US a price at all: the quote feed
+// stops at the US border, while the chart source answers for Hong Kong, Tokyo
+// and London. The price that comes back is a close in the local currency, not a
+// live quote, which the quote itself records.
+func (a *App) marketFor(ctx context.Context, symbol string) (*model.Trading, *model.Quote) {
+	series, ok := a.seriesFor(ctx, symbol)
+	if !ok {
+		return nil, nil
+	}
+	trading := a.summarise(symbol, series)
+	if trading == nil {
+		// A history too short or too stale to summarise is too stale to price.
+		return nil, nil
+	}
+	quote, ok := prices.Latest(series)
+	if !ok {
+		return trading, nil
+	}
+	return trading, &quote
+}
+
+// seriesFor reads a symbol's daily history, or nothing.
+func (a *App) seriesFor(ctx context.Context, symbol string) (prices.Series, bool) {
+	if a.Market == nil {
+		return prices.Series{}, false
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, historyBudget)
 	defer cancel()
 
-	series, err := a.Market.Fetch(ctx, ticker)
+	series, err := a.Market.Fetch(ctx, symbol)
 	if err != nil {
-		a.Log.Warn("price history", "ticker", ticker, "error", err)
-		return nil
+		a.Log.Warn("price history", "ticker", symbol, "error", err)
+		return prices.Series{}, false
 	}
+	return series, true
+}
 
+// summarise turns a history into the figures the brief quotes, or nothing where
+// it describes a market that has moved on.
+func (a *App) summarise(ticker string, series prices.Series) *model.Trading {
 	trading := prices.Summarise(series, a.now())
 	if trading.Days == 0 {
 		return nil
@@ -101,35 +139,52 @@ func (a *App) addNews(ctx context.Context, snapshot *fundamentals.Snapshot) erro
 	return nil
 }
 
-// priceCandidates attaches each new name's move, where it has a US listing.
-// A company quoted elsewhere keeps its name and loses its price, which the
-// section says plainly rather than leaving a blank.
+// priceCandidates attaches each new name's move on the day, wherever it is
+// listed, which the new-names block then shows beside the ticker.
+//
+// Two sources, for the reason the closer look has two: the quote feed is live
+// but stops at the US border, and the chart source answers for the other
+// thirteen exchanges with the last close. A name that neither can price keeps
+// its name and goes without a move.
 func (a *App) priceCandidates(ctx context.Context, candidates []model.Candidate) []model.Candidate {
-	if !a.Quotes.Enabled() || len(candidates) == 0 {
+	if len(candidates) == 0 {
 		return candidates
 	}
 
+	// One budget for the lot. Prices improve the brief and must never be what
+	// delays it, and the chart source is a request per listing.
+	ctx, cancel := context.WithTimeout(ctx, quoteBudget)
+	defer cancel()
+
+	out := make([]model.Candidate, len(candidates))
+	copy(out, candidates)
+
 	var symbols []string
-	for _, c := range candidates {
+	for _, c := range out {
 		if c.Ticker != "" && (c.Exchange == "US" || c.Exchange == "") {
 			symbols = append(symbols, c.Ticker)
 		}
 	}
-	if len(symbols) == 0 {
-		return candidates
+	if a.Quotes.Enabled() && len(symbols) > 0 {
+		quotes, _ := a.Quotes.Fetch(ctx, symbols)
+		bySymbol := prices.Index(quotes)
+		for i, c := range out {
+			if q, ok := bySymbol[c.Ticker]; ok {
+				out[i].Quote = &q
+			}
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, quoteBudget)
-	defer cancel()
-
-	quotes, _ := a.Quotes.Fetch(ctx, symbols)
-	bySymbol := prices.Index(quotes)
-
-	out := make([]model.Candidate, len(candidates))
-	copy(out, candidates)
 	for i, c := range out {
-		if q, ok := bySymbol[c.Ticker]; ok {
-			out[i].Quote = &q
+		if out[i].Quote != nil || c.Exchange == "US" || c.Exchange == "" {
+			continue
+		}
+		chart := prices.ChartSymbol(c.Ticker, c.Exchange)
+		if chart == "" {
+			continue
+		}
+		if _, quote := a.marketFor(ctx, chart); quote != nil {
+			out[i].Quote = quote
 		}
 	}
 	return out

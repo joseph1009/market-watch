@@ -35,6 +35,8 @@ const (
 	Triage   = "triage"   // rating and placing the day's articles
 	Brief    = "brief"    // writing the brief
 	Names    = "names"    // spotting companies no watchlist tracks
+	Ideas    = "ideas"    // researching companies worth a closer look
+	Verdicts = "verdicts" // judging each of them
 	Analysis = "analysis" // writing up one company's accounts
 )
 

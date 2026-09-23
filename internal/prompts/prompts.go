@@ -97,6 +97,8 @@ var required = map[string][]string{
 	"brief.system":     {"## OVERVIEW", "## SECTION:"},
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
+	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
+	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CASE:", "NUMBERS:", "RISK:"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "In the business:", "In the numbers:"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }

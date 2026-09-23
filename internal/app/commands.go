@@ -26,6 +26,7 @@ const helpText = `<b>📊 Market Watch</b>
 /schedule — when the next brief is due
 /stats — what recent briefs found and did
 /share — post the latest brief or analysis to the channel
+/scorecard — how past buy, hold and sell verdicts have done
 /clear — remove the bot's earlier messages from this chat
 /help — this message
 
@@ -43,6 +44,7 @@ func BotCommands() []telegram.Command {
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "stats", Description: "What recent briefs found and did"},
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
+		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
 		{Command: "help", Description: "What I can do"},
 	}
@@ -91,6 +93,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleStats(ctx, msg)
 	case "share":
 		err = a.handleShare(ctx, msg)
+	case "scorecard":
+		err = a.handleScorecard(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
 	default:

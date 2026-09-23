@@ -1094,6 +1094,35 @@ func TestRenderNewNamesSection(t *testing.T) {
 	}
 }
 
+// The move is the point of the price: a name in the news that did nothing is a
+// different story from one that moved 9%. The level is left out on purpose --
+// it would need a currency beside it, and the percentage does not.
+func TestANewNameCarriesItsMoveOnTheDay(t *testing.T) {
+	rep := testReport()
+	rep.Candidates = []model.Candidate{
+		{Name: "Grab", Ticker: "GRAB", Exchange: "US", Why: "Bought Atome",
+			Quote: &model.Quote{Symbol: "GRAB", Price: 5.42, Percent: 9.1}},
+		{Name: "Tencent", Ticker: "700", Exchange: "HK", Why: "Raised its buyback",
+			Quote: &model.Quote{Symbol: "0700.HK", Price: 512.40, Percent: -0.8, Currency: "HKD"}},
+		{Name: "Nonesuch", Why: "Announced a takeover"},
+	}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	if !strings.Contains(out, "<code>GRAB</code> · +9.1% today") {
+		t.Errorf("a US name does not carry its move:\n%s", out)
+	}
+	if !strings.Contains(out, "<code>700.HK</code> · -0.8% today") {
+		t.Errorf("a Hong Kong name does not carry its move:\n%s", out)
+	}
+	if strings.Contains(out, "512.40") || strings.Contains(out, "5.42") {
+		t.Errorf("the block prints a price level, which has no currency beside it:\n%s", out)
+	}
+	if !strings.Contains(out, "Nonesuch") {
+		t.Errorf("a name with no price was dropped:\n%s", out)
+	}
+}
+
 // A foreign listing has to say which market, or the symbol is ambiguous.
 func TestRenderShowsTheExchangeForForeignListings(t *testing.T) {
 	rep := testReport()
@@ -1233,5 +1262,63 @@ func TestSectionHeadingsAreRecognisedNotGuessed(t *testing.T) {
 		if isSectionHeading(p) {
 			t.Errorf("isSectionHeading(%q) = true, want false", p)
 		}
+	}
+}
+
+func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
+	cited := []model.Article{{ID: "a1", Title: "Micron raises HBM outlook", URL: "https://example.com/1"}}
+	ideas := []model.Idea{
+		{Name: "Micron", Ticker: "MU", Exchange: "US", Link: "Raised its HBM outlook.", Articles: cited,
+			Quote: &model.Quote{Percent: 4.12}, Accounts: true,
+			Verdict: model.Hold, Confidence: "medium", Case: "Priced for it already [1].",
+			Numbers: "25x earnings", Risk: "Memory prices turn."},
+		{Name: "SK Hynix", Ticker: "000660", Exchange: "KS", Connected: true, Link: "The largest HBM maker & a rival.",
+			Verdict: model.Buy, Confidence: "low", Risk: "<b>not bold</b>"},
+	}
+
+	out := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{}), "\n")
+
+	for _, want := range []string{
+		"Worth a closer look",
+		"/scorecard",
+		"<b>In the news</b>",
+		"• <b>Micron</b> <code>MU</code> · +4.1% today",
+		"<b>HOLD</b> · medium confidence",
+		`Priced for it already <a href="https://example.com/1">[1]</a>.`,
+		"<i>Numbers:</i> 25x earnings",
+		"<b>Connected to today's news</b>",
+		"<code>000660.KS</code>",
+		"<b>BUY</b> · low confidence · <i>no SEC accounts behind it</i>",
+		"The largest HBM maker &amp; a rival.",
+		"&lt;b&gt;not bold&lt;/b&gt;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("closer look is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "In the news") > strings.Index(out, "Connected to today's news") {
+		t.Error("the connected companies came before the ones in the news")
+	}
+	if RenderIdeas(nil, cited, IdeasOptions{}) != nil {
+		t.Error("an empty list rendered a heading over nothing")
+	}
+
+	// The channel's copy is the same list under a different note: a reader who
+	// has never seen this before is told what wrote it and that it is not advice.
+	forChannel := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{ForChannel: true}), "\n")
+	for _, want := range []string{
+		"• <b>Micron</b>",
+		"<b>HOLD</b> · medium confidence",
+		"an AI model",
+		"nobody checking its work",
+		"not financial advice",
+		"someone licensed",
+	} {
+		if !strings.Contains(forChannel, want) {
+			t.Errorf("the channel's closer look is missing %q:\n%s", want, forChannel)
+		}
+	}
+	if strings.Contains(forChannel, "/scorecard") {
+		t.Error("the channel was told to use /scorecard, a command only the owner can send")
 	}
 }

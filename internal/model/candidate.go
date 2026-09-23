@@ -36,9 +36,10 @@ type Candidate struct {
 	Rating  int `json:"rating,omitempty"`
 	Sources int `json:"sources,omitempty"`
 
-	// Quote is what the share did on the session the brief covers, where it has
-	// a US listing. Nil elsewhere: the free price feeds are US-only, and a
-	// missing move is better than one from a different listing.
+	// Quote is what the share did on the session the brief covers: from the
+	// quote feed for a US listing, from the last two closes of the daily
+	// history for one anywhere else. Nil where neither source knows the name,
+	// and the line then carries no move rather than a blank.
 	Quote *Quote `json:"quote,omitempty"`
 
 	// FirstSeen is when this name first appeared as a candidate, and Days how

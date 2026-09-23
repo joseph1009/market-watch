@@ -18,6 +18,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
+	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -71,6 +72,14 @@ type App struct {
 	// Names remembers them across days. Nil on either disables the section.
 	Finder *discover.Finder
 	Names  *discover.Store
+
+	// Researcher and Judge write "worth a closer look" after the brief:
+	// companies the news bears on, found with web search, each given a
+	// verdict. Scorecard records every verdict so /scorecard can say how they
+	// have done. Nil Researcher or Judge disables the section.
+	Researcher *ideas.Researcher
+	Judge      *ideas.Judge
+	Scorecard  *ideas.Scorecard
 
 	// Accounts and Analyzer answer /accounts: reported figures from EDGAR, and
 	// the writing up of them. Nil on either disables the command.
@@ -197,6 +206,20 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 		a.Names = names
 	}
+	if cfg.Ideas {
+		a.Researcher = &ideas.Researcher{
+			Completer: rel.Plain(relay.Ideas),
+			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
+		}
+		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts)}
+	}
+	// Loaded whether or not new verdicts are being made, so /scorecard still
+	// reads the old ones with the section turned off.
+	scorecard, err := ideas.LoadScorecard(filepath.Join(cfg.DataDir, "scorecard.json"))
+	if err != nil {
+		return nil, err
+	}
+	a.Scorecard = scorecard
 	return a, nil
 }
 
@@ -223,37 +246,31 @@ func (a *App) UpdatePrefs(change func(*config.Prefs) error) error {
 // nowhere to deliver.
 var ErrNoChat = errors.New("no chat configured: send /start to the bot")
 
-// SendReport runs the whole pipeline and delivers the result to the owner.
+// SendReport runs the whole pipeline and delivers the result to the owner:
+// the brief, and after it the companies worth a closer look.
 func (a *App) SendReport(ctx context.Context) error {
-	_, err := a.sendReport(ctx)
-	return err
+	return a.brief(ctx, false)
 }
 
-// Publish is what the schedule does each day: the brief to the owner, and then
-// the same brief to the channel if there is one. A channel that refuses it is
-// reported to the owner rather than returned, since the owner's copy arrived.
+// Publish is what the schedule does each day: the brief to the owner, then the
+// same brief to the channel if there is one, then the closer look to both. A
+// channel that refuses either is reported to the owner rather than returned,
+// since the owner's copy arrived.
 func (a *App) Publish(ctx context.Context) error {
-	sent, err := a.sendReport(ctx)
-	if err != nil {
-		return err
-	}
-	a.shareBrief(ctx, sent)
-	return nil
+	return a.brief(ctx, true)
 }
 
-// sendReport is SendReport, returning what was delivered so Publish can pass
-// the same brief on to the channel. It returns nil on a day with no news.
-func (a *App) sendReport(ctx context.Context) (*delivery, error) {
+// brief is one whole run. The channel gets the brief before the research
+// starts, so readers are not kept waiting on minutes of web searches whose
+// result they will never see.
+func (a *App) brief(ctx context.Context, share bool) error {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
 
-	prefs := a.Prefs()
-	if prefs.ChatID == 0 {
-		return nil, ErrNoChat
+	if a.Prefs().ChatID == 0 {
+		return ErrNoChat
 	}
-
-	started := a.now()
 
 	// Every model call this brief makes lands in one directory, numbered in
 	// the order it was asked, so the whole run can be read afterwards.
@@ -261,10 +278,40 @@ func (a *App) sendReport(ctx context.Context) (*delivery, error) {
 		var run *relay.Run
 		var err error
 		if ctx, run, err = a.Relay.Begin(ctx, "brief"); err != nil {
-			return nil, err
+			return err
 		}
 		a.Log.Info("relay run", "dir", run.Dir)
 	}
+
+	done, err := a.sendReport(ctx)
+	if err != nil {
+		return err
+	}
+	if done == nil {
+		return nil // a day with no news: nothing to share or look into
+	}
+	if share {
+		a.shareBrief(ctx, done.sent)
+	}
+	a.sendIdeas(ctx, done, share)
+	return nil
+}
+
+// briefDone is what a delivered brief leaves for the steps after it.
+type briefDone struct {
+	sent *delivery
+	rep  model.Report
+}
+
+// sendReport writes the brief and delivers it to the owner. It returns nil,
+// with no error, on a day with no news. The caller holds the run lock.
+func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
+	prefs := a.Prefs()
+	if prefs.ChatID == 0 {
+		return nil, ErrNoChat
+	}
+
+	started := a.now()
 
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
@@ -447,7 +494,7 @@ func (a *App) sendReport(ctx context.Context) (*delivery, error) {
 	}
 
 	a.Log.Info("delivered", "messages", len(messages), "chat", prefs.ChatID)
-	return sent, nil
+	return &briefDone{sent: sent, rep: rep}, nil
 }
 
 // RunScheduler fires the daily brief. It recomputes the next run each time

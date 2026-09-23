@@ -1,11 +1,12 @@
 // Package prices reads what shares actually did, so the brief can say how the
 // market answered the news rather than only what was written.
 //
-// It covers US listings. Finnhub's free tier is US-only, and so, despite the
-// marketing, is Twelve Data's: London returns "available starting with the Grow
-// plan" and Hong Kong and Tokyo do not resolve at all. Anything outside the US
-// therefore arrives without a move, labelled as such, rather than with a price
-// from somewhere that might not be the same listing.
+// The keyed quote feed here covers US listings. Finnhub's free tier is US-only,
+// and so, despite the marketing, is Twelve Data's: Hong Kong answers "available
+// starting with the Pro or Venture plan", London "the Grow or Venture plan",
+// and Tokyo and Singapore do not resolve at all. A listing outside the US is
+// therefore priced from the daily chart history instead -- see Latest, which
+// answers for those markets in the currency the share actually trades in.
 package prices
 
 import (

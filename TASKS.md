@@ -28,18 +28,26 @@ you, and why it is worth doing.
   does not makes them mush. The test for any new feed is the one that condemned
   the 8-K firehose: after a fortnight, how many of its articles were placed, and
   how many were cited.
-- **Prices outside the US.** Every keyed free tier turned out to be US-only:
-  Twelve Data answers London with "available starting with the Grow plan" and
-  does not resolve Hong Kong or Tokyo at all. A company quoted elsewhere
-  therefore has no move in the brief.
-  Since then the daily-history source added for `/analyse` (Yahoo's charting
-  endpoint, in `internal/prices/history.go`) has proved to answer for Taipei,
-  Hong Kong and Tokyo in the local currency, keyless. A close against the
-  previous close is a day's move, so the brief's gap could be filled from it
-  without a paid plan. What it is not is a live quote: the brief would be saying
-  what a share closed at rather than what it is trading at now, and the source
-  is undocumented and can refuse without notice. Worth doing, with that said
-  plainly in the brief, before spending $20-80 a month on a vendor.
+- **Prices outside the US, in the brief.** Done for the closer look. A listing
+  on any of the fourteen exchanges now takes its price from the daily-history
+  source -- Yahoo's charting endpoint, keyless, in the currency the share
+  actually trades in -- with `prices.Latest` turning the last two closes into a
+  day's move. The keyed vendors were checked against a live key first and are
+  no use: Twelve Data's free tier answers Hong Kong with "available starting
+  with the Pro or Venture plan", London with "the Grow or Venture plan", and
+  does not resolve Tokyo or Singapore at all. `TWELVEDATA_API_KEY` was dropped
+  rather than left as a promise the tier cannot keep.
+  The new names now do the same and show the move beside the ticker. What is
+  left is `collectQuotes` in `internal/app/prices.go`, which still reads the US
+  quote feed alone: the companies today's stories are about are priced for the
+  brief's prose only where they are listed in New York, so a section on Tokyo
+  or London carries no levels at all. The same two-source split would fix it,
+  but the list is longer than six names and the budget is the thing to watch.
+- **Judge the verdicts after three months.** `/scorecard` will by then hold a
+  few hundred. If BUY is not ahead of the index more often than not, or SELL
+  not behind it, the verdicts are adding nothing the index would not, and
+  should change or stop. Worth checking separately: the companies found in
+  the news against the connected ones.
 - **Promotion.** A command to move a name from "new names in the news" straight
   into a watchlist. `/watchlist add <group> <ticker>` already does the work; this
   would just save the typing.
@@ -95,6 +103,12 @@ you, and why it is worth doing.
   spot names and Opus to write, or answered by hand with subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
+- Worth a closer look: after the brief, up to six companies the news bears on,
+  found with web search, each with a buy, hold or sell verdict from its trading
+  and SEC accounts. It goes to the channel with the daily brief, under a note
+  saying a model wrote it and that it is not advice; `/now` keeps it to you.
+  `/scorecard` measures every verdict against the S&P 500 once it is a week
+  old.
 - A channel for other readers: the daily brief is posted there too, and
   `/share` posts the latest brief or analysis. Readers can only read.
 - Watchlists as sectors: each one says in a sentence what it covers, an article

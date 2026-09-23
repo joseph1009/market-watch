@@ -21,6 +21,8 @@ var DefaultModels = map[string]string{
 	Triage:   "haiku",
 	Names:    "haiku",
 	Brief:    "opus",
+	Ideas:    "opus",
+	Verdicts: "opus",
 	Analysis: "opus",
 }
 
@@ -35,6 +37,17 @@ var quickStages = map[string]bool{Triage: true, Names: true}
 
 // noThinking is the settings override that turns thinking off for one call.
 const noThinking = `{"alwaysThinkingEnabled":false}`
+
+// webStages may search the web and read pages, and nothing else. Research is
+// the one stage whose job is to find what the day's articles do not say: which
+// companies supply, buy from or compete with the ones in the news, and what has
+// happened to them lately. It still gets no shell, no files and no connectors,
+// so a page that tries to steer it can change its answer and nothing more.
+var webStages = map[string]bool{Ideas: true}
+
+// webTools are the tools a web stage is given, and pre-approved for, since a
+// headless call has nobody to ask.
+const webTools = "WebSearch,WebFetch"
 
 // DefaultCallTimeout bounds one headless call. A brief from Opus takes a few
 // minutes; a process still running after this has hung rather than thought.
@@ -94,14 +107,20 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 		"-p",
 		"--model", modelName,
 		"--system-prompt-file", sys.Name(),
-		// No tools. Every stage is reading and writing: the request carries all
-		// it needs, and a model that could run commands or fetch pages could
-		// be steered into doing so by a headline in the feed.
-		"--disallowedTools", "*",
 		// Nothing written to the session history: each call stands alone, and
 		// a year of them would otherwise pile up under ~/.claude.
 		"--no-session-persistence",
 		"--output-format", "json",
+	}
+	if webStages[q.Stage] {
+		// Exactly these two tools exist for the call, and no MCP server is
+		// loaded, whatever this machine's own settings say.
+		args = append(args, "--tools", webTools, "--allowedTools", webTools, "--strict-mcp-config")
+	} else {
+		// No tools. Every other stage is reading and writing: the request
+		// carries all it needs, and a model that could run commands or fetch
+		// pages could be steered into doing so by a headline in the feed.
+		args = append(args, "--disallowedTools", "*")
 	}
 	if quickStages[q.Stage] {
 		args = append(args, "--settings", noThinking)
@@ -139,7 +158,13 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 		if why == "" {
 			why = tail(stderr.String())
 		}
-		return Reply{}, fmt.Errorf("%s: claude reported %s: %s", q.Stage, out.Subtype, why)
+		// The subtype names the kind of failure and is worth printing, but a
+		// run stopped by the plan's limit still calls itself a success, and
+		// "claude reported success" reads as nonsense above the real reason.
+		if sub := out.Subtype; sub != "" && sub != "success" {
+			return Reply{}, fmt.Errorf("%s: claude reported %s: %s", q.Stage, sub, why)
+		}
+		return Reply{}, fmt.Errorf("%s: claude stopped: %s", q.Stage, why)
 	}
 
 	return Reply{

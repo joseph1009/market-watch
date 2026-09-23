@@ -186,6 +186,39 @@ func (h *History) client() *http.Client {
 	return http.DefaultClient
 }
 
+// Latest is the last session as a quote: where the share stands, and how far
+// that is from the close before it.
+//
+// This is how a listing outside the US gets a price at all. The keyed quote
+// feeds stop at the US border on every free tier, while the chart source
+// answers for Hong Kong, Tokyo, London and the rest -- in the currency the
+// share actually trades in, which the quote carries so that nobody reads a
+// Hong Kong level as dollars.
+//
+// What comes back is a close, not a tick: on a market still open it is the
+// latest price the chart holds rather than the day's final one. That is what a
+// reader means by "today" either way.
+func Latest(s Series) (model.Quote, bool) {
+	if len(s.Bars) < 2 {
+		return model.Quote{}, false
+	}
+	last, previous := s.Bars[len(s.Bars)-1], s.Bars[len(s.Bars)-2]
+	if last.Close <= 0 || previous.Close <= 0 {
+		return model.Quote{}, false
+	}
+	return model.Quote{
+		Symbol:   s.Symbol,
+		Price:    last.Close,
+		Previous: previous.Close,
+		Change:   last.Close - previous.Close,
+		Percent:  (last.Close - previous.Close) / previous.Close * 100,
+		High:     last.High,
+		Low:      last.Low,
+		Currency: s.Currency,
+		AsOf:     last.Date,
+	}, true
+}
+
 // windows are the stretches a reader thinks in. A window the history does not
 // cover is left out: computing "twelve months" from eight months of data and
 // labelling it twelve would be the worst kind of wrong, since nothing in the

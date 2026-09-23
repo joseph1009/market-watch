@@ -48,6 +48,11 @@ func main() {
 	case "error":
 		fmt.Print(`{"result":"Not logged in · Please run /login","is_error":true,"subtype":"error_during_execution"}`)
 		os.Exit(1)
+	case "limit":
+		// A run stopped by the plan's limit: the reason is in the result, but
+		// the run still calls itself a success and exits 1.
+		fmt.Print(`{"result":"You've hit your session limit · resets 2:40am","is_error":false,"subtype":"success"}`)
+		os.Exit(1)
 	case "crash":
 		fmt.Fprint(os.Stderr, "unknown option --frobnicate")
 		os.Exit(2)

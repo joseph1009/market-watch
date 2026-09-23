@@ -74,9 +74,9 @@ type Config struct {
 	ClaudeBin   string
 
 	// StageModels overrides the model for a stage (triage, brief, names,
-	// analysis), by alias or full name, from MODEL_TRIAGE and the like. A stage
-	// not set here uses the relay's default: Haiku to sort and spot, Opus to
-	// write.
+	// ideas, verdicts, analysis), by alias or full name, from MODEL_TRIAGE and
+	// the like. A stage not set here uses the relay's default: Haiku to sort
+	// and spot, Opus to research, judge and write.
 	StageModels map[string]string
 
 	// RelayConcurrency bounds how many sorting batches are answered at once,
@@ -99,11 +99,12 @@ type Config struct {
 	// answers that with 403, so a real deployment sets this.
 	UserAgent string
 
-	// FinnhubAPIKey and TwelveDataAPIKey will carry share prices into the brief:
-	// Finnhub for US listings, Twelve Data for the other major exchanges. Empty
-	// until the keys exist, and nothing reads them yet.
-	FinnhubAPIKey    string
-	TwelveDataAPIKey string
+	// FinnhubAPIKey carries US share prices and company news into the brief.
+	// Empty omits both rather than failing the run. A listing outside the US is
+	// priced from the daily chart history instead, which needs no key: every
+	// keyed vendor's free tier stops at the US border, Twelve Data's included,
+	// whatever its marketing says.
+	FinnhubAPIKey string
 
 	// FREDAPIKey enables the market-levels block. Free to obtain, but not
 	// universal, so an empty key omits the block rather than failing the run.
@@ -121,6 +122,12 @@ type Config struct {
 	// stories were about that no watchlist tracks, with every ticker checked
 	// against the exchange before it is shown.
 	Discover bool
+
+	// Ideas adds "worth a closer look": after the brief, a message to the owner
+	// alone naming companies today's news bears on, researched on the web,
+	// each with a buy, hold or sell verdict and the facts behind it. It is the
+	// slowest and costliest part of a run, which is why it can be turned off.
+	Ideas bool
 
 	// SkipWeekends suppresses the Saturday and Sunday briefs, which would cover
 	// days the US market was shut.
@@ -160,7 +167,6 @@ func Load() (*Config, error) {
 		UserAgent:        envOr("USER_AGENT", ""),
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
-		TwelveDataAPIKey: envOr("TWELVEDATA_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 
@@ -235,6 +241,9 @@ func Load() (*Config, error) {
 	if cfg.Discover, err = envBool("DISCOVER", true); err != nil {
 		return nil, err
 	}
+	if cfg.Ideas, err = envBool("IDEAS", true); err != nil {
+		return nil, err
+	}
 	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", DefaultMaxArticles); err != nil {
 		return nil, err
 	}
@@ -253,6 +262,8 @@ var stageModelVars = map[string]string{
 	"triage":   "MODEL_TRIAGE",
 	"brief":    "MODEL_BRIEF",
 	"names":    "MODEL_NAMES",
+	"ideas":    "MODEL_IDEAS",
+	"verdicts": "MODEL_VERDICTS",
 	"analysis": "MODEL_ANALYSIS",
 }
 

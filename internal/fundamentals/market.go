@@ -3,6 +3,8 @@ package fundamentals
 import (
 	"fmt"
 	"strings"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 // The two things the filings cannot say.
@@ -16,6 +18,13 @@ import (
 // discipline of the analysis rests on the reader being able to tell where each
 // figure came from. A price average is not a filed fact and a headline is not a
 // fact at all.
+
+// TradingFacts is the trading block on its own, for a company whose accounts
+// were not read -- most listed outside the US file nothing with the SEC -- so
+// its price history is the one set of facts at hand.
+func TradingFacts(t *model.Trading) string {
+	return Snapshot{Trading: t}.trading()
+}
 
 // trading is what the share has done, from daily closes.
 func (s Snapshot) trading() string {

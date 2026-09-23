@@ -21,10 +21,11 @@ import (
 // the owner's own use of the owner's plan, and the channel is where the owner
 // chooses to put the result.
 //
-// The daily brief goes there by itself. /now and /analyse go to the owner
-// first, and /share posts whichever arrived last, so a brief asked for to
-// check something, or an analysis the owner has not read yet, stays private
-// until the owner says otherwise.
+// The daily brief goes there by itself, and since the closer look was opened
+// to readers, so does that. /now and /analyse go to the owner first, and
+// /share posts whichever arrived last, so a brief asked for to check
+// something, or an analysis the owner has not read yet, stays private until
+// the owner says otherwise.
 
 // delivery is something sent to the owner that /share can pass on.
 type delivery struct {
@@ -112,6 +113,37 @@ func (a *App) shareBrief(ctx context.Context, d *delivery) {
 	if err := a.Bot.SendMessage(ctx, owner, text); err != nil {
 		a.Log.Error("could not report the channel failure either", "error", err)
 	}
+}
+
+// shareIdeas posts the closer look to the channel, which the daily run does
+// once the owner has it. It does not go through share and remember: those exist
+// so /share can pass on the last thing delivered, and /share passes on briefs
+// and analyses only. A verdict reaches the channel with the daily run or not at
+// all.
+//
+// Like the brief, a failure here costs the channel and never the owner's copy.
+func (a *App) shareIdeas(ctx context.Context, messages []string) {
+	channel := a.Cfg.TelegramChannelID
+	if channel == 0 || len(messages) == 0 {
+		return
+	}
+
+	if _, err := a.Bot.Broadcast(ctx, channel, messages); err != nil {
+		a.Log.Error("could not post the closer look to the channel", "error", err)
+		owner := a.Prefs().ChatID
+		if owner == 0 {
+			return
+		}
+		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
+		text := fmt.Sprintf(
+			"Today's closer look reached you but not the channel.\n\n<i>%s</i>\n\nThere is no command to post it again: it goes with the daily run or not at all.",
+			escape(clean))
+		if err := a.Bot.SendMessage(ctx, owner, text); err != nil {
+			a.Log.Error("could not report the channel failure either", "error", err)
+		}
+		return
+	}
+	a.Log.Info("posted to the channel", "what", "the closer look", "messages", len(messages), "channel", channel)
 }
 
 // handleShare posts the latest brief or analysis to the channel.
