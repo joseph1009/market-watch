@@ -35,6 +35,14 @@ const (
 	// session fills every slot: ten headlines from this morning, and nothing
 	// from the fortnight in which the thing they are reacting to happened.
 	maxPerDay = 3
+
+	// searchPlaces is how many of the places the searches have first call on.
+	// Sorted by date alone, the feed took all of them: it carries the day's
+	// every item, and Alibaba's analysis kept twelve pieces of Yahoo and
+	// Benzinga commentary on the share price and none of the eighteen articles
+	// the searches found. The feed keeps the rest, since it has the day's news,
+	// which a search over the month can miss.
+	searchPlaces = 8
 )
 
 // Headlines is the part of the news client this needs.
@@ -58,10 +66,18 @@ func AddNews(ctx context.Context, h Headlines, snap *Snapshot, now time.Time) er
 	return nil
 }
 
-// SetNews keeps, of articles gathered from anywhere -- the news feed, a
-// search -- the ones actually about the company, as AddNews does.
-func SetNews(snap *Snapshot, articles []model.Article) {
-	snap.News = Relevant(articles, snap.Ticker, snap.Company, maxHeadlines)
+// SetNews keeps, of what the searches found and what the news feed carries,
+// the articles actually about the company, as AddNews does. The searches have
+// first call on searchPlaces of the places and the feed on the rest, and
+// either takes the places the other cannot fill. A story both carry is kept
+// once.
+func SetNews(snap *Snapshot, searched, feed []model.Article) {
+	found := Relevant(searched, snap.Ticker, snap.Company, searchPlaces)
+	fed := Relevant(feed, snap.Ticker, snap.Company, maxHeadlines-len(found))
+	if room := maxHeadlines - len(found) - len(fed); room > 0 {
+		found = Relevant(searched, snap.Ticker, snap.Company, len(found)+room)
+	}
+	snap.News = Relevant(append(found, fed...), snap.Ticker, snap.Company, maxHeadlines)
 }
 
 // Relevant keeps the articles that are actually about this company, newest
@@ -101,7 +117,7 @@ func Relevant(articles []model.Article, ticker, company string, limit int) []mod
 		perDay[day]++
 		out = append(out, a)
 		if len(out) == limit {
-			return out
+			break // still sorted below: the input need not be by date
 		}
 	}
 

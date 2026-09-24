@@ -2,6 +2,7 @@ package fundamentals
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,5 +145,69 @@ func TestRelevantFallsBackToABusyDay(t *testing.T) {
 
 	if got := Relevant(articles, "MU", "Micron Technology, Inc.", 5); len(got) != 5 {
 		t.Fatalf("kept %d from a single busy day, want 5", len(got))
+	}
+}
+
+// The searches return by relevance, not by date, and a list that filled up
+// before the input ran out was handed back in that order.
+func TestRelevantIsNewestFirstWhenTheListFills(t *testing.T) {
+	now := time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC)
+	articles := []model.Article{
+		article("Micron story from last week", "", now.AddDate(0, 0, -7)),
+		article("Micron story from today", "", now),
+		article("Micron story from yesterday", "", now.AddDate(0, 0, -1)),
+	}
+
+	got := titles(Relevant(articles, "MU", "Micron Technology, Inc.", 2))
+	if len(got) != 2 || got[0] != "Micron story from today" || got[1] != "Micron story from last week" {
+		t.Errorf("got %q, want the first two found, newest first", got)
+	}
+}
+
+// Sorted by date alone, the feed's day of share-price items took every place
+// and the searches' month of reporting none. The searches have first call on
+// searchPlaces, the feed has the rest, and either fills what the other cannot.
+func TestSetNewsKeepsPlacesForTheSearches(t *testing.T) {
+	now := time.Date(2026, time.September, 24, 12, 0, 0, 0, time.UTC)
+	var feed, searched []model.Article
+	for i := 0; i < 20; i++ {
+		feed = append(feed, article(fmt.Sprintf("Alibaba shares move, take %d", i), "", now.Add(-time.Duration(i)*time.Hour)))
+	}
+	for i := 0; i < 10; i++ {
+		searched = append(searched, article(fmt.Sprintf("Alibaba cloud story %d", i), "", now.AddDate(0, 0, -3-2*i)))
+	}
+	fromSearch := func(news []model.Article) int {
+		n := 0
+		for _, a := range news {
+			if strings.Contains(a.Title, "cloud story") {
+				n++
+			}
+		}
+		return n
+	}
+	snap := Snapshot{Ticker: "BABA", Company: "Alibaba Group Holding Ltd"}
+
+	SetNews(&snap, searched, feed)
+	if len(snap.News) != maxHeadlines || fromSearch(snap.News) != searchPlaces {
+		t.Errorf("kept %d, %d of them searched; want %d and %d:\n%s",
+			len(snap.News), fromSearch(snap.News), maxHeadlines, searchPlaces, strings.Join(titles(snap.News), "\n"))
+	}
+
+	// A thin feed leaves its places to the searches, and no search leaves
+	// them all to the feed.
+	SetNews(&snap, searched, feed[:2])
+	if len(snap.News) != 12 || fromSearch(snap.News) != 10 {
+		t.Errorf("with two from the feed, kept %d, %d searched; want 12 and 10", len(snap.News), fromSearch(snap.News))
+	}
+	SetNews(&snap, nil, feed)
+	if len(snap.News) != maxHeadlines {
+		t.Errorf("with no search, kept %d from the feed, want %d", len(snap.News), maxHeadlines)
+	}
+
+	// A story both carry is shown once.
+	both := article("Alibaba prices HK$80bn share placing", "", now)
+	SetNews(&snap, []model.Article{both}, []model.Article{both})
+	if len(snap.News) != 1 {
+		t.Errorf("a story in both was kept %d times", len(snap.News))
 	}
 }

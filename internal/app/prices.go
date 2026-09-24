@@ -237,9 +237,20 @@ func (a *App) addNews(ctx context.Context, snapshot *fundamentals.Snapshot) erro
 	fromSearch := a.searchCompany(ctx, snapshot)
 	wg.Wait()
 
-	fundamentals.SetNews(snapshot, append(fromFeed, fromSearch...))
+	fundamentals.SetNews(snapshot, fromSearch, fromFeed)
+	searched := make(map[string]bool, len(fromSearch))
+	for _, article := range fromSearch {
+		searched[article.ID] = true
+	}
+	keptSearched := 0
+	for _, article := range snapshot.News {
+		if searched[article.ID] {
+			keptSearched++
+		}
+	}
 	a.Log.Info("company news", "ticker", snapshot.Ticker,
-		"from_feed", len(fromFeed), "from_search", len(fromSearch), "kept", len(snapshot.News))
+		"from_feed", len(fromFeed), "from_search", len(fromSearch),
+		"kept", len(snapshot.News), "kept_from_search", keptSearched)
 	if len(snapshot.News) == 0 && feedErr != nil {
 		return feedErr
 	}

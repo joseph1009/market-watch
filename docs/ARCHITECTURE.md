@@ -229,7 +229,7 @@ company ([`SameCompany`](../internal/discover/verify.go#L167)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
-name has been running, and [`priceCandidates`](../internal/app/prices.go#L256)
+name has been running, and [`priceCandidates`](../internal/app/prices.go#L267)
 attaches each one's move on the day — US names from the quote feed, everywhere
 else from the chart source.
 
@@ -410,8 +410,11 @@ does not inherit whatever the caller's context has left:
    [`addNews`](../internal/app/prices.go#L222) adds what has been written in the
    last month — the news feed's company headlines and two Tavily searches
    ([`searchCompany`](../internal/app/research.go#L103)), two credits — filtered by
-   [`Relevant`](../internal/fundamentals/news.go#L76) to pieces that actually
-   name the company. All three are best-effort.
+   [`Relevant`](../internal/fundamentals/news.go#L92) to pieces that actually
+   name the company. Of the twelve places, the searches have first call on
+   eight and the feed on four ([`SetNews`](../internal/fundamentals/news.go#L74)),
+   since sorted by date the feed's day of share-price items took them all.
+   All three are best-effort.
 4. [`addExpectations`](../internal/app/research.go#L44) adds what analysts expect
    and what insiders, short sellers and funds have done
    ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L123));
@@ -810,7 +813,8 @@ call, with `config.Method` appended to the system prompt.
 and the news into the prompt's prose.
 **[news.go](../internal/fundamentals/news.go)** — `AddNews`, `SetNews` and
 `Relevant`, which keeps only pieces that actually name the company and spreads
-them across days.
+them across days. `SetNews` gives the searches first call on `searchPlaces` of
+the places and the feed the rest.
 **[business.go](../internal/fundamentals/business.go)** — `AddBusiness`.
 **[related.go](../internal/fundamentals/related.go)** — `SplitRelated`,
 `VerifyRelated`, `RelatedFor`.
