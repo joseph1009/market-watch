@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/model"
 )

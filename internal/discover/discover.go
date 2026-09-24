@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 const (
@@ -113,8 +113,8 @@ func worthReading(articles []model.Article) []model.Article {
 	return out
 }
 
-// systemPrompt governs the new-names pass. Its text lives in internal/prompts.
-var systemPrompt = prompts.Get("discover.system")
+// systemPrompt governs the new-names pass. Its text lives in config/prompts.md.
+var systemPrompt = config.Prompt("discover.system")
 
 func prompt(articles []model.Article) string {
 	var b strings.Builder

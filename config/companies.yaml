@@ -1,0 +1,170 @@
+# The companies you follow, by sector. The sectors themselves, and what each
+# covers, are in sectors.yaml.
+#
+# This is the one list the whole service reads: the prices at the start of a
+# brief and the searches for shares that moved, the SEC filings, the line of
+# biggest moves under each section, the matching of articles by name and
+# ticker, and the checks that keep a followed company out of "new names" and
+# the closer look.
+#
+#   symbol  the US ticker. Leave it out for a company with none -- private, or
+#           listed only abroad: it is still matched by name, and has no price.
+#   name    how a headline writes it: "Nvidia", not "NVIDIA Corporation". It is
+#           also what the searches for it ask about.
+#   also    other names it goes by, matched the same way.
+#   match   "ticker" where the name is an ordinary word that would match
+#           ordinary prose, "name" where the ticker is. Left out, both count.
+#
+# Names match case-blind on word boundaries, and a hyphen is a boundary: "UPS"
+# as a name matched every "start-ups". Tickers match as capitals standing
+# alone, and a one-letter ticker (C, F, V) only when written as one, "$C" or
+# "(NYSE: C)", since bare it matches "C-suite" and "F-150".
+#
+# /watchlist add and remove change the list from Telegram without a deploy.
+# Those edits are kept on Fly's disk, on top of this file, and
+# scripts/sync-from-fly.sh writes them in here (docs/RUNBOOK.md, "Changing the
+# watchlist").
+
+semis-ai:
+  - {symbol: NVDA, name: Nvidia}
+  - {symbol: AMD, name: AMD, also: [Advanced Micro Devices]}
+  - {symbol: AVGO, name: Broadcom}
+  - {symbol: TSM, name: TSMC, also: [Taiwan Semiconductor]}
+  - {symbol: ASML, name: ASML}
+  - {symbol: MU, name: Micron}
+  - {symbol: INTC, name: Intel}
+  # "Arm" lowercased is the body part; the symbol is not.
+  - {symbol: ARM, name: Arm, match: ticker}
+  - {symbol: QCOM, name: Qualcomm}
+  - {symbol: MRVL, name: Marvell}
+  - {symbol: AMAT, name: Applied Materials}
+  - {symbol: LRCX, name: Lam Research}
+  - {symbol: KLAC, name: KLA}
+  - {symbol: GFS, name: GlobalFoundries}
+  - {symbol: SMCI, name: Supermicro}
+  - {symbol: ANET, name: Arista}
+  - {name: SK Hynix}
+  - {name: Samsung}
+  - {name: OpenAI}
+
+big-tech:
+  - {symbol: AAPL, name: Apple}
+  - {symbol: MSFT, name: Microsoft}
+  - {symbol: GOOGL, name: Alphabet, also: [Google]}
+  - {symbol: AMZN, name: Amazon}
+  - {symbol: META, name: Meta, also: [Facebook, Instagram]}
+
+energy:
+  - {symbol: XOM, name: ExxonMobil, also: [Exxon]}
+  - {symbol: CVX, name: Chevron}
+  - {symbol: COP, name: ConocoPhillips}
+  - {symbol: EOG, name: EOG Resources}
+  - {symbol: OXY, name: Occidental}
+  - {symbol: SLB, name: SLB, also: [Schlumberger]}
+  - {symbol: HAL, name: Halliburton}
+  - {symbol: EQT, name: EQT Corporation}
+  - {symbol: VLO, name: Valero}
+  - {symbol: PSX, name: Phillips 66}
+  - {name: Saudi Aramco}
+  - {name: Marathon Petroleum}
+  - {name: Cheniere}
+
+financials:
+  - {symbol: JPM, name: JPMorgan}
+  - {symbol: BAC, name: Bank of America}
+  - {symbol: GS, name: Goldman Sachs}
+  - {symbol: WFC, name: Wells Fargo}
+  - {symbol: BLK, name: BlackRock}
+  - {symbol: SCHW, name: Charles Schwab}
+  - {symbol: V, name: Visa}
+  - {symbol: C, name: Citigroup, also: [Citi]}
+  - {symbol: PGR, name: Progressive}
+  - {symbol: AIG, name: AIG}
+  - {symbol: PYPL, name: PayPal}
+  - {symbol: BX, name: Blackstone}
+  - {symbol: KKR, name: KKR}
+  - {symbol: APO, name: Apollo Global}
+  # No ticker: MS is also the network that renamed itself MS NOW, and as a
+  # bare two-letter symbol it matched that. The name finds the bank.
+  - {name: Morgan Stanley}
+  - {name: Allstate}
+  - {name: Mastercard}
+  - {name: Chubb}
+
+healthcare:
+  - {symbol: LLY, name: Eli Lilly}
+  - {symbol: JNJ, name: Johnson & Johnson}
+  - {symbol: UNH, name: UnitedHealth}
+  - {symbol: ABBV, name: AbbVie}
+  - {symbol: MRK, name: Merck}
+  - {symbol: PFE, name: Pfizer}
+  - {symbol: NVO, name: Novo Nordisk}
+  - {symbol: ISRG, name: Intuitive Surgical}
+  - {symbol: AMGN, name: Amgen}
+  - {symbol: GILD, name: Gilead}
+  - {symbol: REGN, name: Regeneron}
+  - {symbol: BIIB, name: Biogen}
+  - {symbol: VRTX, name: Vertex Pharmaceuticals}
+  - {symbol: ELV, name: Elevance}
+  - {symbol: HUM, name: Humana}
+  - {name: Moderna}
+
+industrials-defense:
+  - {symbol: CAT, name: Caterpillar}
+  - {symbol: DE, name: Deere}
+  - {symbol: GE, name: GE Aerospace}
+  - {symbol: HON, name: Honeywell}
+  - {symbol: RTX, name: RTX, also: [Raytheon]}
+  - {symbol: LMT, name: Lockheed Martin}
+  - {symbol: BA, name: Boeing}
+  # As a name, "UPS" matched every "start-ups" and "hold-ups".
+  - {symbol: UPS, name: UPS, match: ticker}
+  - {symbol: FDX, name: FedEx}
+  - {symbol: NOC, name: Northrop Grumman}
+  - {symbol: ETN, name: Eaton}
+  - {symbol: CMI, name: Cummins}
+  - {name: Emerson}
+  - {name: United Rentals}
+
+consumer-retail:
+  - {symbol: WMT, name: Walmart}
+  - {symbol: COST, name: Costco}
+  - {symbol: HD, name: Home Depot}
+  - {symbol: LOW, name: Lowe's}
+  - {symbol: MCD, name: McDonald's}
+  - {symbol: NKE, name: Nike}
+  - {symbol: SBUX, name: Starbucks}
+  - {symbol: KO, name: Coca-Cola}
+  - {symbol: PEP, name: PepsiCo}
+  # As a name, "Target" matched every price target, revenue target and
+  # climate target: four of one night's ten articles, none about the shop.
+  - {symbol: TGT, name: Target, match: ticker}
+
+autos-ev:
+  - {symbol: TSLA, name: Tesla}
+  - {symbol: GM, name: General Motors}
+  - {symbol: RIVN, name: Rivian}
+  - {symbol: LCID, name: Lucid}
+  - {symbol: F, name: Ford}
+  - {name: BYD}
+
+crypto:
+  - {symbol: COIN, name: Coinbase}
+  - {symbol: MSTR, name: MicroStrategy}
+  - {symbol: MARA, name: Marathon Digital}
+  - {symbol: RIOT, name: Riot Platforms}
+  - {name: Tether}
+
+# Followed by subject, not by company: see sectors.yaml.
+macro-rates: []
+geopolitics-trade: []
+
+media:
+  - {symbol: NFLX, name: Netflix}
+  - {symbol: DIS, name: Disney}
+  - {symbol: CMCSA, name: Comcast, also: [NBCUniversal]}
+  - {symbol: WBD, name: Warner Bros}
+  # No ticker: SPOT is a word in any all-caps headline about spot prices.
+  # Paramount is left to the sector's description, since as a name it would
+  # match "of paramount importance".
+  - {name: Spotify}

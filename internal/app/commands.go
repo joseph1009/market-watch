@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/relay"
+	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -18,9 +19,10 @@ const helpText = `<b>📊 Market Watch</b>
 
 /now — build and send a brief right now
 /analyse &lt;ticker&gt; — analyse a company from its filings, e.g. /analyse NVDA
-/watchlist — show your watchlists
-/watchlist add &lt;group&gt; &lt;ticker or name&gt; — track something
-/watchlist remove &lt;group&gt; &lt;ticker or name&gt; — stop tracking it
+/watchlist — show the companies you follow, by sector
+/watchlist add &lt;sector&gt; &lt;TICKER&gt; [name] — follow a company, e.g. /watchlist add industrials-defense PLTR Palantir
+/watchlist remove &lt;sector&gt; &lt;ticker or name&gt; — stop following it
+/watchlist edits — the changes made here that config/companies.yaml does not have yet
 /sources — show the news feeds
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
@@ -38,7 +40,7 @@ The daily brief arrives on its own; these are for when you want one early, or wa
 func BotCommands() []telegram.Command {
 	return []telegram.Command{
 		{Command: "now", Description: "Build and send a brief right now"},
-		{Command: "watchlist", Description: "Show or edit your watchlists"},
+		{Command: "watchlist", Description: "Show or change the companies you follow"},
 		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
@@ -234,88 +236,75 @@ func (a *App) handleSchedule(ctx context.Context, msg telegram.Message) error {
 
 func (a *App) handleWatchlist(ctx context.Context, msg telegram.Message, args []string) error {
 	if len(args) == 0 {
-		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderWatchlists(a.Prefs().Groups))
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderWatchlists(a.Prefs()))
 	}
 
-	action := strings.ToLower(args[0])
-	if len(args) < 3 || (action != "add" && action != "remove") {
+	switch action := strings.ToLower(args[0]); {
+	case action == "edits":
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderEdits(a.Prefs().Edits))
+	case action == "reset":
+		var dropped int
+		err := a.UpdatePrefs(func(p *config.Prefs) error {
+			n, err := p.ResetEdits()
+			dropped = n
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
+			"Dropped %d change(s). The watchlist is config/companies.yaml as deployed.", dropped))
+	case len(args) >= 3 && (action == "add" || action == "remove"):
+		sector := model.GroupID(args[1])
+		if action == "remove" {
+			term := strings.Join(args[2:], " ")
+			err := a.UpdatePrefs(func(p *config.Prefs) error { return p.RemoveCompany(sector, term) })
+			if err != nil {
+				return err
+			}
+			return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(fmt.Sprintf("Stopped following %s in %s.", term, sector))+editNote)
+		}
+		company := a.companyFrom(ctx, args[2:])
+		err := a.UpdatePrefs(func(p *config.Prefs) error { return p.AddCompany(sector, company) })
+		if err != nil {
+			return err
+		}
+		label := company.Name
+		if company.Symbol != "" && !strings.EqualFold(company.Symbol, company.Name) {
+			label += " (" + company.Symbol + ")"
+		}
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(fmt.Sprintf("Now following %s in %s.", label, sector))+editNote)
+	default:
 		return a.Bot.SendMessage(ctx, msg.Chat.ID,
-			"Usage: /watchlist add &lt;group&gt; &lt;ticker or name&gt;\n\nGroups: "+escape(groupIDs(a.Prefs().Groups)))
+			"Usage: /watchlist add|remove &lt;sector&gt; &lt;ticker or name&gt;, /watchlist edits or /watchlist reset\n\nSectors: "+
+				escape(groupIDs(a.Prefs().Groups)))
 	}
-
-	groupID := model.GroupID(args[1])
-	term := strings.Join(args[2:], " ")
-
-	var outcome string
-	err := a.UpdatePrefs(func(p *config.Prefs) error {
-		for i := range p.Groups {
-			if p.Groups[i].ID != groupID {
-				continue
-			}
-			if action == "add" {
-				outcome = addTerm(&p.Groups[i], term)
-			} else {
-				outcome = removeTerm(&p.Groups[i], term)
-			}
-			return nil
-		}
-		return fmt.Errorf("no watchlist called %q; try one of: %s", groupID, groupIDs(p.Groups))
-	})
-	if err != nil {
-		return err
-	}
-	return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(outcome))
 }
 
-// addTerm decides from its shape whether the term is a ticker or a company
-// name. The two are matched differently -- symbols case-sensitively so "ARM"
-// does not match an arm, names case-insensitively so "Nvidia" matches "nvidia".
-func addTerm(g *model.Group, term string) string {
-	if isTicker(term) {
-		symbol := strings.ToUpper(term)
-		for _, t := range g.Tickers {
-			if t == symbol {
-				return fmt.Sprintf("%s already tracks %s.", g.Name, symbol)
-			}
+// editNote says where a change made from Telegram lives until it is synced.
+const editNote = "\n\n<i>Kept on the server until scripts/sync-from-fly.sh writes it into config/companies.yaml. /watchlist edits lists them.</i>"
+
+// companyFrom reads "PLTR Palantir" or "SK Hynix" as a company: a leading
+// ticker-shaped word is the symbol and the rest its name, and anything else is
+// a name alone. A ticker given without a name takes the one the SEC files it
+// under, less the corporate words, so the searches for it have a name to use.
+func (a *App) companyFrom(ctx context.Context, words []string) model.Company {
+	if isTicker(words[0]) {
+		c := model.Company{Symbol: words[0], Name: strings.Join(words[1:], " ")}
+		if c.Name == "" {
+			c.Name = search.PlainName(a.companyName(ctx, c.Symbol))
 		}
-		g.Tickers = append(g.Tickers, symbol)
-		return fmt.Sprintf("Added %s to %s.", symbol, g.Name)
-	}
-
-	for _, n := range g.Names {
-		if strings.EqualFold(n, term) {
-			return fmt.Sprintf("%s already tracks %s.", g.Name, term)
+		if c.Name == "" {
+			c.Name = c.Symbol
 		}
+		return c
 	}
-	g.Names = append(g.Names, term)
-	return fmt.Sprintf("Added %s to %s as a name.", term, g.Name)
-}
-
-func removeTerm(g *model.Group, term string) string {
-	before := len(g.Tickers) + len(g.Names) + len(g.Keywords)
-	g.Tickers = withoutFold(g.Tickers, term)
-	g.Names = withoutFold(g.Names, term)
-	g.Keywords = withoutFold(g.Keywords, term)
-
-	if before == len(g.Tickers)+len(g.Names)+len(g.Keywords) {
-		return fmt.Sprintf("%s was not tracking %s.", g.Name, term)
-	}
-	return fmt.Sprintf("Removed %s from %s.", term, g.Name)
-}
-
-func withoutFold(list []string, term string) []string {
-	out := make([]string, 0, len(list))
-	for _, v := range list {
-		if !strings.EqualFold(v, term) {
-			out = append(out, v)
-		}
-	}
-	return out
+	return model.Company{Name: strings.Join(words, " ")}
 }
 
 // isTicker treats a short all-caps token as a symbol. Deliberately narrow: a
-// wrong guess only decides which matcher runs, and a name is the safer default
-// because case-insensitive matching finds more.
+// wrong guess only decides whether the word is taken as a ticker or a name, and
+// a name is the safer default because case-insensitive matching finds more.
 func isTicker(s string) bool {
 	if s == "" || len(s) > 5 {
 		return false
@@ -330,7 +319,8 @@ func isTicker(s string) bool {
 
 func (a *App) handleSources(ctx context.Context, msg telegram.Message, args []string) error {
 	if len(args) == 0 {
-		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderSources(a.Prefs().Sources))
+		prefs := a.Prefs()
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, renderSources(prefs.Sources, prefs.FeedSwitches))
 	}
 
 	action := strings.ToLower(args[0])
@@ -338,58 +328,91 @@ func (a *App) handleSources(ctx context.Context, msg telegram.Message, args []st
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, "Usage: /sources on|off &lt;id&gt;")
 	}
 
-	id := args[1]
-	var outcome string
+	var feed model.Source
 	err := a.UpdatePrefs(func(p *config.Prefs) error {
-		for i := range p.Sources {
-			if p.Sources[i].ID != id {
-				continue
-			}
-			p.Sources[i].Enabled = action == "on"
-			state := "off"
-			if p.Sources[i].Enabled {
-				state = "on"
-			}
-			outcome = fmt.Sprintf("%s is now %s.", p.Sources[i].Name, state)
-			return nil
-		}
-		return fmt.Errorf("no source called %q; send /sources to list them", id)
+		var err error
+		feed, err = p.SwitchFeed(args[1], action == "on")
+		return err
 	})
 	if err != nil {
 		return err
 	}
-	return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(outcome))
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, escape(fmt.Sprintf("%s is now %s.", feed.Name, action))+
+		"\n\n<i>Kept on the server until scripts/sync-from-fly.sh writes it into config/sources.yaml.</i>")
 }
 
-func renderWatchlists(groups []model.Group) string {
-	if len(groups) == 0 {
-		return "No watchlists configured."
+// renderWatchlists lists the companies followed, by sector: tickers first, then
+// the companies followed by name alone. The sector descriptions are in
+// config/sectors.yaml; at a paragraph each they would not fit in one message.
+func renderWatchlists(p config.Prefs) string {
+	if len(p.Groups) == 0 {
+		return "No sectors configured."
+	}
+
+	added := map[string]bool{}
+	for _, a := range p.Edits.Added {
+		added[a.Sector+"|"+strings.ToUpper(a.Company.Symbol)+"|"+a.Company.Name] = true
+	}
+	mark := func(sector string, c model.Company) string {
+		if added[sector+"|"+c.Symbol+"|"+c.Name] {
+			return "*"
+		}
+		return ""
 	}
 
 	var b strings.Builder
-	b.WriteString("<b>Watchlists</b>\n")
-	for _, g := range groups {
+	b.WriteString("<b>Watchlist</b>\n")
+	for _, g := range p.Groups {
 		fmt.Fprintf(&b, "\n<b>%s</b> <i>(%s)</i>\n", escape(g.Name), escape(g.ID))
-		// The sector sentence is what most of the placing now runs on, so it
-		// is shown above the terms rather than left to whoever opens the file.
-		if g.Scope != "" {
-			fmt.Fprintf(&b, "%s\n", escape(g.Scope))
+		var symbols, names []string
+		for _, c := range g.Companies {
+			if c.Symbol != "" {
+				symbols = append(symbols, c.Symbol+mark(g.ID, c))
+			} else {
+				names = append(names, c.Name+mark(g.ID, c))
+			}
 		}
-		if len(g.Tickers) > 0 {
-			fmt.Fprintf(&b, "%s\n", escape(strings.Join(g.Tickers, " ")))
+		if len(symbols) > 0 {
+			fmt.Fprintf(&b, "%s\n", escape(strings.Join(symbols, " ")))
 		}
-		if len(g.Names) > 0 {
-			fmt.Fprintf(&b, "<i>%s</i>\n", escape(strings.Join(g.Names, ", ")))
+		if len(names) > 0 {
+			fmt.Fprintf(&b, "<i>by name: %s</i>\n", escape(strings.Join(names, ", ")))
 		}
-		if len(g.Keywords) > 0 {
-			fmt.Fprintf(&b, "<i>%d keywords</i>\n", len(g.Keywords))
+		if len(g.Companies) == 0 {
+			b.WriteString("<i>followed by subject</i>\n")
 		}
 	}
-	b.WriteString("\n<i>Change with /watchlist add|remove &lt;group&gt; &lt;term&gt;</i>")
+	if n := len(p.Edits.Added) + len(p.Edits.Removed); n > 0 {
+		fmt.Fprintf(&b, "\n<i>* added here. %d change(s) made here are not in config/companies.yaml yet: /watchlist edits</i>", n)
+	} else {
+		b.WriteString("\n<i>Change with /watchlist add|remove &lt;sector&gt; &lt;ticker or name&gt;</i>")
+	}
 	return b.String()
 }
 
-func renderSources(sources []model.Source) string {
+// renderEdits lists the changes made from Telegram, as they would read in
+// config/companies.yaml.
+func renderEdits(e config.Edits) string {
+	if e.IsZero() {
+		return "No changes made here: the watchlist is config/companies.yaml as deployed."
+	}
+	var b strings.Builder
+	b.WriteString("<b>Changes made here</b>, not yet in config/companies.yaml:\n")
+	for _, a := range e.Added {
+		label := a.Company.Name
+		if a.Company.Symbol != "" {
+			label = a.Company.Symbol + " " + label
+		}
+		fmt.Fprintf(&b, "\n+ %s: %s", escape(a.Sector), escape(label))
+	}
+	for _, r := range e.Removed {
+		fmt.Fprintf(&b, "\n− %s: %s", escape(r.Sector), escape(r.Company))
+	}
+	b.WriteString("\n\n<i>scripts/sync-from-fly.sh on your computer writes them into the file. /watchlist reset drops them.</i>")
+	return b.String()
+}
+
+func renderSources(sources []model.Source, switched map[string]bool) string {
 	if len(sources) == 0 {
 		return "No sources configured."
 	}
@@ -401,7 +424,11 @@ func renderSources(sources []model.Source) string {
 		if s.Enabled {
 			mark = "●"
 		}
-		fmt.Fprintf(&b, "\n%s <b>%s</b> <i>(%s, weight %d)</i>", mark, escape(s.Name), escape(s.ID), s.Weight)
+		note := ""
+		if _, ok := switched[s.ID]; ok {
+			note = ", switched here"
+		}
+		fmt.Fprintf(&b, "\n%s <b>%s</b> <i>(%s, weight %d%s)</i>", mark, escape(s.Name), escape(s.ID), s.Weight, note)
 	}
 	b.WriteString("\n\n<i>● on, ○ off — change with /sources on|off &lt;id&gt;</i>")
 	return b.String()

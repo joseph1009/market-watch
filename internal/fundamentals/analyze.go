@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
-	"github.com/joseph1009/market-watch/internal/prompts"
 	"github.com/joseph1009/market-watch/internal/report"
 )
 
@@ -25,7 +25,7 @@ import (
 // look filings up as it wrote; that agent spoke to the API directly and went
 // when the API did, and the playbook is as much use to the analysis that
 // remains, which works from the table alone.
-var systemPrompt = prompts.Get("analysis.system") + "\n\n" + Method
+var systemPrompt = config.Prompt("analysis.system") + "\n\n" + config.Method
 
 // Analysis is a written reading of one company's accounts.
 type Analysis struct {

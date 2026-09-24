@@ -13,14 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
-	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
@@ -45,7 +44,7 @@ type App struct {
 	Filings *sec.Client
 
 	// Levels reads market data. Disabled without a FRED key.
-	Levels *marketdata.Client
+	Levels *prices.FRED
 
 	// Search finds news by searching rather than polling, beside the feeds.
 	// Disabled without a Tavily key.
@@ -147,7 +146,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		},
 		// Polling holds a request open for 30s, so this client must outlast it.
 		Bot: telegram.New(cfg.TelegramBotToken, &http.Client{Timeout: 90 * time.Second}),
-		Levels: &marketdata.Client{
+		Levels: &prices.FRED{
 			APIKey: cfg.FREDAPIKey,
 			HTTP:   &http.Client{Timeout: 20 * time.Second},
 		},
@@ -341,7 +340,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	quotes := <-priced
 	since := a.searchSince()
 	moved := movers(quotes, watched, since)
-	found = search.Merge(found, a.searchMovers(ctx, moved))
+	found = search.Merge(found, a.searchMovers(ctx, moved, companyNames(prefs.Groups)))
 
 	sources := append(prefs.EnabledSources(), SECSourceEntry())
 	opts := feed.Options{
@@ -359,8 +358,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	for _, e := range collected.Errors {
 		a.Log.Warn("source failed", "source", e.SourceID, "error", e.Err)
 	}
-	// match_rate is the number a keyword change moves most directly, and the
-	// one that was invisible while keywords were being tuned.
+	// match_rate is the number a change to the companies followed moves most
+	// directly, and the one that was invisible while the lists were tuned.
 	matchRate := 0.0
 	if kept := len(collected.Articles); kept > 0 {
 		matchRate = float64(collected.Matched) / float64(kept)
@@ -610,12 +609,6 @@ func (a *App) now() time.Time {
 	return time.Now()
 }
 
-// articleCount is a small helper for the command replies.
-func groupSummary(g model.Group) string {
-	return fmt.Sprintf("%d tickers, %d names, %d keywords",
-		len(g.Tickers), len(g.Names), len(g.Keywords))
-}
-
 // sourceMode maps the configured SOURCE_LINKS value onto the renderer's mode.
 // An unknown value cannot arrive here -- configuration rejects it at startup --
 // so the fallback is the usual short list rather than an error.
@@ -631,12 +624,29 @@ func sourceMode(links string) telegram.SourceMode {
 }
 
 // watchedNames is every company the reader already tracks, by ticker and by
-// name. A watchlist name is not a discovery: its section already covers it.
+// name. A followed company is not a discovery: its section already covers it.
 func watchedNames(groups []model.Group) []string {
 	var out []string
 	for _, g := range groups {
-		out = append(out, g.Tickers...)
-		out = append(out, g.Names...)
+		for _, c := range g.Companies {
+			if c.Symbol != "" {
+				out = append(out, c.Symbol)
+			}
+			out = append(out, c.Names()...)
+		}
+	}
+	return out
+}
+
+// companyNames maps each followed ticker to the name headlines use for it.
+func companyNames(groups []model.Group) map[string]string {
+	out := map[string]string{}
+	for _, g := range groups {
+		for _, c := range g.Companies {
+			if c.Symbol != "" {
+				out[c.Symbol] = c.Name
+			}
+		}
 	}
 	return out
 }

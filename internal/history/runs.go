@@ -147,7 +147,7 @@ func (r *Runs) Summary(display *time.Location) string {
 
 	fmt.Fprintf(&b, "<b>Per brief, on average</b>\n")
 	fmt.Fprintf(&b, "%d articles kept, %d matched to a watchlist\n", kept/n, matched/n)
-	fmt.Fprintf(&b, "of those, %d placed by judgment rather than by a keyword\n", placed/n)
+	fmt.Fprintf(&b, "of those, %d placed by judgment rather than by name\n", placed/n)
 	fmt.Fprintf(&b, "%d removed as trivia, %d already covered\n", trivial/n, repeats/n)
 	fmt.Fprintf(&b, "%d new names surfaced\n\n", names/n)
 

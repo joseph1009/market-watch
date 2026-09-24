@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 )
 
 // fakeCompleter records what it was asked and replies with a canned response.
@@ -61,7 +61,7 @@ func testArticles() []model.Article {
 
 func reportGroups() []model.Group {
 	return []model.Group{
-		{ID: "semis-ai", Name: "Semiconductors & AI", Tickers: []string{"NVDA"}},
+		{ID: "semis-ai", Name: "Semiconductors & AI", Companies: []model.Company{{Symbol: "NVDA", Name: "Nvidia"}}},
 		{ID: "macro-rates", Name: "Macro & Rates"},
 	}
 }
@@ -364,12 +364,12 @@ func TestPromptSeparatesMarketLevelsFromArticles(t *testing.T) {
 	g := &Generator{
 		Completer: fake,
 		Now:       testTime,
-		Levels: []marketdata.Reading{
-			{Series: marketdata.Series{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
+		Levels: []prices.Reading{
+			{Indicator: prices.Indicator{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
 				Latest: 4.32, AsOf: testTime(), Previous: 4.28, HasPrevious: true,
 				WeekAgo: 4.11, HasWeekAgo: true},
 			// A monthly figure is dated by its month and compared with the last.
-			{Series: marketdata.Series{ID: "CPIAUCSL", Label: "US consumer price inflation", Unit: "%", Units: "pc1", Monthly: true},
+			{Indicator: prices.Indicator{ID: "CPIAUCSL", Label: "US consumer price inflation", Unit: "%", Units: "pc1", Monthly: true},
 				Latest: 3.35302, AsOf: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), Previous: 3.30386, HasPrevious: true},
 		},
 	}

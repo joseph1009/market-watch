@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -146,66 +146,85 @@ func TestStartTwiceIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestWatchlistAddPersistsATicker(t *testing.T) {
+// A change made from Telegram is kept on the volume, so it survives a restart,
+// and applied on top of config/companies.yaml.
+func TestWatchlistAddPersistsACompany(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add semis-ai QCOM"))
+	a.HandleMessage(context.Background(), message("/watchlist add industrials-defense PLTR Palantir"))
 
 	snapshot := a.Prefs()
-	group, ok := snapshot.Group("semis-ai")
-	if !ok {
-		t.Fatal("semis-ai went missing")
+	group, ok := snapshot.Group("industrials-defense")
+	if !ok || !group.Has("PLTR") || !group.Has("Palantir") {
+		t.Fatalf("industrials-defense = %+v, want Palantir added", group.Companies)
 	}
-	var found bool
-	for _, tkr := range group.Tickers {
-		if tkr == "QCOM" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("Tickers = %v, want QCOM added", group.Tickers)
-	}
-	if len(*sent) != 1 || !strings.Contains((*sent)[0].Text, "QCOM") {
+	if len(*sent) != 1 || !strings.Contains((*sent)[0].Text, "Palantir (PLTR)") {
 		t.Errorf("reply = %+v", *sent)
+	}
+
+	reloaded, err := config.LoadPrefs(a.Cfg.PrefsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := reloaded.Group("industrials-defense"); !g.Has("PLTR") {
+		t.Error("the addition did not survive a restart")
 	}
 }
 
-// A multi-word term is a company name, and names match case-insensitively --
-// which is why they must not be filed as tickers.
-func TestWatchlistAddFilesNamesSeparatelyFromTickers(t *testing.T) {
+// A few words that do not start with a ticker are a company followed by name
+// alone, with no symbol and so no price.
+func TestWatchlistAddTakesAPlainNameAsANameOnlyCompany(t *testing.T) {
 	a, _ := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add semis-ai SK Hynix"))
+	a.HandleMessage(context.Background(), message("/watchlist add semis-ai Tokyo Electron"))
 
 	snapshot := a.Prefs()
 	group, _ := snapshot.Group("semis-ai")
-	var found bool
-	for _, n := range group.Names {
-		if n == "SK Hynix" {
-			found = true
+	for _, c := range group.Companies {
+		if c.Name == "Tokyo Electron" {
+			if c.Symbol != "" {
+				t.Errorf("a company name was filed as a ticker: %+v", c)
+			}
+			return
 		}
 	}
-	if !found {
-		t.Errorf("Names = %v, want \"SK Hynix\"", group.Names)
-	}
-	for _, tkr := range group.Tickers {
-		if strings.Contains(tkr, "HYNIX") {
-			t.Errorf("a company name was filed as a ticker: %v", group.Tickers)
-		}
-	}
+	t.Errorf("semis-ai = %+v, want Tokyo Electron added", group.Companies)
 }
 
-func TestWatchlistRemoveDropsATerm(t *testing.T) {
+func TestWatchlistRemoveDropsACompany(t *testing.T) {
 	a, _ := newTestApp(t)
 
 	a.HandleMessage(context.Background(), message("/watchlist remove semis-ai NVDA"))
 
 	snapshot := a.Prefs()
-	group, _ := snapshot.Group("semis-ai")
-	for _, tkr := range group.Tickers {
-		if tkr == "NVDA" {
-			t.Errorf("NVDA survived removal: %v", group.Tickers)
+	if group, _ := snapshot.Group("semis-ai"); group.Has("NVDA") || group.Has("Nvidia") {
+		t.Error("Nvidia survived removal")
+	}
+}
+
+// The changes made here are listed as they would read in the file, and reset
+// drops them all.
+func TestWatchlistEditsAreListedAndCanBeReset(t *testing.T) {
+	a, sent := newTestApp(t)
+
+	a.HandleMessage(context.Background(), message("/watchlist add industrials-defense PLTR Palantir"))
+	a.HandleMessage(context.Background(), message("/watchlist remove semis-ai INTC"))
+	a.HandleMessage(context.Background(), message("/watchlist edits"))
+
+	listed := (*sent)[len(*sent)-1].Text
+	for _, want := range []string{"industrials-defense: PLTR Palantir", "semis-ai: INTC"} {
+		if !strings.Contains(listed, want) {
+			t.Errorf("edits reply lacks %q:\n%s", want, listed)
 		}
+	}
+
+	a.HandleMessage(context.Background(), message("/watchlist reset"))
+	if !a.Prefs().Edits.IsZero() {
+		t.Errorf("edits = %+v after a reset", a.Prefs().Edits)
+	}
+	snapshot := a.Prefs()
+	if group, _ := snapshot.Group("semis-ai"); !group.Has("INTC") {
+		t.Error("the reset did not bring Intel back")
 	}
 }
 
@@ -331,17 +350,16 @@ func TestPrefsAccessIsSafeUnderConcurrentUse(t *testing.T) {
 	}
 }
 
-func TestRenderWatchlistsShowsEveryGroup(t *testing.T) {
-	out := renderWatchlists(config.DefaultPrefs().Groups)
-	for _, want := range []string{"semis-ai", "big-tech", "macro-rates", "NVDA"} {
+func TestRenderWatchlistsShowsEverySector(t *testing.T) {
+	out := renderWatchlists(*config.DefaultPrefs())
+	for _, want := range []string{"semis-ai", "big-tech", "macro-rates", "NVDA", "by name: SK Hynix", "followed by subject"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
-	// The sentence decides most of the placing, so it belongs where the
-	// watchlist is managed rather than only in the file on the volume.
-	if !strings.Contains(out, "anything that disrupts supply") {
-		t.Errorf("the sector sentences are not shown:\n%s", out)
+	// One message: Telegram refuses anything past 4096 characters.
+	if n := len([]rune(out)); n > 4000 {
+		t.Errorf("the watchlist runs to %d characters, past one message", n)
 	}
 }
 
@@ -350,7 +368,7 @@ func TestRenderSourcesMarksEnabledState(t *testing.T) {
 		{ID: "on-feed", Name: "On", Weight: 8, Enabled: true},
 		{ID: "off-feed", Name: "Off", Weight: 5, Enabled: false},
 	}
-	out := renderSources(sources)
+	out := renderSources(sources, nil)
 	if !strings.Contains(out, "● <b>On</b>") {
 		t.Errorf("enabled source not marked:\n%s", out)
 	}
@@ -619,10 +637,8 @@ func TestCommandsFromAnotherChatAreIgnored(t *testing.T) {
 		t.Errorf("the bot replied to a stranger: %+v", *sent)
 	}
 	for _, g := range a.Prefs().Groups {
-		for _, ticker := range g.Tickers {
-			if ticker == "ZZZZ" {
-				t.Error("a stranger edited the watchlists")
-			}
+		if g.Has("ZZZZ") {
+			t.Error("a stranger edited the watchlists")
 		}
 	}
 	for _, s := range a.Prefs().Sources {

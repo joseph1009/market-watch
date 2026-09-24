@@ -1,0 +1,338 @@
+# The news feeds polled for every brief.
+#
+#   weight   ranks feeds against each other, 1 to 10: when several carry the
+#            same story, the heaviest keeps it, and it counts toward what
+#            survives the cut. Primary agency releases outrank wire coverage,
+#            which outranks aggregators and commentary.
+#   enabled  false keeps a feed on the list but unpolled, with the reason
+#            beside it, so the next attempt starts from what is already known.
+#
+# /sources on|off <id> switches a feed from Telegram without a deploy. The
+# switch is kept on Fly's disk, on top of this file, and
+# scripts/sync-from-fly.sh writes it in here (docs/RUNBOOK.md, "Changing the
+# watchlist").
+#
+# Every address was checked against the live network before it was added.
+
+# --- Filings ------------------------------------------------------------------
+
+# Switched off 2026-09-21: this is every 8-K filed by every filer, about forty a
+# day and almost all of them small companies nobody here follows. Across the
+# briefs measured it was cited zero times, while the targeted SEC feeds were
+# cited repeatedly. Kept so /sources can bring it back if the sorting ever gets
+# good enough to use it.
+- id: sec-8k
+  name: SEC EDGAR 8-K
+  url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=40&output=atom
+  weight: 10
+  enabled: false
+- id: sec-press
+  name: SEC Press Releases
+  url: https://www.sec.gov/news/pressreleases.rss
+  weight: 9
+  enabled: true
+
+# --- Monetary policy ----------------------------------------------------------
+
+# Switched off 2026-09-10 in favour of the three narrow Fed feeds below.
+# press_all mixes monetary policy with enforcement actions and application
+# approvals; the brief read a day of it and wrote "routine enforcement actions
+# and application approvals with no market read", which is tokens spent to say
+# nothing.
+- id: fed-press
+  name: Federal Reserve Press Releases
+  url: https://www.federalreserve.gov/feeds/press_all.xml
+  weight: 10
+  enabled: false
+- id: fed-monetary
+  name: Federal Reserve Monetary Policy
+  url: https://www.federalreserve.gov/feeds/press_monetary.xml
+  weight: 10
+  enabled: true
+# Speeches and testimony are where officials say what they think before it
+# reaches the wires. The briefs had been quoting Waller and Hammack secondhand
+# through CNBC; this is the primary text.
+- id: fed-speeches
+  name: Federal Reserve Speeches
+  url: https://www.federalreserve.gov/feeds/speeches.xml
+  weight: 9
+  enabled: true
+- id: fed-testimony
+  name: Federal Reserve Testimony
+  url: https://www.federalreserve.gov/feeds/testimony.xml
+  weight: 9
+  enabled: true
+
+# --- Economic data ------------------------------------------------------------
+
+# The BLS feeds are monthly by nature, so most days they carry nothing inside
+# the staleness window. That is correct: a CPI release is news on release day
+# and history a week later.
+- id: bea-news
+  name: Bureau of Economic Analysis
+  url: https://apps.bea.gov/rss/rss.xml
+  weight: 10
+  enabled: true
+- id: bls-cpi
+  name: BLS Consumer Prices
+  url: https://www.bls.gov/feed/cpi.rss
+  weight: 10
+  enabled: true
+- id: bls-employment
+  name: BLS Employment Situation
+  url: https://www.bls.gov/feed/empsit.rss
+  weight: 10
+  enabled: true
+- id: bls-ppi
+  name: BLS Producer Prices
+  url: https://www.bls.gov/feed/ppi.rss
+  weight: 10
+  enabled: true
+- id: bls-jolts
+  name: BLS Job Openings
+  url: https://www.bls.gov/feed/jolts.rss
+  weight: 9
+  enabled: true
+- id: census-indicators
+  name: Census Economic Indicators
+  url: https://www.census.gov/economic-indicators/indicator.xml
+  weight: 10
+  enabled: true
+
+# --- Trade, sanctions and export controls -------------------------------------
+
+- id: ustr
+  name: US Trade Representative
+  url: https://ustr.gov/rss.xml
+  weight: 9
+  enabled: true
+# Filtered to the issuing agency rather than a keyword search: a search on
+# "export control" returned mostly paperwork notices, while the agency's own
+# docket is the action itself.
+- id: fedreg-bis
+  name: "Federal Register: Export Controls"
+  url: https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau
+  weight: 10
+  enabled: true
+- id: fedreg-ofac
+  name: "Federal Register: Sanctions"
+  url: https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=foreign-assets-control-office
+  weight: 10
+  enabled: true
+
+# --- Energy -------------------------------------------------------------------
+
+- id: eia-today
+  name: EIA Today in Energy
+  url: https://www.eia.gov/rss/todayinenergy.xml
+  weight: 10
+  enabled: true
+- id: eia-press
+  name: EIA Press Releases
+  url: https://www.eia.gov/rss/press_rss.xml
+  weight: 10
+  enabled: true
+- id: oilprice
+  name: OilPrice.com
+  url: https://oilprice.com/rss/main
+  weight: 5
+  enabled: true
+
+# --- Healthcare ---------------------------------------------------------------
+
+- id: fda-press
+  name: FDA Press Releases
+  url: https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml
+  weight: 10
+  enabled: true
+- id: fda-drugs
+  name: FDA Drug Updates
+  url: https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/drugs/rss.xml
+  weight: 9
+  enabled: true
+- id: fda-medwatch
+  name: FDA Safety Alerts
+  url: https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/medwatch/rss.xml
+  weight: 8
+  enabled: true
+
+# --- Industrials and defense --------------------------------------------------
+
+# ContentType 400 is the daily contract award list; the general newsroom types
+# carry base life and exercises, which have no market read.
+- id: dod-contracts
+  name: Defense Contract Awards
+  url: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=400&Site=945&max=25
+  weight: 9
+  enabled: true
+- id: dod-releases
+  name: Defense Department Releases
+  url: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=9&Site=945&max=25
+  weight: 7
+  enabled: true
+
+# --- Crypto -------------------------------------------------------------------
+
+- id: cftc-press
+  name: CFTC Press Releases
+  url: https://www.cftc.gov/RSS/RSSGP/rssgp.xml
+  weight: 8
+  enabled: true
+- id: coindesk
+  name: CoinDesk
+  url: https://www.coindesk.com/arc/outboundfeeds/rss/
+  weight: 6
+  enabled: true
+
+# --- Financial press ----------------------------------------------------------
+
+- id: cnbc-top
+  name: CNBC Top News
+  url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
+  weight: 8
+  enabled: true
+- id: cnbc-markets
+  name: CNBC Markets
+  url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
+  weight: 8
+  enabled: true
+- id: cnbc-tech
+  name: CNBC Technology
+  url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
+  weight: 8
+  enabled: true
+- id: yahoo-finance
+  name: Yahoo Finance
+  url: https://finance.yahoo.com/news/rssindex
+  weight: 6
+  enabled: true
+- id: marketwatch-top
+  name: MarketWatch Top Stories
+  url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+  weight: 6
+  enabled: true
+- id: investing-news
+  name: Investing.com News
+  url: https://www.investing.com/rss/news.rss
+  weight: 4
+  enabled: true
+# Switched off 2026-09-09: the address now sits behind bot protection and
+# resets the connection mid-stream for any client that is not a browser.
+- id: nasdaq-markets
+  name: Nasdaq Markets
+  url: https://www.nasdaq.com/feed/rssoutbound?category=Markets
+  weight: 5
+  enabled: false
+
+# --- International press ------------------------------------------------------
+
+# The feeds were almost entirely US outlets, so an Asian or European session
+# reached the brief only once a US desk chose to cover it. These are weighted
+# below the US financial press for company news and earn their place on the
+# sessions it does not see. The Straits Times and CNA are also where
+# Singapore's own news comes from: news search does not find it.
+- id: cna-latest
+  name: CNA
+  url: https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml
+  weight: 8
+  enabled: true
+- id: cna-business
+  name: CNA Business
+  url: https://www.channelnewsasia.com/rssfeeds/8395954
+  weight: 8
+  enabled: true
+- id: straitstimes-business
+  name: Straits Times Business
+  url: https://www.straitstimes.com/news/business/rss.xml
+  weight: 7
+  enabled: true
+- id: scmp-business
+  name: SCMP Business
+  url: https://www.scmp.com/rss/92/feed
+  weight: 7
+  enabled: true
+- id: ft-home
+  name: Financial Times
+  url: https://www.ft.com/rss/home
+  weight: 8
+  enabled: true
+# General news rather than a markets desk, so weighted low. It earns its place
+# on the Middle East reporting that drives the energy and geopolitics sections.
+- id: aljazeera
+  name: Al Jazeera
+  url: https://www.aljazeera.com/xml/rss/all.xml
+  weight: 5
+  enabled: true
+- id: bbc-business
+  name: BBC Business
+  url: https://feeds.bbci.co.uk/news/business/rss.xml
+  weight: 6
+  enabled: true
+- id: guardian-business
+  name: Guardian Business
+  url: https://www.theguardian.com/uk/business/rss
+  weight: 5
+  enabled: true
+- id: skynews-business
+  name: Sky News Business
+  url: https://feeds.skynews.com/feeds/rss/business.xml
+  weight: 5
+  enabled: true
+# Checked 2026-09-10 and left off: the Economist's finance feed returns 300
+# entries reaching back years, nearly all outside the staleness window, and
+# France 24's was a day stale. Nikkei Asia, Deutsche Welle and the Japan Times
+# all refused. (News search now reaches Nikkei Asia, DW and the Economist.)
+- id: economist-finance
+  name: "The Economist: Finance (archive)"
+  url: https://www.economist.com/finance-and-economics/rss.xml
+  weight: 6
+  enabled: false
+
+# --- Company newsrooms --------------------------------------------------------
+
+# Chosen one by one rather than as a category: these three publish business
+# and product news, while Apple's, Google's and Microsoft's newsrooms carry
+# consumer marketing ("new football features in Search") that only adds noise.
+- id: nvidia-news
+  name: NVIDIA Newsroom
+  url: https://nvidianews.nvidia.com/releases.xml
+  weight: 9
+  enabled: true
+- id: amd-news
+  name: AMD Newsroom
+  url: https://ir.amd.com/rss/news-releases.xml
+  weight: 9
+  enabled: true
+- id: meta-news
+  name: Meta Newsroom
+  url: https://about.fb.com/news/feed/
+  weight: 9
+  enabled: true
+
+- id: semianalysis
+  name: SemiAnalysis
+  url: https://semianalysis.com/feed/
+  weight: 7
+  enabled: true
+
+# --- Checked and unavailable --------------------------------------------------
+
+# Recorded so the next attempt does not repeat the search. FDIC, OCC, NIH, CMS,
+# NHTSA, USDA, FAA, FERC, OPEC, IEA and Treasury all answered 403 or 404 on
+# every RSS address tried on 2026-09-10. Autos and consumer therefore have no
+# feed of their own and depend on the financial press and news search.
+- id: nhtsa
+  name: NHTSA (unavailable)
+  url: https://www.nhtsa.gov/rss/press-releases
+  weight: 8
+  enabled: false
+- id: fdic
+  name: FDIC (unavailable)
+  url: https://www.fdic.gov/news/press-releases/rss.xml
+  weight: 9
+  enabled: false
+- id: treasury
+  name: US Treasury (unavailable)
+  url: https://home.treasury.gov/news/press-releases/feed
+  weight: 10
+  enabled: false

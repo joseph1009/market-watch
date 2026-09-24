@@ -66,22 +66,23 @@ func Queries(groups []model.Group) []Query {
 	return out
 }
 
-// groupQuery describes a watchlist to the search engine. Without a sector
-// sentence it falls back to the names and themes the watchlist lists.
+// groupQuery describes a sector to the search engine: its name and the first
+// sentence of its description, which is written to name the sector's ground.
+// The sentences after it -- which themes belong, what belongs elsewhere -- are
+// for the sorting, and would only blur a search. Without a description it
+// falls back to the sector's companies.
 func groupQuery(g model.Group) string {
 	name := strings.TrimSpace(g.Name)
 	if name == "" {
 		return ""
 	}
-	if scope := strings.TrimSpace(g.Scope); scope != "" {
-		return clip(name + " news: " + scope)
+	if first := firstSentence(g.About); first != "" {
+		return clip(name + " news: " + first)
 	}
 
 	var terms []string
-	for _, t := range append(append([]string{}, g.Names...), g.Keywords...) {
-		if t = strings.TrimSpace(t); t != "" {
-			terms = append(terms, t)
-		}
+	for _, c := range g.Companies {
+		terms = append(terms, c.Name)
 		if len(terms) == 8 {
 			break
 		}
@@ -90,6 +91,15 @@ func groupQuery(g model.Group) string {
 		return clip(name + " news")
 	}
 	return clip(name + " news: " + strings.Join(terms, ", "))
+}
+
+// firstSentence is the text up to the first full stop that ends a sentence.
+func firstSentence(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if i := strings.Index(s, ". "); i >= 0 {
+		return s[:i+1]
+	}
+	return s
 }
 
 // clip cuts a query to maxQueryRunes on a word boundary.
@@ -128,7 +138,7 @@ func MoverQuery(name, ticker string, percent float64) Query {
 		verb = "fall"
 	}
 	subject := ticker
-	if n := plainName(name); n != "" && !strings.EqualFold(n, ticker) {
+	if n := PlainName(name); n != "" && !strings.EqualFold(n, ticker) {
 		subject = n + " (" + ticker + ")"
 	}
 	return Query{
@@ -147,10 +157,10 @@ var corporate = map[string]bool{
 	"&": true,
 }
 
-// plainName turns the name the SEC files a company under -- "MCDONALDS CORP",
+// PlainName turns the name the SEC files a company under -- "MCDONALDS CORP",
 // "KKR & Co. Inc.", "Rivian Automotive, Inc. / DE" -- into the one a headline
 // uses, by dropping the state suffix and the corporate words at the end.
-func plainName(name string) string {
+func PlainName(name string) string {
 	if i := strings.Index(name, "/"); i >= 0 {
 		name = name[:i]
 	}

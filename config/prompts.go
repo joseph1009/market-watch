@@ -10,9 +10,9 @@
 //
 // What is not here is anything the replies are parsed by -- section markers,
 // the pipe-delimited company lines, the rating format. Those live in the
-// prompts too, but Check reports a file that has lost one, because an edit
+// prompts too, but CheckPrompts reports a file that has lost one, because an edit
 // that drops a marker does not fail until a reply cannot be read.
-package prompts
+package config
 
 import (
 	_ "embed"
@@ -39,7 +39,7 @@ func init() { loaded, loadErr = read() }
 // so a bad path leaves the program able to start and say so rather than
 // failing somewhere less legible.
 func read() (string, error) {
-	path := strings.TrimSpace(os.Getenv(File))
+	path := strings.TrimSpace(os.Getenv(PromptFile))
 	if path == "" {
 		return embedded, nil
 	}
@@ -50,25 +50,25 @@ func read() (string, error) {
 	return string(text), nil
 }
 
-// File is the environment variable that points at a prompts file to use
+// PromptFile is the environment variable that points at a prompts file to use
 // instead of the built-in one. It exists for editing prompts without a
 // rebuild; a deployment that sets it must ship the file too.
-const File = "PROMPT_FILE"
+const PromptFile = "PROMPT_FILE"
 
-// Load reports whether the prompts in use are usable: that PROMPT_FILE, where
+// LoadPrompts reports whether the prompts in use are usable: that PROMPT_FILE, where
 // it was set, could be read, and that the file carries every section. Call it once at startup: a prompt file that has lost a
 // section should stop the program then, not at the moment a reply arrives.
-func Load() error {
+func LoadPrompts() error {
 	if loadErr != nil {
 		return loadErr
 	}
-	return Check(loaded)
+	return CheckPrompts(loaded)
 }
 
-// Get returns one section. An unknown id is a programming error rather than a
-// condition to handle, so it panics: the ids are compiled in, and Check has
+// Prompt returns one section. An unknown id is a programming error rather than a
+// condition to handle, so it panics: the ids are compiled in, and CheckPrompts has
 // already confirmed the file carries them.
-func Get(id string) string {
+func Prompt(id string) string {
 	text, ok := sections(loaded)[id]
 	if !ok {
 		panic("prompts: no section " + id)
@@ -76,9 +76,9 @@ func Get(id string) string {
 	return text
 }
 
-// Render fills a section's {{.Fields}} from data.
-func Render(id string, data any) (string, error) {
-	t, err := template.New(id).Parse(Get(id))
+// RenderPrompt fills a section's {{.Fields}} from data.
+func RenderPrompt(id string, data any) (string, error) {
+	t, err := template.New(id).Parse(Prompt(id))
 	if err != nil {
 		return "", fmt.Errorf("prompt %s: %w", id, err)
 	}
@@ -103,9 +103,9 @@ var required = map[string][]string{
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }
 
-// Check reports what a prompts file is missing, naming every fault rather than
+// CheckPrompts reports what a prompts file is missing, naming every fault rather than
 // the first: someone editing prompts wants the whole list, not one at a time.
-func Check(text string) error {
+func CheckPrompts(text string) error {
 	have := sections(text)
 	var faults []string
 	for id, markers := range required {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/sec"
 )
@@ -20,7 +20,7 @@ import (
 // With PROMPT_OUT=<dir> it saves what /analyse would send the model -- the
 // instructions and the opening message -- without sending it, so the input
 // can be read without running anything. To have it written, use a relay run:
-// see RUNBOOK.md.
+// see docs/RUNBOOK.md.
 func TestLiveFundamentals(t *testing.T) {
 	if os.Getenv("MARKET_WATCH_LIVE") == "" {
 		t.Skip("set MARKET_WATCH_LIVE=1 to read real filings")

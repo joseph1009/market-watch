@@ -32,8 +32,8 @@ type Result struct {
 	Dropped int
 
 	// Triage outcome, all zero when no triager ran. Rated is how many articles
-	// got a rating; NewlyMatched how many that keywords missed were placed in a
-	// watchlist, and Placements how many placements were added in all. Trivial
+	// got a rating; NewlyMatched how many that matched no company were placed
+	// in a sector, and Placements how many placements were added in all. Trivial
 	// is how many unmatched articles rated 1 were removed before the cap, and
 	// CutImportant how many rated 4 or 5 the cap still discarded -- the number
 	// that says whether the cap is set too low.
@@ -44,8 +44,8 @@ type Result struct {
 	CutImportant int
 	TriageUsage  model.Usage
 
-	// Placed is a sample of the articles judgment put in a watchlist that
-	// keyword matching had missed entirely, strongest first.
+	// Placed is a sample of the articles judgment put in a sector that matching
+	// by company had missed entirely, strongest first.
 	//
 	// The counts above say how often that happened; they cannot say whether it
 	// was right. A watchlist described as a sector is a wider net than a list
@@ -92,8 +92,8 @@ type Options struct {
 	// a filing competes for a place on the same terms as everything else.
 	Extra []model.Article
 
-	// Triage, when set, rates and places articles after keyword matching and
-	// before the cap. Nil ranks on keyword matches and source weight alone.
+	// Triage, when set, rates and places articles after matching by company
+	// and before the cap. Nil ranks on those matches and source weight alone.
 	Triage Triager
 }
 
@@ -156,7 +156,7 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 }
 
 // triage runs the triager, records what it changed, and removes the trivia: an
-// article rated 1 that no watchlist claims. A keyword match is kept here
+// article rated 1 that no sector claims. A company match is kept here
 // whatever its rating, so it is counted and ranked with everything else; whether
 // it is worth writing about is decided later, by report.MinSectionRating.
 func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article, groups []model.Group) []model.Article {
@@ -177,7 +177,7 @@ func (r *Result) triage(ctx context.Context, t Triager, articles []model.Article
 			r.Placements += added
 			if before[a.ID] == 0 {
 				r.NewlyMatched++
-				// Only the ones keywords missed entirely are worth sampling:
+				// Only the ones matching missed entirely are worth sampling:
 				// an article that already matched a watchlist and gained a
 				// second says nothing about whether the wider net works.
 				r.Placed = append(r.Placed, Placement{
@@ -388,9 +388,11 @@ func better(candidate, kept model.Article, weights map[string]int) bool {
 	return candidate.Published.Before(kept.Published)
 }
 
-// Match tags every article with the watchlist groups it belongs to and the
-// tickers it names. Articles matching nothing are kept: they are the raw
-// material for the general market overview.
+// Match tags every article with the sectors whose companies it names, by
+// ticker or by name, and with the tickers it names. Articles matching nothing
+// are kept: they are the raw material for the general market overview, and the
+// sorting places what a company name could not by reading the sector
+// descriptions.
 func Match(articles []model.Article, groups []model.Group) []model.Article {
 	out := make([]model.Article, len(articles))
 	for i, a := range articles {
@@ -401,17 +403,14 @@ func Match(articles []model.Article, groups []model.Group) []model.Article {
 		a.GroupIDs = nil
 		for _, g := range groups {
 			matched := false
-			for _, ticker := range g.Tickers {
+			for _, ticker := range g.MatchSymbols() {
 				if mentionsTicker(text, ticker) {
 					a.Tickers = appendUnique(a.Tickers, strings.ToUpper(strings.TrimSpace(ticker)))
 					matched = true
 				}
 			}
 			if !matched {
-				// Names and keywords match the same way; they are separate
-				// fields so a watchlist reads as "these companies, plus these
-				// themes" when someone edits prefs.yaml by hand.
-				for _, term := range append(append([]string{}, g.Names...), g.Keywords...) {
+				for _, term := range g.MatchNames() {
 					if mentionsWord(lower, strings.ToLower(strings.TrimSpace(term))) {
 						matched = true
 						break
@@ -475,8 +474,8 @@ func hasTickerMarker(text string, i int) bool {
 	return text[j] == '$' || text[j] == ':'
 }
 
-// mentionsWord matches a keyword on word boundaries so "CPI" does not fire on
-// "recipient". Both arguments must already be lowercased.
+// mentionsWord matches a name on word boundaries so "Intel" does not fire on
+// "intelligence". Both arguments must already be lowercased.
 func mentionsWord(haystack, needle string) bool {
 	if needle == "" {
 		return false

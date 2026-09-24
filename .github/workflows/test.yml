@@ -24,7 +24,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          unformatted=$(gofmt -l ./cmd ./internal)
+          unformatted=$(gofmt -l ./cmd ./config ./internal)
           if [ -n "$unformatted" ]; then
             echo "These files need gofmt:"
             echo "$unformatted"

@@ -1,15 +1,16 @@
 // Package triage judges articles by what they say rather than by which words
 // they contain.
 //
-// Keyword matching is precise but literal: a drone strike on a Saudi pipeline
-// matched nothing in the energy watchlist, because it never said "crude" or
-// "OPEC". And ranking the unmatched remainder by source weight kept routine
-// sanctions notices over a surge in oil and borrowing costs. A small model reads
-// every article once, rates its market relevance and places it in the
-// watchlists its substance bears on. Keyword matches are never removed: the
-// model can only add to what the rules already found. Its rating still counts
-// against them later -- a keyword match rated 1 or 2 is not written about (see
-// report.MinSectionRating) -- but that is the report's decision, not this one's.
+// Matching is precise but literal: a drone strike on a Saudi pipeline names no
+// company the reader follows, and ranking the unmatched remainder by source
+// weight kept routine sanctions notices over a surge in oil and borrowing
+// costs. So a model reads every article once, rates its market relevance and
+// places it in the sectors its substance bears on, judged against each
+// sector's description (config/sectors.yaml). The sorting only adds to the
+// matches by company name and ticker; the review (review.go) then takes a
+// second look at where everything that will reach the brief ended up, and can
+// move any of it. Both are Sonnet: with the keywords gone, more of the placing
+// rests on reading, and Haiku read too literally to carry it.
 package triage
 
 import (
@@ -22,8 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // Completer is the one model call triage needs, so batching, parsing and
@@ -226,43 +227,44 @@ func apply(batch []model.Article, verdicts map[int]verdict, known map[string]boo
 	}
 }
 
-// systemPrompt is the triage brief with the reader's watchlists written into
-// it. Its text lives in internal/prompts.
+// systemPrompt is the triage brief with the reader's sectors written into it.
+// Its text lives in config/prompts.md.
 func systemPrompt(groups []model.Group) (string, error) {
+	return config.RenderPrompt("triage.system", struct{ Watchlists string }{
+		Watchlists: describeSectors(groups),
+	})
+}
+
+// describeSectors lists the sectors for the sorting and the review: each by
+// its description, then a few of its companies.
+func describeSectors(groups []model.Group) string {
 	var list strings.Builder
 	for _, g := range groups {
 		fmt.Fprintf(&list, "- %s: %s", g.ID, g.Name)
-		// The sector sentence first, the examples after it. That order is the
+		// The description first, the companies after it. That order is the
 		// instruction: judge the article against what the sector covers, and
-		// read the examples as some of what lives there rather than as the
+		// read the companies as some of what lives there rather than as the
 		// whole of it.
-		if g.Scope != "" {
-			fmt.Fprintf(&list, " -- %s", g.Scope)
+		if g.About != "" {
+			fmt.Fprintf(&list, " -- %s", g.About)
 		}
 		if hints := groupHints(g); len(hints) > 0 {
 			fmt.Fprintf(&list, " (for example %s)", strings.Join(hints, ", "))
 		}
 		list.WriteString("\n")
 	}
-	return prompts.Render("triage.system", struct{ Watchlists string }{
-		Watchlists: strings.TrimRight(list.String(), "\n"),
-	})
+	return strings.TrimRight(list.String(), "\n")
 }
 
-// groupHints gives the model a sense of each watchlist's scope. The ids and
-// names alone are too terse to separate, say, industrials from defense.
+// groupHints names some of the companies a sector follows, as examples beside
+// its description.
 func groupHints(g model.Group) []string {
 	hints := make([]string, 0, maxHints)
-	for _, list := range [][]string{g.Names, g.Keywords} {
-		for i, h := range list {
-			if i >= maxHints/2 && len(g.Names) > 0 && len(g.Keywords) > 0 {
-				break // leave room for the other list
-			}
-			if len(hints) == maxHints {
-				return hints
-			}
-			hints = append(hints, h)
+	for _, c := range g.Companies {
+		if len(hints) == maxHints {
+			break
 		}
+		hints = append(hints, c.Name)
 	}
 	return hints
 }

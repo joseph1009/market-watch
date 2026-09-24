@@ -7,10 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/marketdata"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // The response is delimited rather than JSON: the sections are prose that goes
@@ -21,8 +20,8 @@ const (
 	sectionMarker  = "## SECTION:"
 )
 
-// systemPrompt governs the brief. Its text lives in internal/prompts.
-var systemPrompt = prompts.Get("brief.system")
+// systemPrompt governs the brief. Its text lives in config/prompts.md.
+var systemPrompt = config.Prompt("brief.system")
 
 // MinSectionArticles is how much news a watchlist needs before it earns a
 // section. Below this the model has nothing to work with and writes around the
@@ -59,7 +58,7 @@ const MinGeneralRating = 4
 // MinSectionRating is the lowest rating an article needs to be written about in
 // a section.
 //
-// It only ever turns away keyword matches: an article placed by judgment is
+// It only ever turns away name matches: an article placed by judgment is
 // rated 4 or more before it is placed at all. Until this, a keyword match was
 // in whatever its rating, on the grounds that the reader had named the subject.
 // The first brief read article by article showed what that let in -- a third of
@@ -93,7 +92,7 @@ func splitByCoverage(articles []model.Article, groups []model.Group, minimum int
 // market is what was measured rather than written: FRED's levels, the day's
 // prices, and the history of the shares that moved furthest.
 type market struct {
-	levels []marketdata.Reading
+	levels []prices.Reading
 	quotes []model.Quote
 
 	// trends are keyed by symbol, for the shares that moved furthest beyond
@@ -154,8 +153,8 @@ func buildPrompt(articles []model.Article, groups []model.Group, m market, now t
 	}
 	for _, g := range groups {
 		fmt.Fprintf(&b, "- %s: %s", g.ID, g.Name)
-		if len(g.Tickers) > 0 {
-			fmt.Fprintf(&b, " (%s)", strings.Join(g.Tickers, ", "))
+		if symbols := g.Symbols(); len(symbols) > 0 {
+			fmt.Fprintf(&b, " (%s)", strings.Join(symbols, ", "))
 		}
 		b.WriteString("\n")
 	}
@@ -329,7 +328,7 @@ func sortedGroupIDs(groups []model.Group) []string {
 // Directions are stated rather than implied by a sign, because the reader of
 // this block is a language model and "-0.04" invites it to describe a fall as a
 // rise. A move that is not known is left out rather than shown as zero.
-func renderMarketData(levels []marketdata.Reading) string {
+func renderMarketData(levels []prices.Reading) string {
 	if len(levels) == 0 {
 		return ""
 	}

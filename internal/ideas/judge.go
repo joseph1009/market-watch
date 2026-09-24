@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // Judge gives each idea its verdict.
@@ -14,8 +14,8 @@ type Judge struct {
 	Completer Completer
 }
 
-// verdictsPrompt governs the verdicts. Its text lives in internal/prompts.
-var verdictsPrompt = prompts.Get("verdicts.system")
+// verdictsPrompt governs the verdicts. Its text lives in config/prompts.md.
+var verdictsPrompt = config.Prompt("verdicts.system")
 
 // Judge returns the ideas that received a verdict, in the order given. facts
 // is each idea's fact sheet, by position: its trading, and its accounts where

@@ -67,9 +67,14 @@ func TestDedupeLeavesDistinctStoriesAlone(t *testing.T) {
 
 func testGroups() []model.Group {
 	return []model.Group{
-		{ID: "semis-ai", Name: "Semiconductors & AI", Tickers: []string{"NVDA", "ARM"},
-			Names: []string{"Nvidia"}, Keywords: []string{"AI chip", "foundry"}},
-		{ID: "macro-rates", Name: "Macro & Rates", Keywords: []string{"CPI", "rate cut", "Federal Reserve"}},
+		{ID: "semis-ai", Name: "Semiconductors & AI", About: "Chips.", Companies: []model.Company{
+			{Symbol: "NVDA", Name: "Nvidia"},
+			// "Arm" as a name is the body part, so it is matched by ticker only.
+			{Symbol: "ARM", Name: "Arm", Match: model.MatchTicker},
+		}},
+		{ID: "macro-rates", Name: "Macro & Rates", About: "The economy.", Companies: []model.Company{
+			{Name: "Federal Reserve"},
+		}},
 	}
 }
 
@@ -91,7 +96,7 @@ func TestMatchFindsCompaniesByNameNotJustTicker(t *testing.T) {
 // Name matching is case-insensitive, which is exactly why it must still respect
 // word boundaries -- otherwise "Intel" tags every story mentioning intelligence.
 func TestMatchNamesRespectWordBoundaries(t *testing.T) {
-	groups := []model.Group{{ID: "semis-ai", Name: "Semis", Names: []string{"Intel"}}}
+	groups := []model.Group{{ID: "semis-ai", Name: "Semis", Companies: []model.Company{{Name: "Intel"}}}}
 	for _, title := range []string{
 		"Artificial intelligence spending accelerates",
 		"Intelligence agencies warn on cyber risk",
@@ -120,7 +125,7 @@ func TestMatchDoesNotInventTickersFromNames(t *testing.T) {
 	}
 }
 
-func TestMatchTagsArticlesByTickerAndKeyword(t *testing.T) {
+func TestMatchTagsArticlesByTickerAndName(t *testing.T) {
 	articles := []model.Article{
 		{Title: "NVDA beats on data center revenue"},
 		{Title: "Fed signals a rate cut", Summary: "The Federal Reserve hinted at easing."},
@@ -172,11 +177,18 @@ func TestMatchFindsTickersInPunctuatedContexts(t *testing.T) {
 	}
 }
 
-func TestMatchKeywordsRespectWordBoundaries(t *testing.T) {
-	// "CPI" inside "recipient" must not tag the article into Macro & Rates.
-	got := Match([]model.Article{{Title: "Award recipient named"}}, testGroups())
-	if len(got[0].GroupIDs) != 0 {
-		t.Errorf("GroupIDs = %v, want none", got[0].GroupIDs)
+// A symbol that is also an ordinary word is left out of matching, and the
+// company found by name: MS is Morgan Stanley and also the network that renamed
+// itself MS NOW.
+func TestMatchSkipsASymbolMarkedNameOnly(t *testing.T) {
+	groups := []model.Group{{ID: "financials", Name: "Financials", Companies: []model.Company{
+		{Symbol: "MS", Name: "Morgan Stanley", Match: model.MatchName},
+	}}}
+	if got := Match([]model.Article{{Title: "MS NOW ratings climb"}}, groups); len(got[0].GroupIDs) != 0 {
+		t.Errorf("the bare symbol matched: %v", got[0].GroupIDs)
+	}
+	if got := Match([]model.Article{{Title: "Morgan Stanley beats estimates"}}, groups); !got[0].InGroup("financials") {
+		t.Error("the name did not match")
 	}
 }
 
@@ -457,8 +469,11 @@ func TestDedupeStillCollapsesSameDayCoverage(t *testing.T) {
 // as bare words they match ordinary prose, because a hyphen is a word boundary
 // like any other.
 func TestMatchIgnoresBareSingleLetterTickers(t *testing.T) {
-	groups := []model.Group{{ID: "financials", Name: "Financials",
-		Tickers: []string{"C", "F", "V"}}}
+	groups := []model.Group{{ID: "financials", Name: "Financials", Companies: []model.Company{
+		{Symbol: "C", Name: "Citigroup", Match: model.MatchTicker},
+		{Symbol: "F", Name: "Ford", Match: model.MatchTicker},
+		{Symbol: "V", Name: "Visa", Match: model.MatchTicker},
+	}}}
 
 	for _, title := range []string{
 		"The C-suite reshuffle continues",
@@ -476,7 +491,10 @@ func TestMatchIgnoresBareSingleLetterTickers(t *testing.T) {
 
 // An explicit marker is what distinguishes a quoted symbol from a stray capital.
 func TestMatchFindsSingleLetterTickersWhenMarked(t *testing.T) {
-	groups := []model.Group{{ID: "financials", Name: "Financials", Tickers: []string{"C", "F"}}}
+	groups := []model.Group{{ID: "financials", Name: "Financials", Companies: []model.Company{
+		{Symbol: "C", Name: "Citigroup", Match: model.MatchTicker},
+		{Symbol: "F", Name: "Ford", Match: model.MatchTicker},
+	}}}
 
 	for _, title := range []string{
 		"$C climbs after the results",

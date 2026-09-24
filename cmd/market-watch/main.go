@@ -13,14 +13,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/app"
-	"github.com/joseph1009/market-watch/internal/config"
 	"github.com/joseph1009/market-watch/internal/logging"
-	"github.com/joseph1009/market-watch/internal/prompts"
 	"github.com/joseph1009/market-watch/internal/relay"
 )
 
@@ -29,7 +29,16 @@ func main() {
 	share := flag.Bool("share", false, "with -once, also post the brief to the channel, as the daily one is")
 	check := flag.Bool("check", false, "verify configuration and credentials, then exit without sending anything")
 	clear := flag.Bool("clear", false, "delete the bot's earlier messages from the chat, then exit")
+	fold := flag.Bool("fold", false, "write the watchlist and feed changes made from Telegram, as synced into DATA_DIR, into config/, then exit")
 	flag.Parse()
+
+	if *fold {
+		if err := runFold(); err != nil {
+			fmt.Fprintln(os.Stderr, "market-watch:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *share && !*once {
 		fmt.Fprintln(os.Stderr, "market-watch: -share only goes with -once")
@@ -55,7 +64,7 @@ func run(once, share, check, clear bool) error {
 	// A prompts file that has lost a section stops the process here. The
 	// alternative is a brief that reads perfectly and cannot be split into
 	// messages, hours later.
-	if err := prompts.Load(); err != nil {
+	if err := config.LoadPrompts(); err != nil {
 		return err
 	}
 
@@ -111,6 +120,41 @@ func run(once, share, check, clear bool) error {
 		return err
 	}
 	log.Info("market-watch stopped")
+	return nil
+}
+
+// runFold writes the changes made from Telegram -- companies added or removed
+// with /watchlist, feeds switched with /sources -- into the files in config/,
+// so the files say them and nobody has to copy them over by hand.
+//
+// It reads them from the local data directory, which scripts/sync-from-fly.sh
+// has just filled from the server. It needs no credentials and sends nothing,
+// so it runs before configuration is loaded: the files it writes are the
+// working copies in this checkout, to be read over, committed and deployed.
+// After the deploy, the service finds the files saying what its edits said and
+// drops the edits.
+func runFold() error {
+	if err := config.LoadDotEnv(config.DefaultEnvFile); err != nil {
+		return err
+	}
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = config.DefaultDataDir
+	}
+	prefs, err := config.LoadPrefs(filepath.Join(dataDir, "prefs.yaml"))
+	if err != nil {
+		return err
+	}
+	changes, err := config.Fold("config", *prefs)
+	for _, c := range changes {
+		fmt.Println(c)
+	}
+	if err != nil {
+		return err
+	}
+	if len(changes) == 0 {
+		fmt.Println("Nothing to write: config/ already says everything changed from Telegram.")
+	}
 	return nil
 }
 

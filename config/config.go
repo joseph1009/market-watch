@@ -90,7 +90,7 @@ type Config struct {
 	ClaudeToken string
 
 	// Triage has a small model rate and place every article before the cap and
-	// the brief. Off, ranking falls back to keyword matches and source weight
+	// the brief. Off, ranking falls back to name matches and source weight
 	// alone.
 	Triage bool
 

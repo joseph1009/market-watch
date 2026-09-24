@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // The analysis ends with the companies to read next to this one, because a
@@ -130,7 +130,7 @@ func VerifyRelated(ctx context.Context, v discover.Verifier, related []Related) 
 
 // RelatedFor is the instruction appended to the analysis prompt.
 func RelatedFor(snap Snapshot) string {
-	text, err := prompts.Render("analysis.related", struct{ Marker, Company string }{
+	text, err := config.RenderPrompt("analysis.related", struct{ Marker, Company string }{
 		Marker:  RelatedMarker,
 		Company: snap.Company,
 	})

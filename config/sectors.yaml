@@ -1,0 +1,128 @@
+# The sections of the brief, in the order they appear.
+#
+# Each sector is described in plain words, and the description is what does the
+# work: the sorting and the review read it to decide which section an article
+# belongs in, and the news search asks for its first sentence. So the first
+# sentence names the sector's ground, and the ones after it add the detail --
+# the themes that belong here, and what belongs in another section instead.
+#
+# The companies in each sector are in companies.yaml. A sector needs none:
+# Macro & Rates and Geopolitics & Trade are followed by subject alone.
+#
+# Changing this file changes the brief on the next deploy. There is nothing to
+# migrate: the file is read as it is.
+
+- id: semis-ai
+  name: Semiconductors & AI
+  about: >-
+    Chips and the hardware artificial intelligence runs on: design,
+    manufacturing, memory, equipment and packaging, data centre build-outs, and
+    the companies that supply or buy from them. That takes in GPUs and custom AI
+    accelerators, high-bandwidth memory, foundry capacity and wafer yields,
+    advanced packaging such as CoWoS, EUV lithography and chipmaking equipment,
+    and the AI labs whose spending drives demand.
+
+- id: big-tech
+  name: Big Tech
+  about: >-
+    The largest software and internet companies: cloud, advertising, AI models
+    and assistants, devices and app stores, and the competition cases and
+    regulation aimed at them. That takes in cloud revenue, digital advertising
+    and AI assistants. Netflix and the studios belong to Media & Entertainment,
+    and Tesla to Autos & EV.
+
+- id: energy
+  name: Energy
+  about: >-
+    Oil, gas, fuel and power: production, refining, pipelines and shipping,
+    inventories and prices, the producer decisions behind them, and anything
+    that disrupts supply. That takes in Brent and WTI crude, natural gas and LNG
+    exports, OPEC and OPEC+ output decisions and production cuts, refinery runs
+    and crack spreads, gasoline and diesel prices, oil inventories and the
+    Strategic Petroleum Reserve, drilling, and uranium.
+
+- id: financials
+  name: Financials & Banks
+  about: >-
+    Banks, insurers, payments and asset managers: lending and deposits, credit
+    quality, trading and dealmaking, capital rules, and the regulators that
+    write them. That takes in net interest margins and what the yield curve does
+    to them, loan and credit losses, consumer credit, commercial real estate,
+    deposit flight and bank stress, credit spreads and private credit, bank
+    earnings, Basel capital rules and the FDIC. A broker's view of a company in
+    another sector belongs to that sector, not here.
+
+- id: healthcare
+  name: Healthcare & Pharma
+  about: >-
+    Medicines, devices and care: trial results and regulatory decisions,
+    pricing and reimbursement, insurers and providers, and the companies
+    developing or selling treatments. That takes in FDA approvals and PDUFA
+    dates, phase 2 and phase 3 results, drug recalls and patent expiries, GLP-1
+    and obesity drugs, biotech, medical devices, Medicare and drug pricing.
+
+- id: industrials-defense
+  name: Industrials & Defense
+  about: >-
+    Things that are built and moved: machinery, aerospace, defense contracts and
+    budgets, factory orders and production, freight and logistics, and large
+    construction and infrastructure work. That takes in defense spending and
+    contract awards, aircraft orders, durable goods and factory orders,
+    industrial production and capital spending, order backlogs and capacity
+    expansion, freight volumes, and infrastructure spending.
+
+- id: consumer-retail
+  name: Consumer & Retail
+  about: >-
+    What households buy and what it costs them: retailers and restaurants, food,
+    drink, clothing and household goods, spending, confidence and wages as a
+    consumer signal. That takes in retail sales, consumer spending and
+    confidence, same-store sales, discretionary and holiday spending, and
+    companies raising or cutting their prices.
+
+- id: autos-ev
+  name: Autos & EV
+  about: >-
+    Cars and the shift to electric ones: vehicle sales and production, batteries
+    and their supply chain, charging, self-driving, and the tariffs and
+    subsidies that shape them. That takes in electric vehicle sales, auto
+    production, battery plants, autonomous driving and robotaxis, and auto
+    loans. Tesla belongs here rather than in Big Tech.
+
+- id: crypto
+  name: Crypto & Digital Assets
+  about: >-
+    Digital assets and the businesses around them: prices and flows, exchanges
+    and custodians, stablecoins, listed funds that hold them, mining, and the
+    rules being written for all of it. That takes in Bitcoin and Ethereum,
+    stablecoins, spot crypto ETFs, blockchain, and crypto regulation.
+
+- id: macro-rates
+  name: Macro & Rates
+  about: >-
+    The economy as a whole and the price of money: central bank decisions and
+    speeches, inflation, jobs, growth and confidence data, government borrowing
+    and bond yields, and currencies. That takes in the Federal Reserve and the
+    FOMC, rate cuts and hikes, CPI, PCE and PPI, the jobs report and nonfarm
+    payrolls, JOLTS, the unemployment rate and wage growth, GDP and recession
+    risk, and Treasury yields.
+
+- id: geopolitics-trade
+  name: Geopolitics & Trade
+  about: >-
+    Politics that moves trade: tariffs, export controls and sanctions,
+    industrial policy and subsidies, supply chains that cross borders, the
+    relationship between the United States and China, and conflict or shipping
+    disruption with an economic cost. That takes in US-China relations and
+    Taiwan, tariffs and trade wars, export controls and the entity list,
+    sanctions, Section 301 cases, the CHIPS Act, and chokepoints such as the
+    Strait of Hormuz. A chipmaker's own results belong to Semiconductors & AI,
+    even when its chips are export-controlled.
+
+- id: media
+  name: Media & Entertainment
+  about: >-
+    Film and television, streaming services, broadcasters and networks, music,
+    and the deals and rules that shape who owns them. That takes in subscribers
+    and prices, the box office, and mergers among the studios, Paramount's
+    among them.

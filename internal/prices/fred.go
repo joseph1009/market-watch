@@ -1,5 +1,5 @@
-// Package marketdata reads levels from FRED so the brief can say where rates
-// actually are, not only what outlets said about them.
+// FRED: levels, so the brief can say where rates actually are, not only what
+// outlets said about them.
 //
 // These are observations, not articles: a series of dated numbers with no
 // headline, nothing to deduplicate against and no watchlist to match. They are
@@ -7,7 +7,8 @@
 // summarizer as their own block. Synthesizing a headline ("10-year yield rose
 // 8bp") would fit the existing machinery, but it would be manufacturing a
 // sentence nobody wrote and pricing it as though a source had said it.
-package marketdata
+
+package prices
 
 import (
 	"context"
@@ -22,8 +23,8 @@ import (
 
 const observationsURL = "https://api.stlouisfed.org/fred/series/observations"
 
-// Series is one indicator worth putting in front of the summarizer.
-type Series struct {
+// Indicator is one FRED series worth putting in front of the summarizer.
+type Indicator struct {
 	ID    string
 	Label string
 	Unit  string
@@ -40,8 +41,8 @@ type Series struct {
 	Monthly bool
 }
 
-// DefaultSeries are the levels the Macro & Rates section is written against.
-var DefaultSeries = []Series{
+// Indicators are the levels the Macro & Rates section is written against.
+var Indicators = []Indicator{
 	{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
 	{ID: "DGS2", Label: "US 2-year Treasury yield", Unit: "%"},
 	{ID: "T10Y2Y", Label: "Gap between the 10-year and 2-year Treasury yields (the 2s10s curve)", Unit: "%"},
@@ -57,7 +58,7 @@ var DefaultSeries = []Series{
 
 // Reading is the latest value of a series and how far it has moved.
 type Reading struct {
-	Series
+	Indicator
 	Latest   float64
 	AsOf     time.Time
 	Previous float64
@@ -75,22 +76,22 @@ func (r Reading) Change() float64 { return r.Latest - r.Previous }
 // WeeklyChange is the move over roughly a week of observations.
 func (r Reading) WeeklyChange() float64 { return r.Latest - r.WeekAgo }
 
-// Client reads FRED. An empty APIKey disables it: the key is free but not
+// FRED reads the St. Louis Fed's data service. An empty APIKey disables it: the key is free but not
 // universal, and a brief without market levels is a normal brief.
-type Client struct {
+type FRED struct {
 	APIKey string
 	HTTP   *http.Client
 	URL    string
 }
 
 // Enabled reports whether there is a key to use.
-func (c *Client) Enabled() bool { return c != nil && c.APIKey != "" }
+func (c *FRED) Enabled() bool { return c != nil && c.APIKey != "" }
 
 // Fetch reads the latest observations for each series.
 //
 // A failing series is skipped rather than fatal. These are context for the
 // macro section, and losing the 2-year is not a reason to lose the brief.
-func (c *Client) Fetch(ctx context.Context, series []Series) ([]Reading, []error) {
+func (c *FRED) Fetch(ctx context.Context, series []Indicator) ([]Reading, []error) {
 	if !c.Enabled() {
 		return nil, nil
 	}
@@ -118,7 +119,7 @@ type observationsResponse struct {
 	} `json:"observations"`
 }
 
-func (c *Client) fetchOne(ctx context.Context, s Series) (Reading, error) {
+func (c *FRED) fetchOne(ctx context.Context, s Indicator) (Reading, error) {
 	params := url.Values{}
 	params.Set("series_id", s.ID)
 	params.Set("api_key", c.APIKey)
@@ -157,7 +158,7 @@ func (c *Client) fetchOne(ctx context.Context, s Series) (Reading, error) {
 		return Reading{}, fmt.Errorf("no usable observations")
 	}
 
-	r := Reading{Series: s, Latest: points[0].value, AsOf: points[0].date}
+	r := Reading{Indicator: s, Latest: points[0].value, AsOf: points[0].date}
 	if len(points) > 1 {
 		r.Previous, r.HasPrevious = points[1].value, true
 	}
@@ -173,7 +174,7 @@ func (c *Client) fetchOne(ctx context.Context, s Series) (Reading, error) {
 	return r, nil
 }
 
-func (c *Client) getJSON(ctx context.Context, target string, into any) error {
+func (c *FRED) getJSON(ctx context.Context, target string, into any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return err
@@ -196,14 +197,14 @@ func (c *Client) getJSON(ctx context.Context, target string, into any) error {
 	return json.Unmarshal(body, into)
 }
 
-func (c *Client) baseURL() string {
+func (c *FRED) baseURL() string {
 	if c.URL != "" {
 		return c.URL
 	}
 	return observationsURL
 }
 
-func (c *Client) httpClient() *http.Client {
+func (c *FRED) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}

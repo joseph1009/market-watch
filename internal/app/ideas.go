@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -15,7 +15,7 @@ import (
 
 // "Worth a closer look" follows the brief: companies today's news bears on,
 // found by research on the web, each with a buy, hold or sell verdict. See the
-// ideas package for how, and RUNBOOK.md for the stages.
+// ideas package for how, and docs/RUNBOOK.md for the stages.
 //
 // It follows the brief to the same places: the owner always, and the channel
 // on the days the brief goes there, which is the scheduled run and -once
@@ -27,7 +27,7 @@ import (
 // longer happens is the note at the head of the channel's copy, which says a
 // model wrote it, that nobody checked it, and that it is not a recommendation
 // to act. If that note ever goes, this should go back to owner-only. The
-// reasoning is written out in RUNBOOK.md.
+// reasoning is written out in docs/RUNBOOK.md.
 //
 // It is still never what /share posts: /share passes on the last brief or
 // analysis, and a verdict reaching the channel is the daily run's doing or
@@ -278,11 +278,11 @@ func trackedNames(groups []model.Group) []string {
 		}
 	}
 	for _, g := range groups {
-		for _, n := range g.Names {
-			add(n)
-		}
-		for _, t := range g.Tickers {
-			add(t)
+		for _, c := range g.Companies {
+			for _, n := range c.Names() {
+				add(n)
+			}
+			add(c.Symbol)
 		}
 	}
 	return out

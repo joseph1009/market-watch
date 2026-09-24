@@ -22,7 +22,7 @@ type IdeasOptions struct {
 // different thing from verdicts kept for yourself, and the two things the
 // policy on AI-written advice asks for are that readers are told a model wrote
 // it and that nobody is told to act. Both are said here, because this is the
-// only place a channel reader will see them. See RUNBOOK.md.
+// only place a channel reader will see them. See docs/RUNBOOK.md.
 const (
 	ownerNote = "<i>Claude's verdicts on companies today's news bears on. " +
 		"BUY and SELL mean better or worse than the S&amp;P 500 over twelve months. /scorecard shows how past verdicts have done.</i>"

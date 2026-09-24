@@ -1,4 +1,4 @@
-package fundamentals
+package config
 
 import (
 	_ "embed"
@@ -13,7 +13,8 @@ import (
 //
 // It is written in Agent Skill format, with the frontmatter a skill carries, so
 // the same file can be uploaded to the Skills API unchanged if the analysis
-// ever moves to a code-execution container. Today it is read straight into the
+// ever moves to a code-execution container. It is the only copy: an identical
+// one used to sit in skills/, read by nothing, waiting to drift. Today it is read straight into the
 // system prompt: no container to start, no beta to depend on, and the model
 // follows it either way. The value of a skill here is the method it carries,
 // not the machinery that delivers it.

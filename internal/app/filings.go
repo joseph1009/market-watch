@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/feed"
-	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/sec"
 )
 
@@ -51,14 +51,13 @@ func (a *App) collectFilings(ctx context.Context, prefs config.Prefs) []model.Ar
 	return articles
 }
 
-// watchedTickers is every symbol across every watchlist, deduplicated. Names
-// are deliberately excluded: the SEC index is keyed by symbol, and a company
-// tracked only by name is usually one without a US listing.
+// watchedTickers is every symbol across every sector, deduplicated. A company
+// followed without a symbol has no SEC filings to read and no price to fetch.
 func watchedTickers(groups []model.Group) []string {
 	seen := make(map[string]bool)
 	var out []string
 	for _, g := range groups {
-		for _, t := range g.Tickers {
+		for _, t := range g.Symbols() {
 			if seen[t] {
 				continue
 			}
@@ -86,7 +85,7 @@ func SECSourceEntry() model.Source {
 // Absent a FRED key this returns nothing and the block is omitted, which is the
 // intended behaviour rather than a degraded one: the levels sharpen the macro
 // section, they do not carry it.
-func (a *App) collectLevels(ctx context.Context) []marketdata.Reading {
+func (a *App) collectLevels(ctx context.Context) []prices.Reading {
 	if !a.Levels.Enabled() {
 		return nil
 	}
@@ -94,7 +93,7 @@ func (a *App) collectLevels(ctx context.Context) []marketdata.Reading {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	readings, errs := a.Levels.Fetch(ctx, marketdata.DefaultSeries)
+	readings, errs := a.Levels.Fetch(ctx, prices.Indicators)
 	for _, err := range errs {
 		a.Log.Warn("market data", "error", err)
 	}

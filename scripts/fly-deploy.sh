@@ -85,5 +85,5 @@ cat <<EOF
 
 Deployed. The volume starts empty, so the service seeded its own watchlists
 and knows nothing of what earlier briefs covered. To carry over the local
-record, see "Moving the data up" in RUNBOOK.md.
+record, see "Moving the data up" in docs/RUNBOOK.md.
 EOF

@@ -277,7 +277,7 @@ func tail(s string) string {
 }
 
 // Session answers by waiting for someone else to write the reply file: a
-// Claude Code session, usually, with a subagent per request. RUNBOOK.md has
+// Claude Code session, usually, with a subagent per request. docs/RUNBOOK.md has
 // the procedure. Nothing bounds the wait but the context, because the person
 // answering may be asleep; a prepared run is started the night before.
 type Session struct {

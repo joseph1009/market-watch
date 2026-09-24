@@ -32,8 +32,8 @@ func (f *fakeCompleter) Complete(_ context.Context, system, prompt string) (stri
 
 func testGroups() []model.Group {
 	return []model.Group{
-		{ID: "energy", Name: "Energy", Names: []string{"Exxon Mobil"}, Keywords: []string{"crude oil", "OPEC"}},
-		{ID: "semis", Name: "Semiconductors", Tickers: []string{"NVDA"}, Names: []string{"Nvidia"}},
+		{ID: "energy", Name: "Energy", About: "Oil, gas, fuel and power.", Companies: []model.Company{{Symbol: "XOM", Name: "Exxon Mobil"}}},
+		{ID: "semis", Name: "Semiconductors", About: "Chips.", Companies: []model.Company{{Symbol: "NVDA", Name: "Nvidia"}}},
 	}
 }
 
@@ -227,7 +227,7 @@ func TestTriagePromptDescribesWatchlistsAndTreatsArticlesAsData(t *testing.T) {
 		t.Fatalf("got %d calls, want 1", len(fc.systems))
 	}
 	system := fc.systems[0]
-	for _, want := range []string{"- energy: Energy", "Exxon Mobil", "crude oil", "- semis: Semiconductors", "untrusted", "Opinion columns", "personal-finance advice", "official filings"} {
+	for _, want := range []string{"- energy: Energy -- Oil, gas, fuel and power.", "Exxon Mobil", "- semis: Semiconductors", "untrusted", "Opinion columns", "personal-finance advice", "official filings"} {
 		if !strings.Contains(system, want) {
 			t.Errorf("system prompt is missing %q:\n%s", want, system)
 		}
@@ -265,14 +265,14 @@ func TestTriageAddsNothingToAnArticleKeywordsAlreadyPlacedTwice(t *testing.T) {
 	}
 }
 
-// The sector sentence is what an article is judged against, so it has to reach
-// the model, and the examples have to read as examples rather than as the list.
+// The description is what an article is judged against, so it has to reach the
+// model, and the companies have to read as examples rather than as the list.
 func TestTriagePromptDescribesTheSectorBeforeItsExamples(t *testing.T) {
 	groups := []model.Group{{
-		ID:    "energy",
-		Name:  "Energy",
-		Scope: "Oil, gas, fuel and power, and anything that disrupts supply.",
-		Names: []string{"Exxon Mobil"},
+		ID:        "energy",
+		Name:      "Energy",
+		About:     "Oil, gas, fuel and power, and anything that disrupts supply.",
+		Companies: []model.Company{{Symbol: "XOM", Name: "Exxon Mobil"}},
 	}}
 	fc := &fakeCompleter{reply: fixed("1|3|-")}
 	tr := &Triager{Completer: fc}

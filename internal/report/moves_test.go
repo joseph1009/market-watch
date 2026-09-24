@@ -21,8 +21,10 @@ func moveQuotes(asOf time.Time) []model.Quote {
 	}
 }
 
-var consumer = model.Group{ID: "consumer-retail", Name: "Consumer & Retail",
-	Tickers: []string{"WMT", "MCD", "NKE", "KO", "SBUX", "TGT"}}
+var consumer = model.Group{ID: "consumer-retail", Name: "Consumer & Retail", Companies: []model.Company{
+	{Symbol: "WMT", Name: "Walmart"}, {Symbol: "MCD", Name: "McDonald's"}, {Symbol: "NKE", Name: "Nike"},
+	{Symbol: "KO", Name: "Coca-Cola"}, {Symbol: "SBUX", Name: "Starbucks"}, {Symbol: "TGT", Name: "Target"},
+}}
 
 // The line shows the watchlist's own shares, biggest first, at least 1% and
 // at most four, so it stays one line and never lists an ordinary day's drift.

@@ -68,7 +68,7 @@ func movers(quotes []model.Quote, watched []string, since time.Time) []model.Quo
 // move, the search finds the same story and dedupe folds it; checking the
 // feeds first would save the credit but means waiting for them, and the
 // allowance has room.
-func (a *App) searchMovers(ctx context.Context, moved []model.Quote) search.Result {
+func (a *App) searchMovers(ctx context.Context, moved []model.Quote, names map[string]string) search.Result {
 	if !a.Search.Enabled() || len(moved) == 0 {
 		return search.Result{}
 	}
@@ -76,7 +76,11 @@ func (a *App) searchMovers(ctx context.Context, moved []model.Quote) search.Resu
 	queries := make([]search.Query, 0, len(moved))
 	var symbols []string
 	for _, q := range moved {
-		queries = append(queries, search.MoverQuery(a.companyName(ctx, q.Symbol), q.Symbol, q.Percent))
+		name := names[q.Symbol]
+		if name == "" {
+			name = a.companyName(ctx, q.Symbol)
+		}
+		queries = append(queries, search.MoverQuery(name, q.Symbol, q.Percent))
 		symbols = append(symbols, q.Symbol+" "+q.Move())
 	}
 
@@ -96,9 +100,10 @@ func (a *App) searchMovers(ctx context.Context, moved []model.Quote) search.Resu
 	return found
 }
 
-// companyName is the name a company files under, for searching by. The ticker
-// alone finds fewer of the stories about it (search.MoverQuery). Empty where
-// the SEC index does not know the ticker, and the search goes by ticker.
+// companyName is the name a company files under, for searching by when the
+// watchlist has none for it. The ticker alone finds fewer of the stories about
+// it (search.MoverQuery). Empty where the SEC index does not know the ticker,
+// and the search goes by ticker.
 func (a *App) companyName(ctx context.Context, ticker string) string {
 	if a.Filings == nil {
 		return ""

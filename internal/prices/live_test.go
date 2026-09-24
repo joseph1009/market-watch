@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 )
 
 // TestLivePrices checks the key against the real service, and reports which of
@@ -47,7 +47,7 @@ func TestLivePrices(t *testing.T) {
 	}
 	var watched []string
 	for _, g := range prefs.Groups {
-		watched = append(watched, g.Tickers...)
+		watched = append(watched, g.Symbols()...)
 	}
 	if len(watched) > maxSymbols {
 		watched = watched[:maxSymbols]

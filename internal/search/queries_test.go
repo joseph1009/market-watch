@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
@@ -33,24 +33,26 @@ func TestQueriesPutGeneralSearchesFirstThenOnePerWatchlist(t *testing.T) {
 	}
 }
 
-func TestAWatchlistIsSearchedForByItsSectorSentence(t *testing.T) {
+// The search asks for the description's first sentence only: the ones after it
+// are for the sorting, and "belongs to Media & Entertainment" would only blur a
+// search for energy news.
+func TestASectorIsSearchedForByItsFirstSentence(t *testing.T) {
 	g := model.Group{
 		ID: "energy", Name: "Energy",
-		Scope: "Oil, gas, fuel and power.",
-		Names: []string{"Exxon"},
+		About:     "Oil, gas, fuel and power.\n  That takes in Brent and WTI. Netflix belongs elsewhere.",
+		Companies: []model.Company{{Name: "Exxon"}},
 	}
 	if got := groupQuery(g); got != "Energy news: Oil, gas, fuel and power." {
 		t.Errorf("groupQuery = %q", got)
 	}
 }
 
-func TestAWatchlistWithoutASentenceFallsBackToItsNames(t *testing.T) {
+func TestASectorWithoutADescriptionFallsBackToItsCompanies(t *testing.T) {
 	g := model.Group{
 		ID: "custom", Name: "Shipping",
-		Names:    []string{"Maersk", "COSCO"},
-		Keywords: []string{"container rates", " "},
+		Companies: []model.Company{{Name: "Maersk"}, {Symbol: "COSCO", Name: "COSCO"}},
 	}
-	if got := groupQuery(g); got != "Shipping news: Maersk, COSCO, container rates" {
+	if got := groupQuery(g); got != "Shipping news: Maersk, COSCO" {
 		t.Errorf("groupQuery = %q", got)
 	}
 	if got := groupQuery(model.Group{ID: "bare", Name: "Bare"}); got != "Bare news" {
@@ -110,8 +112,8 @@ func TestPlainNameDropsTheCorporateWords(t *testing.T) {
 		"Inc": "Inc",
 	}
 	for in, want := range tests {
-		if got := plainName(in); got != want {
-			t.Errorf("plainName(%q) = %q, want %q", in, got, want)
+		if got := PlainName(in); got != want {
+			t.Errorf("PlainName(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

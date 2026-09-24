@@ -1,4 +1,4 @@
-package marketdata
+package prices
 
 import (
 	"context"
@@ -19,7 +19,7 @@ const body = `{"observations":[
  {"date":"2026-09-02","value":"4.19"},
  {"date":"2026-09-01","value":"4.11"}]}`
 
-func newStub(t *testing.T, payload string) *Client {
+func newStub(t *testing.T, payload string) *FRED {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api_key") == "" {
@@ -28,13 +28,13 @@ func newStub(t *testing.T, payload string) *Client {
 		_, _ = w.Write([]byte(payload))
 	}))
 	t.Cleanup(srv.Close)
-	return &Client{APIKey: "test-key", HTTP: srv.Client(), URL: srv.URL}
+	return &FRED{APIKey: "test-key", HTTP: srv.Client(), URL: srv.URL}
 }
 
 func TestFetchReadsLatestAndSkipsMissingObservations(t *testing.T) {
 	c := newStub(t, body)
 
-	readings, errs := c.Fetch(context.Background(), []Series{{ID: "DGS10", Label: "10-year", Unit: "%"}})
+	readings, errs := c.Fetch(context.Background(), []Indicator{{ID: "DGS10", Label: "10-year", Unit: "%"}})
 	if len(errs) != 0 {
 		t.Fatalf("errors: %v", errs)
 	}
@@ -62,7 +62,7 @@ func TestFetchReadsLatestAndSkipsMissingObservations(t *testing.T) {
 func TestSingleObservationReportsNoChange(t *testing.T) {
 	c := newStub(t, `{"observations":[{"date":"2026-09-09","value":"4.32"}]}`)
 
-	readings, _ := c.Fetch(context.Background(), []Series{{ID: "DGS10"}})
+	readings, _ := c.Fetch(context.Background(), []Indicator{{ID: "DGS10"}})
 	if len(readings) != 1 {
 		t.Fatalf("got %d readings", len(readings))
 	}
@@ -87,9 +87,9 @@ func TestAMonthlyRateAsksForTheTransformAndComparesMonths(t *testing.T) {
 			{"date":"2026-02-01","value":"3.8"}]}`))
 	}))
 	defer srv.Close()
-	c := &Client{APIKey: "test-key", HTTP: srv.Client(), URL: srv.URL}
+	c := &FRED{APIKey: "test-key", HTTP: srv.Client(), URL: srv.URL}
 
-	readings, errs := c.Fetch(context.Background(), []Series{{ID: "CPIAUCSL", Unit: "%", Units: "pc1", Monthly: true}})
+	readings, errs := c.Fetch(context.Background(), []Indicator{{ID: "CPIAUCSL", Unit: "%", Units: "pc1", Monthly: true}})
 	if len(errs) != 0 || len(readings) != 1 {
 		t.Fatalf("readings=%v errs=%v", readings, errs)
 	}
@@ -117,9 +117,9 @@ func TestOneFailingSeriesDoesNotSinkTheRest(t *testing.T) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
-	c := &Client{APIKey: "k", HTTP: srv.Client(), URL: srv.URL}
+	c := &FRED{APIKey: "k", HTTP: srv.Client(), URL: srv.URL}
 
-	readings, errs := c.Fetch(context.Background(), []Series{{ID: "BAD"}, {ID: "DGS10"}})
+	readings, errs := c.Fetch(context.Background(), []Indicator{{ID: "BAD"}, {ID: "DGS10"}})
 	if len(errs) != 1 {
 		t.Errorf("errs = %v, want 1", errs)
 	}
@@ -131,11 +131,11 @@ func TestOneFailingSeriesDoesNotSinkTheRest(t *testing.T) {
 // No key is a supported state, not a failure: the levels sharpen the macro
 // section, they do not carry it.
 func TestNoKeyDisablesTheClientEntirely(t *testing.T) {
-	c := &Client{}
+	c := &FRED{}
 	if c.Enabled() {
 		t.Error("Enabled with no key")
 	}
-	readings, errs := c.Fetch(context.Background(), DefaultSeries)
+	readings, errs := c.Fetch(context.Background(), Indicators)
 	if len(readings) != 0 || len(errs) != 0 {
 		t.Errorf("readings=%v errs=%v, want both empty", readings, errs)
 	}
@@ -143,7 +143,7 @@ func TestNoKeyDisablesTheClientEntirely(t *testing.T) {
 
 func TestObservationsWithNoUsableValuesAreAnError(t *testing.T) {
 	c := newStub(t, `{"observations":[{"date":"2026-09-09","value":"."}]}`)
-	_, errs := c.Fetch(context.Background(), []Series{{ID: "DGS10"}})
+	_, errs := c.Fetch(context.Background(), []Indicator{{ID: "DGS10"}})
 	if len(errs) != 1 {
 		t.Errorf("errs = %v, want one", errs)
 	}

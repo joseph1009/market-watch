@@ -42,9 +42,9 @@ too.
 ## The prompts
 
 Every instruction sent to a model is in
-[internal/prompts/prompts.md](internal/prompts/prompts.md), one section per
+[internal/prompts/prompts.md](../internal/prompts/prompts.md), one section per
 `=== id ===` line. The analysis also carries
-[internal/fundamentals/method.md](internal/fundamentals/method.md), the
+[internal/fundamentals/method.md](../internal/fundamentals/method.md), the
 playbook for reading accounts.
 
 Editing the prose needs no Go. What has to survive an edit are the markers the

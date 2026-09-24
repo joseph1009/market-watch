@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/marketdata"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 )
 
 // ErrNoArticles is returned when collection produced nothing. The caller sends
@@ -40,7 +40,7 @@ type Generator struct {
 
 	// Levels are market readings shown to the model as measured values rather
 	// than as news. Empty omits the block entirely.
-	Levels []marketdata.Reading
+	Levels []prices.Reading
 
 	// Quotes are what shares did on the session the brief covers. They answer
 	// the question the articles cannot: whether the market agreed with the news.

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joseph1009/market-watch/internal/config"
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -17,7 +17,7 @@ import (
 
 // These run the real service against the real chat. They are how a brief or an
 // analysis is run by hand from a checkout: the model calls go through the relay
-// and are answered as RELAY_ANSWER says, claude by default. RUNBOOK.md has the
+// and are answered as RELAY_ANSWER says, claude by default. docs/RUNBOOK.md has the
 // procedure, including answering a session run with subagents.
 
 // TestLiveBrief sends one real brief.

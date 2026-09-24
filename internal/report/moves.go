@@ -34,7 +34,7 @@ func sectionMoves(g model.Group, quotes []model.Quote, since time.Time) []model.
 	}
 
 	var out []model.Quote
-	for _, t := range g.Tickers {
+	for _, t := range g.Symbols() {
 		q, ok := bySymbol[strings.ToUpper(t)]
 		if !ok || math.Abs(q.Percent) < MinMoveShown {
 			continue

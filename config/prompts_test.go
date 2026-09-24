@@ -1,4 +1,4 @@
-package prompts
+package config
 
 import (
 	"strings"
@@ -8,11 +8,11 @@ import (
 // The file that ships has to be usable, or the service starts and then fails
 // at the first reply it cannot read.
 func TestTheEmbeddedFileIsComplete(t *testing.T) {
-	if err := Check(embedded); err != nil {
+	if err := CheckPrompts(embedded); err != nil {
 		t.Fatalf("the built-in prompts file is not usable: %v", err)
 	}
 	for id := range required {
-		if strings.TrimSpace(Get(id)) == "" {
+		if strings.TrimSpace(Prompt(id)) == "" {
 			t.Errorf("section %s is empty", id)
 		}
 	}
@@ -34,7 +34,7 @@ name|ticker|exchange|article numbers separated by commas|what happened
 === analysis.system ===
 THE CASE FOR IT, THE CASE AGAINST IT, COMPANIES TO READ NEXT TO IT, name|ticker|exchange|what it would show
 `
-	err := Check(file)
+	err := CheckPrompts(file)
 	if err == nil {
 		t.Fatal("a file with a section missing and a marker dropped passed the check")
 	}
@@ -46,7 +46,7 @@ THE CASE FOR IT, THE CASE AGAINST IT, COMPANIES TO READ NEXT TO IT, name|ticker|
 }
 
 func TestRenderFillsTheWatchlists(t *testing.T) {
-	got, err := Render("triage.system", struct{ Watchlists string }{"- energy: Energy"})
+	got, err := RenderPrompt("triage.system", struct{ Watchlists string }{"- energy: Energy"})
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

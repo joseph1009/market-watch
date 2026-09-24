@@ -28,9 +28,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/model"
-	"github.com/joseph1009/market-watch/internal/prompts"
 )
 
 // DefaultMax is how many companies the research may propose. Each costs a
@@ -69,7 +69,7 @@ func (r *Researcher) Propose(ctx context.Context, in Input) ([]model.Idea, model
 	if r.Completer == nil {
 		return nil, model.Usage{}, nil
 	}
-	system, err := prompts.Render("ideas.system", struct{ Max int }{r.max()})
+	system, err := config.RenderPrompt("ideas.system", struct{ Max int }{r.max()})
 	if err != nil {
 		return nil, model.Usage{}, err
 	}
