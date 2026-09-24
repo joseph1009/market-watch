@@ -61,6 +61,12 @@ type Section struct {
 	GroupName string    `json:"group_name"`
 	Body      string    `json:"body"`
 	Articles  []Article `json:"articles"`
+
+	// Movers are the watchlist's biggest share moves on the day, largest
+	// first, shown in a line under the section's heading. The program picks
+	// them from the prices, not the model from the prose, so the figures are
+	// the exchange's.
+	Movers []Quote `json:"movers,omitempty"`
 }
 
 // IsEmpty reports whether the report has no prose worth sending.

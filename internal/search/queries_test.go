@@ -83,3 +83,35 @@ func TestClipCutsOnAWordBoundary(t *testing.T) {
 		t.Errorf("clip ended mid-word or on a space: %q", got[len(got)-10:])
 	}
 }
+
+// A mover search names the company the way a headline would, and asks for
+// fewer results than a sector search: one company's day does not fill twenty.
+func TestMoverQueryAsksWhyInPlainWords(t *testing.T) {
+	q := MoverQuery("MCDONALDS CORP", "MCD", -4.8)
+	if q.Text != "Why did MCDONALDS (MCD) shares fall today?" {
+		t.Errorf("Text = %q", q.Text)
+	}
+	if q.Label != "mover:MCD" || q.Max != moverResults {
+		t.Errorf("Label = %q, Max = %d", q.Label, q.Max)
+	}
+	if got := MoverQuery("", "RIOT", 6.1).Text; got != "Why did RIOT shares rise today?" {
+		t.Errorf("without a name, Text = %q", got)
+	}
+}
+
+func TestPlainNameDropsTheCorporateWords(t *testing.T) {
+	tests := map[string]string{
+		"MCDONALDS CORP":                            "MCDONALDS",
+		"KKR & Co. Inc.":                            "KKR",
+		"Rivian Automotive, Inc. / DE":              "Rivian Automotive",
+		"ASML HOLDING NV":                           "ASML",
+		"UnitedHealth Group Inc":                    "UnitedHealth Group",
+		"Taiwan Semiconductor Manufacturing Co Ltd": "Taiwan Semiconductor Manufacturing",
+		"Inc": "Inc",
+	}
+	for in, want := range tests {
+		if got := plainName(in); got != want {
+			t.Errorf("plainName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

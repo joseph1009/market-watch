@@ -46,6 +46,15 @@ type Generator struct {
 	// the question the articles cannot: whether the market agreed with the news.
 	Quotes []model.Quote
 
+	// Trends are the price histories of the shares that moved furthest beyond
+	// the market, keyed by symbol, so the brief can say what kind of move it
+	// was: a break below the 50-day average, a new low for the year.
+	Trends map[string]model.Trading
+
+	// MovesSince is the previous brief. A price from before it belongs to a
+	// session that brief already reported, and is not shown as today's move.
+	MovesSince time.Time
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -65,7 +74,8 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// articles produces filler -- "the watchlist was thin today" -- rather than
 	// anything worth the space.
 	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
-	prompt := buildPrompt(articles, active, g.Levels, g.Quotes, now, g.display())
+	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince}
+	prompt := buildPrompt(articles, active, m, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
 	if err != nil {
@@ -94,6 +104,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 			// sources are meant to be what the section was written from, and
 			// listing articles the model never saw would misstate that.
 			Articles: sectionArticles(articles, grp.ID),
+			Movers:   sectionMoves(grp, g.Quotes, g.MovesSince),
 		})
 	}
 

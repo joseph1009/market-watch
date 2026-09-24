@@ -105,7 +105,14 @@ func RenderWith(rep model.Report, opts Options) []string {
 	// prose, links, prose, links -- the reader had to skip past a list of
 	// headlines to reach the next piece of analysis.
 	for _, s := range rep.Sections {
-		blocks := []string{fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName))}
+		heading := fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName))
+		// The biggest moves sit under the heading, in the same block so a
+		// message break never parts them: what the exchange did, before what
+		// was written about it.
+		if len(s.Movers) > 0 {
+			heading += "\n<i>Biggest moves: " + escape(model.Moves(s.Movers)) + "</i>"
+		}
+		blocks := []string{heading}
 		if s.Body != "" {
 			blocks = append(blocks, cite(paragraphs(s.Body), rep.Cited)...)
 		}

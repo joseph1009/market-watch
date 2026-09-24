@@ -1,17 +1,22 @@
 package search
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// Query is one search. Label names it in logs and errors: a watchlist id, or
-// the name of one of the general searches.
+// Query is one search. Label names it in logs and errors: a watchlist id, the
+// name of one of the general searches, or "mover:" and a ticker.
 type Query struct {
 	Label string
 	Text  string
+
+	// Max is how many results to ask for. Zero asks for the most a search can
+	// return, which costs the same.
+	Max int
 }
 
 // General are the searches run whatever the watchlists say, for the news the
@@ -98,4 +103,64 @@ func clip(s string) string {
 		out = out[:sp]
 	}
 	return strings.TrimRight(out, " ,;:")
+}
+
+// MaxMoverQueries bounds the searches for shares that moved sharply, which are
+// run on top of MaxQueries: at most five more credits a brief, about 110 more a
+// month on weekdays, 440 in all against the free 1,000.
+const MaxMoverQueries = 5
+
+// moverResults is what a mover search asks for. One company's day does not
+// fill twenty results: in the McDonald's trial below, the results among the
+// first ten that were not about McDonald's were the day's market round-ups,
+// which the general searches bring already.
+const moverResults = 10
+
+// MoverQuery asks why one share moved. Percent says which way.
+//
+// The company's name goes in beside the ticker. Tried both ways on McDonald's
+// the day it fell 4.8% after its investor day (2026-09-23), the question with
+// the name returned eight McDonald's stories in ten, among them AP's and
+// Axios's, which no other search had found; with the ticker alone, five.
+func MoverQuery(name, ticker string, percent float64) Query {
+	verb := "rise"
+	if percent < 0 {
+		verb = "fall"
+	}
+	subject := ticker
+	if n := plainName(name); n != "" && !strings.EqualFold(n, ticker) {
+		subject = n + " (" + ticker + ")"
+	}
+	return Query{
+		Label: "mover:" + ticker,
+		Text:  fmt.Sprintf("Why did %s shares %s today?", subject, verb),
+		Max:   moverResults,
+	}
+}
+
+// corporate are the words a registered name carries that nobody uses when
+// writing about the company.
+var corporate = map[string]bool{
+	"inc": true, "incorporated": true, "corp": true, "corporation": true,
+	"co": true, "ltd": true, "limited": true, "plc": true, "llc": true, "lp": true,
+	"nv": true, "sa": true, "ag": true, "se": true, "holding": true, "holdings": true,
+	"&": true,
+}
+
+// plainName turns the name the SEC files a company under -- "MCDONALDS CORP",
+// "KKR & Co. Inc.", "Rivian Automotive, Inc. / DE" -- into the one a headline
+// uses, by dropping the state suffix and the corporate words at the end.
+func plainName(name string) string {
+	if i := strings.Index(name, "/"); i >= 0 {
+		name = name[:i]
+	}
+	words := strings.Fields(name)
+	for len(words) > 1 {
+		last := strings.ToLower(strings.Trim(words[len(words)-1], ".,"))
+		if !corporate[last] {
+			break
+		}
+		words = words[:len(words)-1]
+	}
+	return strings.TrimRight(strings.Join(words, " "), " ,.")
 }

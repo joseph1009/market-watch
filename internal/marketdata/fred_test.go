@@ -71,6 +71,40 @@ func TestSingleObservationReportsNoChange(t *testing.T) {
 	}
 }
 
+// Inflation is asked for as a yearly rate, and compared with last month rather
+// than with a week of business days it does not have.
+func TestAMonthlyRateAsksForTheTransformAndComparesMonths(t *testing.T) {
+	var units string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		units = r.URL.Query().Get("units")
+		_, _ = w.Write([]byte(`{"observations":[
+			{"date":"2026-08-01","value":"3.35302"},
+			{"date":"2026-07-01","value":"3.30386"},
+			{"date":"2026-06-01","value":"3.46353"},
+			{"date":"2026-05-01","value":"3.5"},
+			{"date":"2026-04-01","value":"3.6"},
+			{"date":"2026-03-01","value":"3.7"},
+			{"date":"2026-02-01","value":"3.8"}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{APIKey: "test-key", HTTP: srv.Client(), URL: srv.URL}
+
+	readings, errs := c.Fetch(context.Background(), []Series{{ID: "CPIAUCSL", Unit: "%", Units: "pc1", Monthly: true}})
+	if len(errs) != 0 || len(readings) != 1 {
+		t.Fatalf("readings=%v errs=%v", readings, errs)
+	}
+	if units != "pc1" {
+		t.Errorf("units = %q, want pc1, the change from a year earlier", units)
+	}
+	r := readings[0]
+	if r.Latest != 3.35302 || !r.HasPrevious || r.Previous != 3.30386 {
+		t.Errorf("Latest=%v Previous=%v (%v), want August against July", r.Latest, r.Previous, r.HasPrevious)
+	}
+	if r.HasWeekAgo {
+		t.Error("a monthly series reported a week-ago reading, which would be February's")
+	}
+}
+
 // Losing the 2-year is not a reason to lose the brief.
 func TestOneFailingSeriesDoesNotSinkTheRest(t *testing.T) {
 	var calls int

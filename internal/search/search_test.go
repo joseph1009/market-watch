@@ -290,3 +290,36 @@ func TestOutletsAreDistinctAndWeighted(t *testing.T) {
 		t.Errorf("%d outlets, more than the 300 a search accepts", len(Outlets))
 	}
 }
+
+// The mover searches run as a second round. Joined with the first, an article
+// both found is counted once, and the cost and failures of both are kept.
+func TestMergeKeepsEachArticleOnce(t *testing.T) {
+	a := Result{Articles: []model.Article{{ID: "1"}, {ID: "2"}}, Credits: 15, Errors: []error{errors.New("asia")}}
+	b := Result{Articles: []model.Article{{ID: "2"}, {ID: "3"}}, Credits: 2}
+	got := Merge(a, b)
+	var ids []string
+	for _, art := range got.Articles {
+		ids = append(ids, art.ID)
+	}
+	if strings.Join(ids, ",") != "1,2,3" || got.Credits != 17 || len(got.Errors) != 1 {
+		t.Errorf("Merge = %v, %d credits, %v", ids, got.Credits, got.Errors)
+	}
+}
+
+func TestAMoverSearchAsksForFewerResults(t *testing.T) {
+	s := &stub{answers: map[string]string{}}
+	srv := httptest.NewServer(s)
+	defer srv.Close()
+
+	client(srv.URL).Collect(context.Background(),
+		[]Query{MoverQuery("MCDONALDS CORP", "MCD", -4.8), {Label: "markets", Text: "markets"}},
+		testNow.Add(-24*time.Hour))
+
+	got := map[string]int{}
+	for _, r := range s.requests {
+		got[r.Query] = r.MaxResults
+	}
+	if got["Why did MCDONALDS (MCD) shares fall today?"] != moverResults || got["markets"] != maxResults {
+		t.Errorf("max_results = %v, want %d for the mover and %d for the rest", got, moverResults, maxResults)
+	}
+}

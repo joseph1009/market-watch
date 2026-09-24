@@ -321,6 +321,13 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	}
 
 	started := a.now()
+	watched := watchedTickers(prefs.Groups)
+
+	// Prices are read first and alongside the rest: the free tier's pace makes
+	// them the slowest thing gathered, and the shares that moved furthest
+	// decide what else is searched for.
+	priced := make(chan []model.Quote, 1)
+	go func() { priced <- a.collectPrices(ctx, watched) }()
 
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
@@ -328,6 +335,13 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	filings := a.collectFilings(ctx, prefs)
 	// Search results join the same way, and for the same reason.
 	found := a.collectSearch(ctx, prefs)
+
+	// A share that moved well beyond the market gets a search of its own for
+	// why, so the reason reaches the brief whether or not a feed carried it.
+	quotes := <-priced
+	since := a.searchSince()
+	moved := movers(quotes, watched, since)
+	found = search.Merge(found, a.searchMovers(ctx, moved))
 
 	sources := append(prefs.EnabledSources(), SECSourceEntry())
 	opts := feed.Options{
@@ -394,7 +408,9 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	// Market levels and prices are context, not content: a failure here costs
 	// the anchor numbers, never the brief.
 	a.Generator.Levels = a.collectLevels(ctx)
-	a.Generator.Quotes = a.collectQuotes(ctx, articles, watchedTickers(prefs.Groups))
+	a.Generator.Quotes = quotes
+	a.Generator.Trends = a.trendsFor(ctx, moved)
+	a.Generator.MovesSince = since
 
 	rep, err := a.Generator.Generate(ctx, articles, prefs.Groups)
 	if errors.Is(err, report.ErrNoArticles) {

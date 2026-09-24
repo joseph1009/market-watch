@@ -9,25 +9,31 @@ import (
 	"github.com/joseph1009/market-watch/internal/prices"
 )
 
-// quoteBudget bounds how long prices may take. The free tier is paced at one
-// symbol a second, so a long list is minutes: prices improve the brief and must
-// never be what delays it.
+// quoteBudget bounds how long the new names' prices may take. The free tier is
+// paced at one symbol a second: prices improve the brief and must never be
+// what delays it.
 const quoteBudget = 90 * time.Second
 
-// collectQuotes reads what the market did, for the benchmarks and for the
-// companies today's news is actually about.
+// scanBudget bounds the price scan. The benchmarks and 95 watchlist shares are
+// about two minutes at the free tier's pace; past the budget, what is left
+// unpriced goes without, and the benchmarks, read first, are never among it.
+const scanBudget = 150 * time.Second
+
+// collectPrices reads what the market did: the benchmark funds, then every
+// watchlist share.
 //
-// Not all 93 watchlist tickers: the rate limit is the scarce resource here, and
-// a company with no news in the brief has no place to put its price. The
-// benchmarks come first so a truncated run still says what the market did.
-func (a *App) collectQuotes(ctx context.Context, articles []model.Article, watched []string) []model.Quote {
+// Every share, not only those in the day's news. A share that fell 8% on a day
+// no feed wrote about it is the one the reader most needs told about, and it
+// can only be seen by pricing it (movers.go). It is the slowest thing a brief
+// gathers, so it runs first, beside the filings and the searches.
+func (a *App) collectPrices(ctx context.Context, watched []string) []model.Quote {
 	if !a.Quotes.Enabled() {
 		return nil
 	}
 
-	symbols := append(prices.BenchmarkSymbols(), prices.Mentioned(articles, watched)...)
+	symbols := append(prices.BenchmarkSymbols(), watched...)
 
-	ctx, cancel := context.WithTimeout(ctx, quoteBudget)
+	ctx, cancel := context.WithTimeout(ctx, scanBudget)
 	defer cancel()
 
 	started := time.Now()

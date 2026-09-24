@@ -27,6 +27,17 @@ type Series struct {
 	ID    string
 	Label string
 	Unit  string
+
+	// Units asks FRED to transform the series before sending it, in FRED's
+	// own codes: "pc1" is the percent change from a year earlier. Empty sends
+	// the series as published. The consumer price index is published as an
+	// index level -- 331.6 -- which means nothing to a reader until it is a
+	// yearly rate.
+	Units string
+
+	// Monthly marks a series published once a month. Its previous reading is
+	// last month's, and it has no week-ago reading to compare with.
+	Monthly bool
 }
 
 // DefaultSeries are the levels the Macro & Rates section is written against.
@@ -37,6 +48,11 @@ var DefaultSeries = []Series{
 	{ID: "DFF", Label: "Effective fed funds rate", Unit: "%"},
 	{ID: "SP500", Label: "S&P 500 index level", Unit: ""},
 	{ID: "VIXCLS", Label: "VIX, the market volatility index", Unit: ""},
+	// Inflation is what the Fed is steering by, so the brief should have the
+	// official figure rather than whichever outlet mentioned it. The core
+	// measure leaves out food and energy, the two prices that swing most.
+	{ID: "CPIAUCSL", Label: "US consumer price inflation, change from a year earlier (CPI)", Unit: "%", Units: "pc1", Monthly: true},
+	{ID: "CPILFESL", Label: "US core inflation, excluding food and energy, change from a year earlier (core CPI)", Unit: "%", Units: "pc1", Monthly: true},
 }
 
 // Reading is the latest value of a series and how far it has moved.
@@ -83,7 +99,7 @@ func (c *Client) Fetch(ctx context.Context, series []Series) ([]Reading, []error
 		out  []Reading
 		errs []error
 	)
-	// Sequential: four small requests, and FRED rate-limits per key.
+	// Sequential: a handful of small requests, and FRED rate-limits per key.
 	for _, s := range series {
 		reading, err := c.fetchOne(ctx, s)
 		if err != nil {
@@ -111,6 +127,9 @@ func (c *Client) fetchOne(ctx context.Context, s Series) (Reading, error) {
 	// series, and holidays arrive as "." rather than a number.
 	params.Set("sort_order", "desc")
 	params.Set("limit", "12")
+	if s.Units != "" {
+		params.Set("units", s.Units)
+	}
 
 	var doc observationsResponse
 	if err := c.getJSON(ctx, c.baseURL()+"?"+params.Encode(), &doc); err != nil {
@@ -141,6 +160,9 @@ func (c *Client) fetchOne(ctx context.Context, s Series) (Reading, error) {
 	r := Reading{Series: s, Latest: points[0].value, AsOf: points[0].date}
 	if len(points) > 1 {
 		r.Previous, r.HasPrevious = points[1].value, true
+	}
+	if s.Monthly {
+		return r, nil // the previous reading is last month's; there is no week
 	}
 	// Five business days back, or the oldest available if the series is short.
 	if idx := 5; len(points) > idx {

@@ -183,7 +183,7 @@ func (c *Client) searchOne(ctx context.Context, q Query, since time.Time) ([]mod
 		// Basic costs one credit; advanced costs two and returns the same
 		// kind of snippet, only chosen more carefully.
 		SearchDepth: "basic",
-		MaxResults:  maxResults,
+		MaxResults:  q.max(),
 		// Restricted to named outlets. Unrestricted, a search for chip news
 		// returned five results, three of them Facebook and Threads posts;
 		// the same search restricted returned twenty from Reuters, the FT,
@@ -258,6 +258,29 @@ func (c *Client) searchOne(ctx context.Context, q Query, since time.Time) ([]mod
 		})
 	}
 	return out, doc.Usage.Credits, nil
+}
+
+// max is how many results the query asks for.
+func (q Query) max() int {
+	if q.Max > 0 && q.Max < maxResults {
+		return q.Max
+	}
+	return maxResults
+}
+
+// Merge joins two rounds of searches into one result, each article once, so
+// the run record counts what search found and not how often it found it.
+func Merge(a, b Result) Result {
+	out := Result{Credits: a.Credits + b.Credits, Errors: append(append([]error(nil), a.Errors...), b.Errors...)}
+	seen := make(map[string]bool, len(a.Articles)+len(b.Articles))
+	for _, art := range append(append([]model.Article(nil), a.Articles...), b.Articles...) {
+		if seen[art.ID] {
+			continue
+		}
+		seen[art.ID] = true
+		out.Articles = append(out.Articles, art)
+	}
+	return out
 }
 
 const usageURL = "https://api.tavily.com/usage"

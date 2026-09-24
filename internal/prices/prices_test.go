@@ -86,21 +86,6 @@ func TestMoveReadsAsAPersonWouldSayIt(t *testing.T) {
 	}
 }
 
-// The rate limit is the scarce resource, so it is spent on the companies the
-// day's news is actually about.
-func TestMentionedPicksTheWatchedTickersInTheNews(t *testing.T) {
-	articles := []model.Article{
-		{Tickers: []string{"NVDA", "AMD"}},
-		{Tickers: []string{"NVDA"}},
-		{Tickers: []string{"TSLA"}},
-	}
-
-	got := Mentioned(articles, []string{"NVDA", "AMD", "MSFT"})
-	if len(got) != 2 || got[0] != "NVDA" || got[1] != "AMD" {
-		t.Errorf("got %v, want the watched tickers with news, once each", got)
-	}
-}
-
 func TestDisabledWithoutAKey(t *testing.T) {
 	var c *Client
 	if c.Enabled() {

@@ -1322,3 +1322,21 @@ func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
 		t.Error("the channel was told to use /scorecard, a command only the owner can send")
 	}
 }
+
+// The biggest moves sit directly under the section's heading, where a break
+// between messages cannot separate them, and a quiet section has no line.
+func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Movers = []model.Quote{{Symbol: "NVDA", Percent: -6.2}, {Symbol: "AMD", Percent: 3.1}}
+	rep.Sections = append(rep.Sections, model.Section{GroupID: "macro-rates", GroupName: "Macro & Rates", Body: "Rates did the work."})
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	want := "<b>Semiconductors &amp; AI</b>\n<i>Biggest moves: NVDA -6.2% · AMD +3.1%</i>"
+	if !strings.Contains(out, want) {
+		t.Errorf("rendered brief lacks %q under the heading:\n%s", want, out)
+	}
+	if strings.Count(out, "Biggest moves") != 1 {
+		t.Errorf("a section with no movers got a line:\n%s", out)
+	}
+}

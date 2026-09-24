@@ -28,9 +28,11 @@ const (
 	// inside it with room to spare, and a day's list is a few dozen symbols.
 	requestPause = 1100 * time.Millisecond
 
-	// maxSymbols bounds a run. Beyond this the pause alone would add minutes to
-	// the brief, and the symbols that matter are the ones with news.
-	maxSymbols = 60
+	// maxSymbols bounds a run. A brief prices the benchmark funds and every
+	// watchlist share -- about 110 today, two minutes at this pace -- so a
+	// share that moved without making the news is still seen. The bound is
+	// there so a watchlist grown far past that cannot stretch the run for ever.
+	maxSymbols = 150
 )
 
 // Client reads quotes.
@@ -152,6 +154,10 @@ func (c *Client) pause() time.Duration {
 	return requestPause
 }
 
+// MarketSymbol is the fund a share's move is set against to say whether it
+// moved with the market or on its own: the S&P 500's.
+const MarketSymbol = "SPY"
+
 // Benchmarks are the market-wide and sector moves the brief is written against.
 //
 // They are exchange-traded funds rather than the indices themselves: index
@@ -162,7 +168,7 @@ var Benchmarks = []struct {
 	Symbol string
 	Label  string
 }{
-	{"SPY", "S&P 500 (SPY fund)"},
+	{MarketSymbol, "S&P 500 (SPY fund)"},
 	{"QQQ", "Nasdaq 100 (QQQ fund)"},
 	{"IWM", "US small caps (IWM fund)"},
 	{"SMH", "Semiconductors (SMH fund)"},
@@ -201,28 +207,6 @@ func Index(quotes []model.Quote) map[string]model.Quote {
 	out := make(map[string]model.Quote, len(quotes))
 	for _, q := range quotes {
 		out[q.Symbol] = q
-	}
-	return out
-}
-
-// Mentioned is the watchlist symbols today's articles actually mention,
-// which is what a run should spend its rate limit on.
-func Mentioned(articles []model.Article, watched []string) []string {
-	wanted := make(map[string]bool, len(watched))
-	for _, w := range watched {
-		wanted[strings.ToUpper(strings.TrimSpace(w))] = true
-	}
-
-	var out []string
-	seen := map[string]bool{}
-	for _, a := range articles {
-		for _, t := range a.Tickers {
-			t = strings.ToUpper(t)
-			if wanted[t] && !seen[t] {
-				seen[t] = true
-				out = append(out, t)
-			}
-		}
 	}
 	return out
 }

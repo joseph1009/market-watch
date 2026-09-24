@@ -240,8 +240,17 @@ publications in `internal/search/outlets.go`. The results join the feeds before
 dedupe and are rated, ranked and cited like any other article. Their source ids
 start with `web:`, as in `web:reuters.com`.
 
-**Cost.** One credit per search, about fifteen per brief. The free plan is 1,000
-credits a month; weekday briefs use about 330, which leaves room for `/now`.
+Each brief also searches for why a share moved, when one on a watchlist moved
+at least three percentage points further than the S&P 500 fund — "Why did
+MCDONALDS (MCD) shares fall today?" — at most five a brief, furthest first.
+Every watchlist share is priced at the start of the run to find them, which
+takes about two minutes at Finnhub's free pace and runs beside the feeds. The
+log line `searched movers` names them. The same prices give each section its
+line of biggest moves under the heading.
+
+**Cost.** One credit per search: about fifteen per brief, and up to five more on
+a day with movers. The free plan is 1,000 credits a month; weekday briefs use
+about 330, up to 440 with movers, which leaves room for `/now`.
 `market-watch --check` proves the key without spending a credit, and shows
 Tavily's count of credits used, but that count runs late: on 23 September it
 still read 0 after 27 searches. `/stats` shows the credits each brief spent, as

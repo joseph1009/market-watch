@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -50,4 +51,13 @@ func (q Quote) Move() string {
 	default:
 		return "flat"
 	}
+}
+
+// Moves lists shares by their move, in the order given: "MCD -4.8% · NKE -2.1%".
+func Moves(quotes []Quote) string {
+	parts := make([]string, len(quotes))
+	for i, q := range quotes {
+		parts[i] = q.Symbol + " " + q.Move()
+	}
+	return strings.Join(parts, " · ")
 }

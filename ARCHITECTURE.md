@@ -10,8 +10,10 @@ This is the map. [RUNBOOK.md](RUNBOOK.md) is how to operate the thing;
 
 ## The one-paragraph version
 
-The service wakes on a schedule, pulls about forty news feeds, runs about
-fifteen news searches and reads the SEC's recent filings, throws away what is
+The service wakes on a schedule, prices every watchlist share, pulls about
+forty news feeds, runs about fifteen news searches — and one more for each
+share that moved well beyond the market — and reads the SEC's recent filings,
+throws away what is
 stale or duplicated, has a small model rate
 and file every article, has a large model write a brief from what survived,
 renders that into Telegram messages and sends them to one chat. Then it posts
@@ -41,7 +43,7 @@ headless Claude Code process, and the answer written beside it.
 | [internal/ideas](internal/ideas/) | "Worth a closer look": research, verdicts, and the scorecard that grades them |
 | [internal/fundamentals](internal/fundamentals/) | Reading XBRL accounts out of EDGAR and turning them into a table |
 | [internal/prices](internal/prices/) | Share prices: a live quote feed, a daily-history chart source, company news |
-| [internal/marketdata](internal/marketdata/) | FRED: yields, the curve, fed funds, VIX |
+| [internal/marketdata](internal/marketdata/) | FRED: yields, the curve, fed funds, VIX, inflation |
 | [internal/telegram](internal/telegram/) | The Telegram API client, and all rendering into messages |
 | [internal/relay](internal/relay/) | Every model call. Writes the request, runs Claude Code, keeps the reply |
 | [internal/prompts](internal/prompts/) | One file holding every system prompt, checked at startup |
@@ -60,7 +62,7 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](internal/app/app.go#L518) recomputes the next run every time
+[`RunScheduler`](internal/app/app.go#L534) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 20:30 US
 Eastern across a daylight-saving change. When the timer fires it calls
 [`Publish`](internal/app/app.go#L268) → [`brief(ctx, share: true)`](internal/app/app.go#L275).
@@ -76,7 +78,15 @@ Eastern across a daylight-saving change. When the timer fires it calls
 
 ### 2. Gathering
 
-[`collectFilings`](internal/app/filings.go#L25) runs first, so filings arrive on
+[`collectPrices`](internal/app/prices.go#L29) starts first, in the background:
+the twelve benchmark funds and every watchlist share, read from Finnhub by
+[`prices.Client.Fetch`](internal/prices/prices.go#L54) at the free tier's pace
+of about one a second. That is about two minutes for 95 shares, which is why it
+runs beside the filings and searches rather than after them. It prices every
+share, not only those in the news, so a share that moved with no story behind
+it is still seen.
+
+[`collectFilings`](internal/app/filings.go#L25) runs next, so filings arrive on
 the same footing as news rather than being bolted on afterwards. It calls
 [`sec.Client.Collect`](internal/sec/sec.go#L94), which looks each watchlist
 ticker up in EDGAR's ticker index, reads its recent submissions, keeps only the
@@ -84,7 +94,7 @@ ticker up in EDGAR's ticker index, reads its recent submissions, keeps only the
 turns each into an `model.Article` via [`Filing.article`](internal/sec/sec.go#L160).
 
 [`collectSearch`](internal/app/search.go#L26) runs next, for the same reason.
-It builds the searches with [`search.Queries`](internal/search/queries.go#L51)
+It builds the searches with [`search.Queries`](internal/search/queries.go#L56)
 — three general ones (markets, the economy, Asia), then one per watchlist,
 worded from the watchlist's sector sentence — and runs them through
 [`search.Client.Collect`](internal/search/search.go#L93). Each is a Tavily news
@@ -95,6 +105,17 @@ covers the weekend. Every result becomes an article whose source id is
 `web:` plus the outlet's domain — `web:reuters.com` — and which ranks with that
 outlet's weight. Search is an addition, like the filings: without a key, or on
 a day Tavily is down, the brief comes from the feeds alone.
+
+When the prices are in, [`movers`](internal/app/movers.go#L33) picks the
+watchlist shares that moved at least three percentage points further than the
+S&P 500 fund, in either direction: at most five, furthest first, and none from
+a session the previous brief already reported. Measuring against the market
+means a sell-off does not send a search for every share that fell with it.
+[`searchMovers`](internal/app/movers.go#L71) asks why each moved —
+"Why did MCDONALDS (MCD) shares fall today?", from
+[`search.MoverQuery`](internal/search/queries.go#L125), with the company's name as
+the SEC files it — and [`search.Merge`](internal/search/search.go#L273) joins the
+results to the other searches'.
 
 Then [`feed.Collect`](internal/feed/collect.go#L109) — the heart of the
 gathering — runs this sequence:
@@ -131,31 +152,36 @@ a running story would leave the reader with a development and no thread to hang
 it on.
 
 Then [`collectLevels`](internal/app/filings.go#L89) reads FRED via
-[`marketdata.Client.Fetch`](internal/marketdata/fred.go#L77) for yields, the
-curve, fed funds, the S&P and the VIX.
+[`marketdata.Client.Fetch`](internal/marketdata/fred.go#L93) for yields, the
+curve, fed funds, the S&P, the VIX, and inflation: the consumer price index and
+its core, asked for as the change from a year earlier.
 
-[`collectQuotes`](internal/app/prices.go#L23) reads share prices via
-[`prices.Client.Fetch`](internal/prices/prices.go#L52) — the twelve benchmark
-funds, plus the watchlist tickers today's articles actually mention
-([`prices.Mentioned`](internal/prices/prices.go#L210)). Finnhub, US listings
-only, paced at roughly one symbol a second.
+The prices read at the start go to the brief whole. For the movers,
+[`trendsFor`](internal/app/movers.go#L116) also reads each one's price history
+from the chart source: its 50- and 200-day averages, its range over the year,
+and the day's volume against its usual. That lets the brief say what kind of
+move it was.
 
 Both are best-effort. A failure here costs the anchor numbers, never the brief.
 
 ### 4. Writing
 
-[`report.Generator.Generate`](internal/report/generate.go#L55):
+[`report.Generator.Generate`](internal/report/generate.go#L64):
 
 - [`splitByCoverage`](internal/report/prompt.go#L82) decides which watchlists
   have enough news to deserve a section, and which are merely quiet.
-- [`buildPrompt`](internal/report/prompt.go#L96) assembles the prompt: the
-  market levels ([`renderMarketData`](internal/report/prompt.go#L314)), the
-  prices ([`renderPrices`](internal/report/prompt.go#L357)), then each active
-  section's articles, then the general news the overview may draw on. Every
-  article gets a citation number from [`numbering`](internal/report/prompt.go#L219).
+- [`buildPrompt`](internal/report/prompt.go#L111) assembles the prompt: the
+  market levels ([`renderMarketData`](internal/report/prompt.go#L332)), the
+  prices with the movers' history ([`renderPrices`](internal/report/prompt.go#L385)),
+  then each active section's articles under its line of biggest moves
+  ([`sectionMoves`](internal/report/moves.go#L30)), then the general news the
+  overview may draw on. Every article gets a citation number from
+  [`numbering`](internal/report/prompt.go#L237). The writer is told the reader
+  sees the moves line, so it explains the moves rather than listing them.
 - The call goes through `Completer`, which is the relay.
 - [`parseResponse`](internal/report/parse.go#L20) splits the reply on
-  `## OVERVIEW` and `## SECTION: <id>` markers into a `model.Report`.
+  `## OVERVIEW` and `## SECTION: <id>` markers into a `model.Report`, and each
+  section is given the same biggest moves the prompt showed.
 
 ### 5. New names
 
@@ -171,21 +197,21 @@ company ([`SameCompany`](internal/discover/verify.go#L167)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](internal/discover/store.go#L54) counts how many days a
-name has been running, and [`priceCandidates`](internal/app/prices.go#L149)
+name has been running, and [`priceCandidates`](internal/app/prices.go#L155)
 attaches each one's move on the day — US names from the quote feed, everywhere
 else from the chart source.
 
 ### 6. Rendering and delivery
 
 [`telegram.RenderWith`](internal/telegram/render.go#L87) turns the report into
-Telegram HTML: the overview, each section, the new names
-([`renderCandidates`](internal/telegram/render.go#L597)), the quiet watchlists,
+Telegram HTML: the overview, each section under its line of biggest moves, the new names
+([`renderCandidates`](internal/telegram/render.go#L604)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](internal/telegram/render.go#L564). Paragraphs become bullets
-([`bullets`](internal/telegram/render.go#L307)) and labels get emphasised
-([`emphasizeLabel`](internal/telegram/render.go#L251)).
+[`linkCitations`](internal/telegram/render.go#L571). Paragraphs become bullets
+([`bullets`](internal/telegram/render.go#L314)) and labels get emphasised
+([`emphasizeLabel`](internal/telegram/render.go#L258)).
 
-[`pack`](internal/telegram/render.go#L355) then lays the pieces out across
+[`pack`](internal/telegram/render.go#L362) then lays the pieces out across
 messages under Telegram's 4096-character cap, breaking between sections rather
 than mid-thought, and never leaving a heading alone at the end of a message.
 
@@ -200,7 +226,7 @@ records what the run cost and did, for `/stats`. When search is on,
 kept stories no feed carried, how many of the brief's citations came from
 search alone, and — by source — the cited stories no search found. The
 citations are read back out of the prose by
-[`Report.Referenced`](internal/model/report.go#L89). Those numbers are what
+[`Report.Referenced`](internal/model/report.go#L95). Those numbers are what
 decides whether search can take over from the media feeds.
 
 ### 7. The channel
@@ -254,7 +280,7 @@ commands from the owner's chat alone.
 `--check` runs [`runCheck`](cmd/market-watch/main.go#L149): Telegram, the
 channel, the feeds, the search key, the schedule and Claude Code, each reported
 separately. The search key is proved with
-[`search.Client.Usage`](internal/search/search.go#L279), which costs nothing; a
+[`search.Client.Usage`](internal/search/search.go#L302), which costs nothing; a
 test search would spend a credit. Tavily's count of credits used runs late, so
 the run record keeps its own, from each search's reply. This
 is what the deploy script runs on the machine afterwards.
@@ -295,10 +321,10 @@ does not inherit whatever the caller's context has left:
    figures become multiples.
 3. [`AddBusiness`](internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
-   [`tradingFor`](internal/app/prices.go#L54) reads the daily price history and
+   [`tradingFor`](internal/app/prices.go#L60) reads the daily price history and
    [`prices.Summarise`](internal/prices/history.go#L243) turns it into returns,
    moving averages, the year's range, VWAP and volatility;
-   [`addNews`](internal/app/prices.go#L127) adds what has been written lately,
+   [`addNews`](internal/app/prices.go#L133) adds what has been written lately,
    filtered by [`Relevant`](internal/fundamentals/news.go#L70) to pieces that
    actually name the company. All three are best-effort.
 4. [`Snapshot.Table`](internal/fundamentals/table.go#L46) lays the figures out as
@@ -309,7 +335,7 @@ does not inherit whatever the caller's context has left:
    read next to it" table out of the prose, and
    [`VerifyRelated`](internal/fundamentals/related.go#L90) checks those tickers
    against OpenFIGI before any of them is shown.
-6. [`RenderPlain`](internal/telegram/render.go#L497) and
+6. [`RenderPlain`](internal/telegram/render.go#L504) and
    [`RenderRelated`](internal/telegram/related.go#L22) render it.
 
 ### Every model call
@@ -371,14 +397,20 @@ name; `isTicker` is that test. `renderWatchlists`, `renderSources`, `groupIDs`
 and `escape` render the replies. `quoteFor` fetches one price for `/analyse`.
 
 **[prices.go](internal/app/prices.go)** — everything price-shaped the app does.
-`collectQuotes` reads the benchmarks and the names in today's news.
+`collectPrices` reads the benchmarks and every watchlist share.
 `tradingFor` reads one listing's history for the analysis; `marketFor` returns
 both the history and the last price from a single fetch, which is what gives a
 non-US listing a price at all; `seriesFor` is the fetch; `summarise` turns a
 history into figures and refuses a stale one. `addNews` attaches company news.
 `priceCandidates` prices the new names, US from the quote feed and everywhere
-else from the chart source. The three budgets — `quoteBudget` 90s,
+else from the chart source. The budgets — `scanBudget` 150s, `quoteBudget` 90s,
 `historyBudget` 25s, `newsBudget` 25s — live here.
+
+**[movers.go](internal/app/movers.go)** — the shares that moved on their own.
+`movers` picks those at least `moverGap` (three percentage points) beyond the
+S&P 500 fund, at most five; `searchMovers` searches for why, naming each company
+by `companyName` from the SEC index; `trendsFor` reads their price histories
+side by side.
 
 **[ideas.go](internal/app/ideas.go)** — "worth a closer look".
 `sendIdeas` runs the whole sequence; `ideaFacts` assembles the fact sheet a
@@ -436,14 +468,15 @@ places deduplicates. `Also` holds the sources dedupe folded into an article,
 and `Carriers` lists every source a story arrived from.
 **[group.go](internal/model/group.go)** — `Group`, a watchlist: tickers, names,
 keywords and a sentence of scope.
-**[report.go](internal/model/report.go)** — `Report`, `Section`, `Usage`.
+**[report.go](internal/model/report.go)** — `Report`, `Section` (with the
+`Movers` shown under its heading), `Usage`.
 `Referenced` returns the articles the prose actually cites, as opposed to
 `Cited`, which is everything the model was offered.
 **[candidate.go](internal/model/candidate.go)** — `Candidate`, a new name in the
 news, and `Symbol`, which writes it as `700.HK` or `NVDA`.
 **[idea.go](internal/model/idea.go)** — `Idea` and the verdict constants.
 **[quote.go](internal/model/quote.go)** — `Quote`, with `Move` (the percentage)
-and `Unit` (the currency).
+and `Unit` (the currency); `Moves` writes a list of them as one line.
 **[trading.go](internal/model/trading.go)** — `Trading`, what a share has been
 doing: returns, averages, range, volume, volatility. `Stale` refuses a history
 that stops weeks ago.
@@ -519,6 +552,9 @@ headline from one outlet look a little alike to the dedupe.
 `General` first, then one search per watchlist from `groupQuery`, which uses the
 sector sentence and falls back to the watchlist's names and keywords. `MaxQueries`
 caps a round at twenty, so adding watchlists cannot run up the bill.
+`MoverQuery` asks why one share moved, for ten results rather than twenty, and
+`plainName` takes the corporate words off the name it files under;
+`MaxMoverQueries` caps those at five a brief.
 
 **[live_test.go](internal/search/live_test.go)** — with `SEARCH_LIVE=1`, runs the
 real searches beside the real feeds and reports what each found that the other
@@ -538,7 +574,11 @@ onto the articles.
 sections, build the prompt, make the call, assemble the `Report`.
 **[prompt.go](internal/report/prompt.go)** — `buildPrompt` and its parts, plus
 the thresholds that decide what is worth writing about: `MinSectionArticles` 3,
-`MaxSectionArticles` 25, `MinGeneralRating` 4, `MinSectionRating` 3.
+`MaxSectionArticles` 25, `MinGeneralRating` 4, `MinSectionRating` 3. `market`
+carries what was measured rather than written.
+**[moves.go](internal/report/moves.go)** — `sectionMoves` picks a watchlist's
+biggest moves on the day, at least `MinMoveShown` (1%) and at most
+`MaxMovesShown` (four); `trend` describes a mover against its own history.
 **[parse.go](internal/report/parse.go)** — `parseResponse` splits the reply on
 its markers.
 
@@ -591,9 +631,9 @@ evaluator, and `Number`, which formats a figure for a reader.
 ### internal/prices
 
 **[prices.go](internal/prices/prices.go)** — the Finnhub quote client.
-`Client.Fetch` paces a list of symbols; `Benchmarks` is the twelve funds;
-`Mentioned` picks the watchlist tickers in today's news; `Index` and `LabelFor`
-serve rendering.
+`Client.Fetch` paces a list of symbols, up to `maxSymbols` (150); `Benchmarks`
+is the twelve funds, and `MarketSymbol` the one a share's move is measured
+against; `Index` and `LabelFor` serve rendering.
 **[history.go](internal/prices/history.go)** — the keyless chart source.
 `History.Fetch` returns a `Series` of daily bars in the local currency;
 `Latest` turns the last two closes into a quote; `Summarise` turns the whole
@@ -608,8 +648,10 @@ prices.
 
 **[fred.go](internal/marketdata/fred.go)** — `Client.Fetch` reads the
 `DefaultSeries` — ten-year and two-year yields, the curve, fed funds, the S&P,
-the VIX — and returns a `Reading` for each with its latest, previous and
-week-ago values.
+the VIX, and inflation — and returns a `Reading` for each with its latest,
+previous and week-ago values. A series can ask FRED for a transform (`Units`:
+`pc1`, the change from a year earlier, turns the price index into inflation),
+and a `Monthly` one is compared with last month and has no week-ago value.
 
 ### internal/telegram
 
@@ -622,7 +664,8 @@ out of errors.
 the process was down.
 **[render.go](internal/telegram/render.go)** — the brief as messages. `RenderWith`
 assembles the segments, `pack` lays them across messages, `bullets` and
-`emphasizeLabel` shape the prose, `linkCitations` turns `[3]` into a link,
+`emphasizeLabel` shape the prose, `linkCitations` turns `[3]` into a link, each
+section's heading carries its line of biggest moves,
 `renderCandidates` draws the new-names block, `renderSources` the links,
 `renderFooter` the token counts. `RenderPlain` does the same for an analysis.
 **[ideas.go](internal/telegram/ideas.go)** — `RenderIdeas` and `renderIdea`, the
@@ -693,8 +736,9 @@ Everything is environment variables, read once by
 The shape of it: a missing **secret** usually disables a feature rather than
 failing the run. No `FRED_API_KEY` means no market-levels block. No
 `TAVILY_API_KEY` means no news searches — the brief comes from the feeds alone. No
-`FINNHUB_API_KEY` means no US quotes and no company news — but listings outside
-the US are still priced, because the chart source needs no key. No `USER_AGENT`
+`FINNHUB_API_KEY` means no US quotes, so no lines of biggest moves and no
+searches for shares that moved, and no company news — but listings outside the
+US are still priced for the analysis, because the chart source needs no key. No `USER_AGENT`
 means no SEC filings, because EDGAR answers an anonymous request with 403.
 
 ---

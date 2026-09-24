@@ -90,10 +90,25 @@ func splitByCoverage(articles []model.Article, groups []model.Group, minimum int
 	return active, quiet
 }
 
+// market is what was measured rather than written: FRED's levels, the day's
+// prices, and the history of the shares that moved furthest.
+type market struct {
+	levels []marketdata.Reading
+	quotes []model.Quote
+
+	// trends are keyed by symbol, for the shares that moved furthest beyond
+	// the market.
+	trends map[string]model.Trading
+
+	// since is the previous brief: a price from before it is a session that
+	// brief reported, not today's move.
+	since time.Time
+}
+
 // buildPrompt renders the articles into the user turn. Articles are ordered by
 // watchlist so related stories sit together, which reads better than the
 // recency order the collector produces.
-func buildPrompt(articles []model.Article, groups []model.Group, levels []marketdata.Reading, quotes []model.Quote, now time.Time, display *time.Location) string {
+func buildPrompt(articles []model.Article, groups []model.Group, m market, now time.Time, display *time.Location) string {
 	if display == nil {
 		display = time.UTC
 	}
@@ -124,11 +139,11 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 	// articles say what people wrote; this says where things actually are, and
 	// conflating the two would let a level be reported as though an outlet had
 	// claimed it.
-	if block := renderMarketData(levels); block != "" {
+	if block := renderMarketData(m.levels); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
-	if block := renderPrices(quotes, display); block != "" {
+	if block := renderPrices(m.quotes, m.trends, display); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
@@ -148,6 +163,9 @@ func buildPrompt(articles []model.Article, groups []model.Group, levels []market
 	for i, g := range groups {
 		matched := sections[i]
 		fmt.Fprintf(&b, "\n=== %s (%s) -- %d articles ===\n", g.Name, g.ID, len(matched))
+		if moves := sectionMoves(g, m.quotes, m.since); len(moves) > 0 {
+			fmt.Fprintf(&b, "Shown to the reader above this section: biggest moves %s\n", model.Moves(moves))
+		}
 		if len(matched) == 0 {
 			b.WriteString("(no articles matched this watchlist today)\n")
 			continue
@@ -319,6 +337,16 @@ func renderMarketData(levels []marketdata.Reading) string {
 	var b strings.Builder
 	b.WriteString("\nMarket levels, as reported by FRED. These are measured values, not claims made by any article -- use them to anchor the macro section, and do not attribute them to a source:\n")
 	for _, r := range levels {
+		// A monthly figure is dated by the month it measures, and its previous
+		// reading is last month's, not yesterday's.
+		if r.Monthly {
+			fmt.Fprintf(&b, "- %s: %.2f%s for %s", r.Label, r.Latest, r.Unit, r.AsOf.Format("January 2006"))
+			if r.HasPrevious {
+				fmt.Fprintf(&b, ", %s from the month before", describeMove(r.Change()))
+			}
+			b.WriteString("\n")
+			continue
+		}
 		fmt.Fprintf(&b, "- %s: %.2f%s as of %s",
 			r.Label, r.Latest, r.Unit, r.AsOf.Format("2 Jan"))
 		if r.HasPrevious {
@@ -354,7 +382,7 @@ func describeMove(delta float64) string {
 // The funds are named as funds. SPY is not the S&P 500, it is a fund that
 // tracks it, and on a bad day the two differ -- so the brief says "SPY fund"
 // rather than quietly passing one off as the other.
-func renderPrices(quotes []model.Quote, display *time.Location) string {
+func renderPrices(quotes []model.Quote, trends map[string]model.Trading, display *time.Location) string {
 	if len(quotes) == 0 {
 		return ""
 	}
@@ -368,6 +396,11 @@ func renderPrices(quotes []model.Quote, display *time.Location) string {
 		}
 		if !q.AsOf.IsZero() {
 			fmt.Fprintf(&b, ", as at %s", q.AsOf.In(display).Format("15:04 on 2 Jan"))
+		}
+		if t, ok := trends[q.Symbol]; ok {
+			if desc := trend(q, t); desc != "" {
+				fmt.Fprintf(&b, ". Against its own history: %s", desc)
+			}
 		}
 		b.WriteString("\n")
 	}

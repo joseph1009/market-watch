@@ -368,6 +368,9 @@ func TestPromptSeparatesMarketLevelsFromArticles(t *testing.T) {
 			{Series: marketdata.Series{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
 				Latest: 4.32, AsOf: testTime(), Previous: 4.28, HasPrevious: true,
 				WeekAgo: 4.11, HasWeekAgo: true},
+			// A monthly figure is dated by its month and compared with the last.
+			{Series: marketdata.Series{ID: "CPIAUCSL", Label: "US consumer price inflation", Unit: "%", Units: "pc1", Monthly: true},
+				Latest: 3.35302, AsOf: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), Previous: 3.30386, HasPrevious: true},
 		},
 	}
 
@@ -381,6 +384,7 @@ func TestPromptSeparatesMarketLevelsFromArticles(t *testing.T) {
 		"up 0.04 since the previous session",
 		"up 0.21 over the past week",
 		"not claims made by any article",
+		"US consumer price inflation: 3.35% for August 2026, up 0.05 from the month before",
 	} {
 		if !strings.Contains(fake.prompt, want) {
 			t.Errorf("prompt missing %q\n---\n%s", want, fake.prompt)
@@ -468,7 +472,7 @@ func TestPromptCapsHowManyArticlesASectionIsWrittenFrom(t *testing.T) {
 		})
 	}
 
-	prompt := buildPrompt(articles, reportGroups(), nil, nil, testTime(), time.UTC)
+	prompt := buildPrompt(articles, reportGroups(), market{}, testTime(), time.UTC)
 
 	if want := fmt.Sprintf("(semis-ai) -- %d articles", MaxSectionArticles); !strings.Contains(prompt, want) {
 		t.Errorf("prompt does not say %q:\n%s", want, prompt)
@@ -499,7 +503,7 @@ func TestGeneralNewsKeepsOnlyWhatCouldReachTheOverview(t *testing.T) {
 			SourceName: "CNBC", Published: testTime(), Rating: 4},
 	)
 
-	prompt := buildPrompt(articles, reportGroups(), nil, nil, testTime(), time.UTC)
+	prompt := buildPrompt(articles, reportGroups(), market{}, testTime(), time.UTC)
 
 	if strings.Contains(prompt, "Bakery opens") {
 		t.Error("a rated-2 article was offered as general news")
@@ -535,7 +539,7 @@ func TestSectionsLeaveOutKeywordMatchesRatedAsNoise(t *testing.T) {
 	}
 	groups := []model.Group{{ID: "financials", Name: "Financials & Banks"}}
 
-	prompt := buildPrompt(articles, groups, nil, nil, testTime(), time.UTC)
+	prompt := buildPrompt(articles, groups, market{}, testTime(), time.UTC)
 
 	for _, gone := range []string{"Shell hitting new highs", "head of China sales"} {
 		if strings.Contains(prompt, gone) {
@@ -651,7 +655,7 @@ func TestPromptNumbersArticlesAndFlagsRepeats(t *testing.T) {
 			Covered: now.AddDate(0, 0, -2)},
 	}
 
-	prompt := buildPrompt(articles, nil, nil, nil, now, time.UTC)
+	prompt := buildPrompt(articles, nil, market{}, now, time.UTC)
 
 	if !strings.Contains(prompt, "[1] Oil surges on Gulf attack") {
 		t.Errorf("articles are not numbered for citation:\n%s", prompt)

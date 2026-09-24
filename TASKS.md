@@ -47,11 +47,11 @@ you, and why it is worth doing.
   does not resolve Tokyo or Singapore at all. `TWELVEDATA_API_KEY` was dropped
   rather than left as a promise the tier cannot keep.
   The new names now do the same and show the move beside the ticker. What is
-  left is `collectQuotes` in `internal/app/prices.go`, which still reads the US
-  quote feed alone: the companies today's stories are about are priced for the
-  brief's prose only where they are listed in New York, so a section on Tokyo
-  or London carries no levels at all. The same two-source split would fix it,
-  but the list is longer than six names and the budget is the thing to watch.
+  left is `collectPrices` in `internal/app/prices.go`, which still reads the US
+  quote feed alone. It prices every watchlist share, and today all 95 trade in
+  New York, so nothing is missing; but a Tokyo or London listing added to a
+  watchlist would go without a price, a moves line or a mover search. The same
+  two-source split would fix it, and the chart source needs no pacing.
 - **Judge the verdicts after three months.** `/scorecard` will by then hold a
   few hundred. If BUY is not ahead of the index more often than not, or SELL
   not behind it, the verdicts are adding nothing the index would not, and
@@ -131,7 +131,11 @@ you, and why it is worth doing.
 - Repeats: stories earlier briefs carried are marked, not reported again.
 - Weekends: no brief on days the market was shut.
 - New names in the news, with every ticker checked against the exchange.
-- Share prices: benchmark funds and the companies in today's news.
+- Share prices: benchmark funds and every watchlist share, each section headed
+  by its biggest moves, and a search for why when a share moves well beyond the
+  market, with its averages and range for context.
+- Inflation from FRED beside the yields: the consumer price index and its core,
+  year on year.
 - Failure alerts: a brief that fails says so in the chat.
 - `/stats`: what recent briefs found and did, kept on the data volume.
 - CI: gofmt, vet, tests and build on every push.
