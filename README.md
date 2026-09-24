@@ -24,7 +24,7 @@ Claude subscription. There is no API key and no API spend.
 | [config/](config/) | What it follows and how it talks to the models, in files you edit without Go: [sectors.yaml](config/sectors.yaml), [companies.yaml](config/companies.yaml), [sources.yaml](config/sources.yaml), [prompts.md](config/prompts.md) and [method.md](config/method.md) |
 | [cmd/market-watch/](cmd/market-watch/) | The program |
 | [internal/](internal/) | Everything else, one package per job |
-| [scripts/](scripts/) | Deploying to Fly, and syncing its state back down |
+| [scripts/](scripts/) | Deploying to Fly, and syncing its state and its latest runs' data back down |
 | [docs/](docs/) | [ARCHITECTURE.md](docs/ARCHITECTURE.md), how the code fits together; [RUNBOOK.md](docs/RUNBOOK.md), how to run and change it; [TASKS.md](docs/TASKS.md), what is not built yet |
 
 ## Running it

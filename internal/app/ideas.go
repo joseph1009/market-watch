@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
+	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -117,6 +119,10 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	defer cancel()
 	started := time.Now()
 
+	ctx, cached := a.Cache.Start(ctx, runcache.Recommendations, "")
+	defer cached.Finish(nil)
+	cached.Save("look", lk)
+
 	// The new names and the followed companies are found side by side: the
 	// research is minutes of web searches, the screen a minute of prices and
 	// one short call, and neither needs the other.
@@ -132,10 +138,12 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	want := min(ideas.LookSize-len(picked), len(found))
 	all, spare := append(picked, found[:want]...), found[want:]
 	if len(all) == 0 {
+		cached.Fail(errors.New("nothing to judge: the research and the screen found no companies"))
 		return
 	}
 
 	backdrop := a.backdrop(ctx)
+	cached.Save("backdrop", backdrop)
 	shown, charts, judged, usage := a.judgeIdeas(ctx, all, lk.Cited, backdrop)
 
 	// A followed HOLD is not shown, and a verdict can fail. Each place left
@@ -160,10 +168,13 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 		"input_tokens", usage.InputTokens,
 		"output_tokens", usage.OutputTokens)
 	if len(shown) == 0 {
+		cached.Fail(errors.New("nothing to show: every verdict was a hidden HOLD or failed"))
 		return
 	}
 
 	messages := telegram.RenderIdeas(shown, lk.Cited, telegram.IdeasOptions{})
+	cached.Save("shown", shown)
+	cached.Text("messages.html", joinMessages(messages))
 	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
 	if len(ids) > 0 {
 		// Cleared with the brief it follows, when REPLACE_PREVIOUS is on.
@@ -176,6 +187,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	}
 	if err != nil {
 		a.Log.Warn("could not deliver the closer look", "error", err)
+		cached.Fail(err)
 		return
 	}
 
@@ -196,10 +208,13 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 // order, how many verdicts came back, and what they cost.
 func (a *App) judgeIdeas(ctx context.Context, list []model.Idea, cited []model.Article, backdrop []string) ([]model.Idea, []string, int, model.Usage) {
 	facts, charts := a.factsFor(ctx, list)
+	cached := runcache.From(ctx)
+	cached.Save("facts", factsView(list, facts, charts))
 	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop)
 	if err != nil {
 		a.Log.Warn("some verdicts are missing", "error", err)
 	}
+	cached.Save("verdicts", judged)
 	var shown []model.Idea
 	for _, idea := range judged {
 		if idea.Shown() {
@@ -207,6 +222,22 @@ func (a *App) judgeIdeas(ctx context.Context, list []model.Idea, cited []model.A
 		}
 	}
 	return shown, charts, len(judged), usage
+}
+
+// factsView pairs each company judged with the facts it was judged on and the
+// chart it was priced from, for the run cache.
+func factsView(list []model.Idea, facts, charts []string) any {
+	type row struct {
+		Ticker string `json:"ticker"`
+		Name   string `json:"name"`
+		Chart  string `json:"chart,omitempty"`
+		Facts  string `json:"facts"`
+	}
+	out := make([]row, len(list))
+	for i, idea := range list {
+		out[i] = row{Ticker: idea.Ticker, Name: idea.Name, Chart: charts[i], Facts: facts[i]}
+	}
+	return out
 }
 
 // researchNewNames finds the companies nobody follows that today's news, or
@@ -217,18 +248,22 @@ func (a *App) researchNewNames(ctx context.Context, lk look, groups []model.Grou
 	for _, t := range watchedTickers(groups) {
 		followed[t] = true
 	}
+	movers := a.marketMovers(ctx, followed)
+	cached := runcache.From(ctx)
+	cached.Save("market-movers", movers)
 	found, usage, err := a.Researcher.Propose(ctx, ideas.Input{
 		Brief:      lk.Brief,
 		Cited:      lk.Cited,
 		Candidates: lk.Candidates,
 		Tracked:    trackedNames(groups),
 		Followed:   followed,
-		Movers:     a.marketMovers(ctx, followed),
+		Movers:     movers,
 	})
 	if err != nil {
 		a.Log.Warn("could not research new names for a closer look", "error", err)
 		return nil
 	}
+	cached.Save("research", found)
 	a.Log.Info("ideas researched",
 		"verified", len(found),
 		"input_tokens", usage.InputTokens,
@@ -314,11 +349,14 @@ func (a *App) screenFollowed(ctx context.Context, lk look, groups []model.Group)
 	}
 	started := time.Now()
 	rows := a.screenRows(ctx, groups, lk.Cited)
+	cached := runcache.From(ctx)
+	cached.Save("screen-rows", rows)
 	picked, usage, err := a.Screener.Pick(ctx, lk.Brief, lk.Cited, rows)
 	if err != nil {
 		a.Log.Warn("could not screen the followed companies", "error", err)
 		return nil
 	}
+	cached.Save("screen", picked)
 	a.Log.Info("followed companies screened",
 		"rows", len(rows),
 		"picked", len(picked),

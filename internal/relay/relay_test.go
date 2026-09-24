@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/joseph1009/market-watch/internal/runcache"
 )
 
 // scripted answers every question the same way, and remembers what it was asked.
@@ -68,6 +70,29 @@ func TestAskKeepsTheRequestTheReplyAndTheLedger(t *testing.T) {
 		if !strings.Contains(ledger, want) {
 			t.Errorf("ledger is missing %q:\n%s", want, ledger)
 		}
+	}
+}
+
+// A call made while a run cache is open is copied into it, under model/, so
+// the latest run's folder has its prompts and replies beside its data.
+func TestAskCopiesTheCallIntoTheRunCache(t *testing.T) {
+	r := &Relay{Root: t.TempDir(), Answer: &scripted{text: "BUY"}}
+	cacheRoot := t.TempDir()
+	ctx, _ := (&runcache.Cache{Root: cacheRoot}).Start(context.Background(), runcache.Recommendations, "")
+	ctx, _, err := r.Begin(ctx, "look")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.Plain(Verdicts).Complete(ctx, "judge", "NVDA facts"); err != nil {
+		t.Fatal(err)
+	}
+
+	model := filepath.Join(cacheRoot, runcache.Recommendations, "model")
+	if !strings.Contains(read(t, filepath.Join(model, "01-verdicts-request.txt")), "NVDA facts") {
+		t.Error("the request was not copied into the cache")
+	}
+	if read(t, filepath.Join(model, "01-verdicts-reply.txt")) != "BUY" {
+		t.Error("the reply was not copied into the cache")
 	}
 }
 

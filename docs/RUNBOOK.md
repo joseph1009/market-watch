@@ -90,6 +90,64 @@ data/relay/20260922-211500-analysis-mu/
 In the ledger, `- [ ]` is a call waiting for an answer, `- [x]` one answered,
 and `- [!]` one that failed or was abandoned, with the reason.
 
+## The latest run's data
+
+The relay keeps the model calls. `DATA_DIR/cache` keeps everything else the
+latest run of each kind was made from, and what it sent, so a change can be
+worked out from the last run's data instead of a new run. Each folder is
+emptied when a run of its kind starts, so it holds only the latest one.
+
+```
+data/cache/brief/
+  run.json              kind, when it started and finished, why it failed, the files
+  prices.json           every followed share's quote
+  movers.json           the shares that moved well beyond the market
+  filings.json          the SEC filings, as articles
+  search.json           what the news searches found, and the credits they used
+  collected.json        every article that arrived, the ones kept, the ones the cap cut
+  review.json           what the review moved
+  articles.json         what the brief was written from, rated and placed
+  levels.json           the market levels block
+  trends.json           the movers' price history
+  report.json           the brief as parsed from the model's reply
+  messages.html         the messages as sent
+  model/                every model call's request and reply, as in the relay
+data/cache/analysis/
+  run.json              "subject" is the ticker
+  snapshot.json         the accounts, business, filings, news, forecasts, release
+  related.json          the companies to read beside it, as checked
+  messages.html
+  model/
+data/cache/recommendations/
+  run.json
+  look.json             the brief it follows: its text, citations, new names
+  market-movers.json    the day's largest moves, from Massive
+  research.json         the new names proposed
+  screen-rows.json      each followed company's move and news, as screened
+  screen.json           the followed companies picked
+  backdrop.json         commodities, the dollar, rates
+  facts.json            the facts each company was judged on
+  verdicts.json         every verdict, shown or not
+  facts-2.json, verdicts-2.json   the stand-ins' round, when there was one
+  shown.json            what was shown
+  messages.html
+  model/
+```
+
+A closer look sent straight after a brief (`--once --share`) still writes its
+own folder: its model calls go to `recommendations/model/`, not the brief's.
+Every credential in the configuration is scrubbed out of what is written.
+
+To bring the server's down, from the repository root:
+
+```
+scripts/sync-cache-from-fly.sh                  # all three
+scripts/sync-cache-from-fly.sh analysis         # or one or two of them
+```
+
+Each folder fetched replaces the local one. A local run writes to the local
+`data/cache` the same way.
+
 ## Running one by hand
 
 A brief, answered by Claude Code, sent to the chat:
@@ -463,6 +521,9 @@ Deploying again later is the same script.
 `scripts/sync-from-fly.sh` copies the volume's files into `./data`, so a local
 run starts where the server is, and writes the Telegram changes into `config/`
 ("Changing the watchlist", above). What it replaces is kept in `data/.backup/`.
+
+`scripts/sync-cache-from-fly.sh` copies the latest runs' data into
+`./data/cache` ("The latest run's data", above).
 
 ### Moving the data up
 

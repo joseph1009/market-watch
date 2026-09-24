@@ -25,6 +25,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/report"
+	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -110,6 +111,11 @@ type App struct {
 	// directory of requests and replies with a ledger.
 	Relay *relay.Relay
 
+	// Cache keeps what the latest brief, analysis and closer look were made
+	// from and what they produced, one folder each, for reading afterwards.
+	// Nil keeps nothing.
+	Cache *runcache.Cache
+
 	mu    sync.RWMutex
 	prefs *config.Prefs
 
@@ -151,6 +157,13 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		Cfg:   cfg,
 		Log:   log,
 		Relay: rel,
+		Cache: &runcache.Cache{
+			Root:    filepath.Join(cfg.DataDir, "cache"),
+			Secrets: cfg.Secrets(),
+			Log: func(format string, args ...any) {
+				log.Warn("run cache", "detail", fmt.Sprintf(format, args...))
+			},
+		},
 		Fetcher: &feed.Fetcher{
 			Client:    &http.Client{Timeout: cfg.HTTPTimeout},
 			UserAgent: cfg.UserAgent,
@@ -312,7 +325,7 @@ func (a *App) publishScheduled(ctx context.Context) error {
 // starts, so readers are not kept waiting on minutes of web searches whose
 // result they will never see. With later, the closer look is queued for an
 // hour's time instead of run now.
-func (a *App) brief(ctx context.Context, share, later bool) error {
+func (a *App) brief(ctx context.Context, share, later bool) (err error) {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
@@ -321,11 +334,13 @@ func (a *App) brief(ctx context.Context, share, later bool) error {
 		return ErrNoChat
 	}
 
+	ctx, cached := a.Cache.Start(ctx, runcache.Brief, "")
+	defer func() { cached.Finish(err) }()
+
 	// Every model call this brief makes lands in one directory, numbered in
 	// the order it was asked, so the whole run can be read afterwards.
 	if a.Relay != nil {
 		var run *relay.Run
-		var err error
 		if ctx, run, err = a.Relay.Begin(ctx, "brief"); err != nil {
 			return err
 		}
@@ -355,6 +370,38 @@ func (a *App) brief(ctx context.Context, share, later bool) error {
 	}
 	a.sendIdeas(ctx, lk)
 	return nil
+}
+
+// collectedView is the collection as the run cache keeps it: what arrived,
+// what was kept and what the cap cut, with the counts beside them.
+func collectedView(c feed.Result) any {
+	var failed []string
+	for _, e := range c.Errors {
+		failed = append(failed, e.SourceID+": "+e.Err.Error())
+	}
+	return struct {
+		Fetched      int             `json:"fetched"`
+		Deduped      int             `json:"deduped"`
+		KeptCount    int             `json:"kept"`
+		Dropped      int             `json:"dropped"`
+		Matched      int             `json:"matched"`
+		Rated        int             `json:"rated"`
+		Trivial      int             `json:"trivial"`
+		CutImportant int             `json:"cut_rated_4_plus"`
+		Failed       []string        `json:"failed_sources,omitempty"`
+		TriageError  []string        `json:"triage_error,omitempty"`
+		Kept         []model.Article `json:"kept_articles"`
+		Cut          []model.Article `json:"cut_articles"`
+		Arrived      []model.Article `json:"arrived_articles"`
+	}{
+		c.Fetched, c.Deduped, len(c.Articles), c.Dropped, c.Matched, c.Rated, c.Trivial, c.CutImportant,
+		failed, runcache.ErrText(c.TriageErr), c.Articles, c.Cut, c.Arrived,
+	}
+}
+
+// joinMessages writes the messages of one delivery into one file, in order.
+func joinMessages(messages []string) string {
+	return strings.Join(messages, "\n\n<!-- next message -->\n\n") + "\n"
 }
 
 // briefDone is what a delivered brief leaves for the steps after it.
@@ -394,6 +441,16 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	moved := movers(quotes, watched, since)
 	found = search.Merge(found, a.searchMovers(ctx, moved, companyNames(prefs.Groups)))
 
+	cached := runcache.From(ctx)
+	cached.Save("prices", quotes)
+	cached.Save("movers", moved)
+	cached.Save("filings", filings)
+	cached.Save("search", struct {
+		Credits  int             `json:"credits"`
+		Errors   []string        `json:"errors,omitempty"`
+		Articles []model.Article `json:"articles"`
+	}{found.Credits, runcache.ErrText(found.Errors...), found.Articles})
+
 	sources := append(prefs.EnabledSources(), SECSourceEntry())
 	opts := feed.Options{
 		Sources: append(sources, search.Sources()...),
@@ -410,6 +467,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	for _, e := range collected.Errors {
 		a.Log.Warn("source failed", "source", e.SourceID, "error", e.Err)
 	}
+	cached.Save("collected", collectedView(collected))
 	// match_rate is the number a change to the companies followed moves most
 	// directly, and the one that was invisible while the lists were tuned.
 	matchRate := 0.0
@@ -487,6 +545,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	}
 
 	articles := collected.Articles
+	cached.Save("review", moves)
+	cached.Save("articles", articles)
 
 	// Market levels and prices are context, not content: a failure here costs
 	// the anchor numbers, never the brief.
@@ -494,6 +554,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	a.Generator.Quotes = quotes
 	a.Generator.Trends = a.trendsFor(ctx, moved)
 	a.Generator.MovesSince = since
+	cached.Save("levels", a.Generator.Levels)
+	cached.Save("trends", a.Generator.Trends)
 
 	rep, err := a.Generator.Generate(ctx, articles, prefs.Groups)
 	if errors.Is(err, report.ErrNoArticles) {
@@ -547,6 +609,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 		Display: a.Cfg.DisplayLocation,
 		Sources: sourceMode(a.Cfg.SourceLinks),
 	})
+	cached.Save("report", rep)
+	cached.Text("messages.html", joinMessages(messages))
 
 	// Clearing happens after generation, not before: a run that fails to
 	// produce a brief must not also have thrown away the last one.

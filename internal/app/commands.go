@@ -11,6 +11,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/relay"
+	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
@@ -453,7 +454,7 @@ func escape(s string) string { return escaper.Replace(s) }
 // Separate from the daily brief on purpose: the brief reports what happened
 // today, and this answers a different question -- what the accounts say about a
 // company, whenever you happen to ask.
-func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []string) error {
+func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []string) (err error) {
 	if a.Accounts == nil || a.Analyzer == nil {
 		return a.Bot.SendMessage(ctx, msg.Chat.ID,
 			"Reading filings is not configured on this instance.")
@@ -467,6 +468,8 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	}
 
 	ticker := strings.ToUpper(strings.TrimSpace(args[0]))
+	ctx, cached := a.Cache.Start(ctx, runcache.Analysis, ticker)
+	defer func() { cached.Finish(err) }()
 	if err := a.Bot.SendMessage(ctx, msg.Chat.ID,
 		fmt.Sprintf("Reading %s's filings, results and what analysts expect — two minutes or so.", escape(ticker))); err != nil {
 		return err
@@ -499,9 +502,11 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		a.addExpectations(ctx, &snapshot)
 		a.addRelease(ctx, &snapshot, analysisReleaseRunes)
 		snapshot.Backdrop = a.backdrop(ctx)
+		cached.Save("snapshot", snapshot)
 	}
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)
+		cached.Fail(err)
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
 			"I could not read %s. Either it does not file with the SEC — foreign listings and private companies mostly do not — or the ticker is wrong.",
 			escape(ticker)))
@@ -549,6 +554,8 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		"<i>%s, from filings up to %s</i>",
 		escape(snapshot.Company),
 		escape(snapshot.Balance.AsOf.Format("2 Jan 2006"))))
+	cached.Save("related", related)
+	cached.Text("messages.html", joinMessages(messages))
 
 	if _, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages); err != nil {
 		return err

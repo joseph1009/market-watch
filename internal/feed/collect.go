@@ -57,6 +57,12 @@ type Result struct {
 	// TriageErr reports a partial or total triage failure. It is not fatal:
 	// unrated articles rank on the other signals and the brief still goes out.
 	TriageErr error
+
+	// Arrived is every article fetched or passed in, before anything was
+	// dropped, and Cut what the cap discarded, ranked. Kept for the run cache,
+	// which is where "why was this story not in the brief" gets answered.
+	Arrived []model.Article
+	Cut     []model.Article
 }
 
 // Placement is one article a watchlist claimed on substance rather than on any
@@ -121,6 +127,7 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 
 	articles, errs := f.Fetch(ctx, fetchable)
 	articles = append(articles, opts.Extra...)
+	arrived := articles
 
 	fetched := len(articles)
 	articles = DropStale(articles, f.now(), MaxArticleAge)
@@ -129,7 +136,7 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 	// Matching runs before the cut so watchlist relevance can inform it.
 	articles = Match(articles, groups)
 
-	res := Result{Errors: errs, Fetched: fetched, Deduped: deduped}
+	res := Result{Errors: errs, Fetched: fetched, Deduped: deduped, Arrived: arrived}
 	if opts.Triage != nil {
 		articles = res.triage(ctx, opts.Triage, articles, groups)
 	}
@@ -138,6 +145,7 @@ func Collect(ctx context.Context, f *Fetcher, opts Options) Result {
 	kept := ranked
 	if max > 0 && len(ranked) > max {
 		kept = ranked[:max]
+		res.Cut = ranked[max:]
 		for _, a := range ranked[max:] {
 			if a.Rating >= 4 {
 				res.CutImportant++

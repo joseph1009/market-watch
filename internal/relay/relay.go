@@ -28,6 +28,7 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/report"
+	"github.com/joseph1009/market-watch/internal/runcache"
 )
 
 // The stages, named as they appear in the files.
@@ -218,8 +219,11 @@ type Run struct {
 	mu     sync.Mutex // guards the ledger, which concurrent calls append to
 }
 
-// Ask writes a request, has it answered, and writes the answer beside it.
+// Ask writes a request, has it answered, and writes the answer beside it. Both
+// are copied under model/ in the run cache the context carries, if any, so the
+// latest run of each kind keeps its calls with its data.
 func (run *Run) Ask(ctx context.Context, stage, system, prompt string) (Reply, error) {
+	cache := runcache.From(ctx)
 	q := Question{
 		Stage:  stage,
 		Dir:    run.Dir,
@@ -231,11 +235,13 @@ func (run *Run) Ask(ctx context.Context, stage, system, prompt string) (Reply, e
 	if err := os.WriteFile(q.RequestPath(), []byte(body), 0o644); err != nil {
 		return Reply{}, err
 	}
+	cache.Text("model/"+filepath.Base(q.RequestPath()), body)
 	run.Note("- [ ] %s asked, %s to read in %s", stage, Size(len(body)), filepath.Base(q.RequestPath()))
 
 	reply, err := run.answer.Answer(ctx, q)
 	if err != nil {
 		run.Note("- [!] %s failed: %s", stage, oneLine(err.Error()))
+		cache.Text("model/"+filepath.Base(q.Base)+"-failed.txt", err.Error())
 		return Reply{}, err
 	}
 	if strings.TrimSpace(reply.Text) == "" {
@@ -250,6 +256,7 @@ func (run *Run) Ask(ctx context.Context, stage, system, prompt string) (Reply, e
 			run.log("could not keep the %s reply: %v", stage, err)
 		}
 	}
+	cache.Text("model/"+filepath.Base(q.ReplyPath()), reply.Text)
 	via := ""
 	if reply.Model != "" {
 		via = " by " + reply.Model
