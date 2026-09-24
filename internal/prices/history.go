@@ -59,6 +59,12 @@ type Series struct {
 	Currency string
 	Name     string
 	Bars     []Bar
+
+	// Traded is when the last price was struck, where the source says. A bar
+	// is dated by its day alone, and midnight on the day of a New York session
+	// is earlier than the brief before it: a price dated that way would read as
+	// one the last brief already had.
+	Traded time.Time
 }
 
 // History reads daily bars.
@@ -114,6 +120,9 @@ func (h *History) Fetch(ctx context.Context, symbol string) (Series, error) {
 		Currency: strings.ToUpper(result.Meta.Currency),
 		Name:     result.Meta.LongName,
 	}
+	if result.Meta.RegularMarketTime > 0 {
+		series.Traded = time.Unix(result.Meta.RegularMarketTime, 0).UTC()
+	}
 	for i, ts := range result.Timestamp {
 		price := at(q.Close, i)
 		if price <= 0 {
@@ -154,6 +163,8 @@ type chartBody struct {
 				Currency string `json:"currency"`
 				Symbol   string `json:"symbol"`
 				LongName string `json:"longName"`
+				// When the last price was struck, in Unix seconds.
+				RegularMarketTime int64 `json:"regularMarketTime"`
 			} `json:"meta"`
 			Timestamp  []int64 `json:"timestamp"`
 			Indicators struct {
@@ -197,7 +208,11 @@ func (h *History) client() *http.Client {
 //
 // What comes back is a close, not a tick: on a market still open it is the
 // latest price the chart holds rather than the day's final one. That is what a
-// reader means by "today" either way.
+// reader means by "today" either way. It is dated when that price was struck
+// where the chart says, and by the session's day where it does not.
+//
+// It is also the US price scan's second source, for the shares the quote feed
+// did not answer for.
 func Latest(s Series) (model.Quote, bool) {
 	if len(s.Bars) < 2 {
 		return model.Quote{}, false
@@ -205,6 +220,10 @@ func Latest(s Series) (model.Quote, bool) {
 	last, previous := s.Bars[len(s.Bars)-1], s.Bars[len(s.Bars)-2]
 	if last.Close <= 0 || previous.Close <= 0 {
 		return model.Quote{}, false
+	}
+	asOf := last.Date
+	if !s.Traded.Before(last.Date) {
+		asOf = s.Traded
 	}
 	return model.Quote{
 		Symbol:   s.Symbol,
@@ -215,7 +234,7 @@ func Latest(s Series) (model.Quote, bool) {
 		High:     last.High,
 		Low:      last.Low,
 		Currency: s.Currency,
-		AsOf:     last.Date,
+		AsOf:     asOf,
 	}, true
 }
 

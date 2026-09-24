@@ -59,7 +59,8 @@ const MinGeneralRating = 4
 // a section.
 //
 // It only ever turns away name matches: an article placed by judgment is
-// rated 4 or more before it is placed at all. Until this, a keyword match was
+// rated 4 or more before it is placed at all, or 3 where it filled a thin
+// section and the review confirmed it (triage.TopUp). Until this, a keyword match was
 // in whatever its rating, on the grounds that the reader had named the subject.
 // The first brief read article by article showed what that let in -- a third of
 // the keyword matches were rated 1 or 2, and every one was noise: board

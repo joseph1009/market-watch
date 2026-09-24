@@ -73,10 +73,11 @@ type Config struct {
 	RelayAnswer string
 	ClaudeBin   string
 
-	// StageModels overrides the model for a stage (triage, brief, names,
-	// ideas, verdicts, analysis), by alias or full name, from MODEL_TRIAGE and
-	// the like. A stage not set here uses the relay's default: Haiku to sort
-	// and spot, Opus to research, judge and write.
+	// StageModels overrides the model for a stage (triage, review, brief,
+	// names, ideas, verdicts, analysis), by alias or full name, from
+	// MODEL_TRIAGE and the like. A stage not set here uses the relay's default:
+	// Sonnet to sort and review, Haiku to spot new names, Opus to research,
+	// judge and write.
 	StageModels map[string]string
 
 	// RelayConcurrency bounds how many sorting batches are answered at once,
@@ -89,10 +90,14 @@ type Config struct {
 	// replies can scrub it out of anything that quotes it.
 	ClaudeToken string
 
-	// Triage has a small model rate and place every article before the cap and
-	// the brief. Off, ranking falls back to name matches and source weight
-	// alone.
+	// Triage has a model rate and place every article before the cap and the
+	// brief. Off, ranking falls back to name matches and source weight alone.
 	Triage bool
+
+	// Review has a model check where the sorting put the articles that will
+	// reach the brief, and move the ones that belong elsewhere. It needs
+	// Triage: without ratings there is nothing to tell it which to look at.
+	Review bool
 
 	// UserAgent identifies the service to publishers. Empty means the feed
 	// package's own default, which carries no contact address -- SEC EDGAR
@@ -246,6 +251,9 @@ func Load() (*Config, error) {
 	if cfg.Triage, err = envBool("TRIAGE", true); err != nil {
 		return nil, err
 	}
+	if cfg.Review, err = envBool("REVIEW", true); err != nil {
+		return nil, err
+	}
 	if cfg.Discover, err = envBool("DISCOVER", true); err != nil {
 		return nil, err
 	}
@@ -268,6 +276,7 @@ func Load() (*Config, error) {
 // stageModelVars are the variables that override a stage's model.
 var stageModelVars = map[string]string{
 	"triage":   "MODEL_TRIAGE",
+	"review":   "MODEL_REVIEW",
 	"brief":    "MODEL_BRIEF",
 	"names":    "MODEL_NAMES",
 	"ideas":    "MODEL_IDEAS",

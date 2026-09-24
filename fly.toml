@@ -33,14 +33,15 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
   TRIAGE = "true"
   DISCOVER = "true"
 
-  # Every model call is answered by Claude Code on this machine: Haiku to sort
-  # and spot names, Opus to write. Two sorting batches at a time.
+  # Every model call is answered by Claude Code on this machine: Sonnet to sort
+  # and review, Haiku to spot names, Opus to write. Two batches at a time.
   RELAY_ANSWER = "claude"
   RELAY_CONCURRENCY = "2"
 
-# prefs.yaml, the covered-story record, the candidate names, the run history,
-# and every run's requests and replies. Without this the chat id is lost on
-# every deploy and the brief has nowhere to go.
+# prefs.yaml (the chat, and the watchlist and feed changes made from Telegram),
+# the covered-story record, the candidate names, the run history, and every
+# run's requests and replies. Without this the chat id is lost on every deploy
+# and the brief has nowhere to go. scripts/sync-from-fly.sh copies it down.
 [mounts]
   source = "market_watch_data"
   destination = "/data"

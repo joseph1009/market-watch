@@ -95,3 +95,43 @@ func TestDisabledWithoutAKey(t *testing.T) {
 		t.Errorf("fetched %v without a key", got)
 	}
 }
+
+// A feed that has stopped answering is left after three failures, and the rest
+// of the list is handed back unasked for the caller to price elsewhere, rather
+// than spending the scan's whole budget waiting on it.
+func TestAFeedThatStopsAnsweringIsLeftAfterThreeFailures(t *testing.T) {
+	var asked int
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		w.WriteHeader(http.StatusBadGateway)
+	})
+
+	symbols := []string{"A1", "A2", "A3", "A4", "A5", "A6"}
+	got, missed := c.Fetch(context.Background(), symbols)
+	if asked != maxFailures {
+		t.Errorf("asked %d times, want %d", asked, maxFailures)
+	}
+	if len(got) != 0 || len(missed) != len(symbols) {
+		t.Errorf("got %d quotes and %d missed, want none and all %d", len(got), len(missed), len(symbols))
+	}
+}
+
+// An unknown symbol is answered at once, with zeros. That is the symbol's
+// fault, not the feed's, and it must not end the scan.
+func TestUnknownSymbolsDoNotCountAgainstTheFeed(t *testing.T) {
+	c := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("symbol") == "GOOD" {
+			_, _ = w.Write([]byte(`{"c":100,"d":-1,"dp":-1,"pc":101,"t":1789502400}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"c":0,"d":0,"dp":0,"h":0,"l":0,"pc":0,"t":0}`))
+	})
+
+	got, missed := c.Fetch(context.Background(), []string{"X1", "X2", "X3", "X4", "GOOD"})
+	if len(got) != 1 || got[0].Symbol != "GOOD" {
+		t.Errorf("got %+v, want GOOD read after four unknown symbols", got)
+	}
+	if len(missed) != 4 {
+		t.Errorf("missed = %v, want the four unknown symbols", missed)
+	}
+}

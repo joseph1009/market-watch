@@ -61,6 +61,15 @@ const (
 	// overview; it just does not pad a section.
 	MinPlacementRating = 4
 
+	// ReserveRating is the rating whose placements are kept in reserve rather
+	// than made: one short of MinPlacementRating. On 24 September the sorting
+	// rated every crypto story 2 or 3 -- bitcoin under $84,000, the NYSE
+	// planning tokenised shares -- and the section went missing that the
+	// morning's brief had filled with eleven. A 3 is "relevant, with limited
+	// near-term effect": not enough to add to a full section, enough to fill
+	// an empty one, once the review agrees (TopUp).
+	ReserveRating = MinPlacementRating - 1
+
 	// MaxPlacements is how many watchlists one article may belong to.
 	//
 	// A watchlist described as a sector rather than a list of tickers is a
@@ -209,6 +218,13 @@ func apply(batch []model.Article, verdicts map[int]verdict, known map[string]boo
 	for n, v := range verdicts {
 		a := &batch[n-1]
 		a.Rating = v.rating
+		if v.rating == ReserveRating {
+			for _, id := range v.groups {
+				if len(a.Reserve) < MaxPlacements && known[id] && !a.InGroup(id) && !slices.Contains(a.Reserve, id) {
+					a.Reserve = append(slices.Clip(a.Reserve), id)
+				}
+			}
+		}
 		if v.rating < MinPlacementRating {
 			continue
 		}

@@ -262,8 +262,8 @@ func TestClaudeRunsHeadlessWithTheStagesModelAndNoTools(t *testing.T) {
 	}
 
 	got := recorded(t, rec)
-	if got.Model != "haiku" {
-		t.Errorf("model = %q, want haiku for sorting", got.Model)
+	if got.Model != "sonnet" {
+		t.Errorf("model = %q, want sonnet for sorting", got.Model)
 	}
 	if got.System != "You rate news." {
 		t.Errorf("system prompt = %q, want the stage's own", got.System)
@@ -317,7 +317,7 @@ func TestClaudeUsesTheModelConfiguredForAStage(t *testing.T) {
 // Research may search the web and read pages, and nothing else: no shell, no
 // files, no connectors. Every other stage, the verdicts included, still gets no
 // tools at all.
-func TestOnlyResearchMaySearchTheWeb(t *testing.T) {
+func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	bin := fakeClaude(t)
 	rec := filepath.Join(t.TempDir(), "record.json")
 	t.Setenv("FAKE_CLAUDE_RECORD", rec)
@@ -344,13 +344,29 @@ func TestOnlyResearchMaySearchTheWeb(t *testing.T) {
 		t.Errorf("research ran with thinking off: %v", got.Args)
 	}
 
-	if _, _, err := r.Plain(Verdicts).Complete(context.Background(), "s", "p"); err != nil {
+	// The review may look up a company it does not know, and answers quickly:
+	// placing an article is not a judgment worth thinking at length about.
+	if _, _, err := r.Plain(Review).Complete(context.Background(), "s", "p"); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	got = recorded(t, rec)
 	joined = strings.Join(got.Args, " ")
-	if !strings.Contains(joined, "--disallowedTools *") || strings.Contains(joined, "WebSearch") {
-		t.Errorf("verdicts must run with no tools: %v", got.Args)
+	if !strings.Contains(joined, "--tools WebSearch,WebFetch") || got.Model != "sonnet" {
+		t.Errorf("review args = %v, model %q; want web search and sonnet", got.Args, got.Model)
+	}
+	if !strings.Contains(joined, "alwaysThinkingEnabled") {
+		t.Errorf("review ran with thinking on: %v", got.Args)
+	}
+
+	for _, stage := range []string{Verdicts, Triage} {
+		if _, _, err := r.Plain(stage).Complete(context.Background(), "s", "p"); err != nil {
+			t.Fatalf("Complete: %v", err)
+		}
+		got = recorded(t, rec)
+		joined = strings.Join(got.Args, " ")
+		if !strings.Contains(joined, "--disallowedTools *") || strings.Contains(joined, "WebSearch") {
+			t.Errorf("%s must run with no tools: %v", stage, got.Args)
+		}
 	}
 }
 
@@ -464,9 +480,9 @@ func TestVersionAsksNothingOfAModel(t *testing.T) {
 	}
 }
 
-func TestDefaultModelsSortWithHaikuAndWriteWithOpus(t *testing.T) {
+func TestDefaultModelsSortWithSonnetAndWriteWithOpus(t *testing.T) {
 	c := Claude{}
-	for stage, want := range map[string]string{Triage: "haiku", Names: "haiku", Brief: "opus", Analysis: "opus"} {
+	for stage, want := range map[string]string{Triage: "sonnet", Review: "sonnet", Names: "haiku", Brief: "opus", Analysis: "opus"} {
 		if got := c.ModelFor(stage); got != want {
 			t.Errorf("%s answered by %q, want %q", stage, got, want)
 		}

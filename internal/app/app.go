@@ -69,8 +69,10 @@ type App struct {
 	// what is new rather than repeating them. Nil disables the check.
 	Covered *history.Store
 
-	// Triage rates and places articles before the cap. Nil disables it.
+	// Triage rates and places articles before the cap, and Review checks
+	// where it put the ones that will reach the brief. Nil disables either.
 	Triage *triage.Triager
+	Review *triage.Reviewer
 
 	// Finder proposes companies the news is about that no watchlist tracks, and
 	// Names remembers them across days. Nil on either disables the section.
@@ -201,6 +203,16 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			// Each batch is a file someone has to answer, so fewer and larger
 			// is kinder than many and small.
 			a.Triage.BatchSize = 150
+		}
+		if cfg.Review {
+			a.Review = &triage.Reviewer{
+				Completer:   rel.Plain(relay.Review),
+				Concurrency: cfg.RelayConcurrency,
+				Timeout:     cfg.CallTimeout,
+			}
+			if cfg.RelayAnswer == config.AnswerSession {
+				a.Review.BatchSize = 150
+			}
 		}
 	}
 	if cfg.Discover {
@@ -397,12 +409,44 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	// Stories earlier briefs already carried are marked rather than dropped: a
 	// running story should be reported when it moves, and silently removing it
 	// would leave the reader with a development and no thread to hang it on.
-	articles := collected.Articles
+	// Marked before the review, so a thin section is not topped up with one.
 	if a.Covered != nil {
-		repeats := a.Covered.Seen(articles)
-		articles = a.Covered.Mark(articles)
+		repeats := a.Covered.Seen(collected.Articles)
+		collected.Articles = a.Covered.Mark(collected.Articles)
 		a.Log.Info("previously covered", "articles", repeats, "remembered", a.Covered.Len())
 	}
+
+	// The review looks again at where everything that will reach the brief was
+	// placed. Like the sorting, it improves the brief and is not needed for
+	// one: where it fails, the sorting's placements stand.
+	//
+	// Before it, a section short of news is filled from what the sorting rated
+	// a point too low to place, and the review keeps only the ones it
+	// confirms. Only with the review: unchecked, that is the padding
+	// MinPlacementRating was set to keep out.
+	var (
+		moves       []triage.Move
+		reviewUsage model.Usage
+		toppedUp    int
+		keptTopUps  []feed.Placement
+	)
+	if a.Review != nil {
+		collected.Articles, toppedUp = triage.TopUp(collected.Articles, prefs.Groups, triage.ThinSection)
+		reviewed, moved, usage, err := a.Review.Review(ctx, collected.Articles, prefs.Groups)
+		if err != nil {
+			a.Log.Warn("review incomplete; the sorting's placements stand where it failed", "error", err)
+		}
+		collected.Articles, moves, reviewUsage = reviewed, moved, usage
+		keptTopUps = topUps(collected.Articles)
+		a.Log.Info("reviewed",
+			"moved", len(moves),
+			"topped_up", toppedUp,
+			"top_ups_kept", len(keptTopUps),
+			"input_tokens", usage.InputTokens,
+			"output_tokens", usage.OutputTokens)
+	}
+
+	articles := collected.Articles
 
 	// Market levels and prices are context, not content: a failure here costs
 	// the anchor numbers, never the brief.
@@ -422,6 +466,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 		return nil, err
 	}
 	rep.Triage = collected.TriageUsage
+	rep.Triage.InputTokens += reviewUsage.InputTokens
+	rep.Triage.OutputTokens += reviewUsage.OutputTokens
 
 	// New names are looked for after the brief is written, and a failure only
 	// costs the section: the brief is the product, and this is an addition to
@@ -512,6 +558,10 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 			run.Repeats = a.Covered.Seen(collected.Articles)
 		}
 		run.PlacedExamples = placedExamples(collected.Placed, prefs.Groups)
+		run.Moved = len(moves)
+		run.MovedExamples = movedExamples(moves, prefs.Groups)
+		run.ToppedUp, run.TopUpsKept = toppedUp, len(keptTopUps)
+		run.TopUpExamples = placedExamples(keptTopUps[:min(len(keptTopUps), maxMovedExamples)], prefs.Groups)
 		for _, e := range collected.Errors {
 			run.Failed = append(run.Failed, e.SourceID)
 		}
@@ -702,6 +752,53 @@ func placedExamples(placed []feed.Placement, groups []model.Group) []string {
 	}
 	return out
 }
+
+// topUps are the articles a thin section was filled with and the review
+// kept, as placements, for /stats.
+func topUps(articles []model.Article) []feed.Placement {
+	var out []feed.Placement
+	for _, a := range articles {
+		if a.ToppedUp {
+			out = append(out, feed.Placement{Title: a.Title, Rating: a.Rating, Groups: a.GroupIDs})
+		}
+	}
+	return out
+}
+
+// movedExamples writes a few of the review's moves as "headline: from → to",
+// for /stats. Five at most: they are there to be read, to judge whether the
+// review is catching misplacements or inventing them.
+func movedExamples(moves []triage.Move, groups []model.Group) []string {
+	names := make(map[string]string, len(groups))
+	for _, g := range groups {
+		names[g.ID] = g.Name
+	}
+	sectors := func(ids []string) string {
+		if len(ids) == 0 {
+			return "none"
+		}
+		out := make([]string, len(ids))
+		for i, id := range ids {
+			out[i] = id
+			if name, ok := names[id]; ok {
+				out[i] = name
+			}
+		}
+		return strings.Join(out, ", ")
+	}
+	var out []string
+	for _, m := range moves {
+		if len(out) == maxMovedExamples {
+			break
+		}
+		out = append(out, fmt.Sprintf("%s: %s → %s",
+			clipRunes(m.Title, exampleTitleRunes), sectors(m.From), sectors(m.To)))
+	}
+	return out
+}
+
+// maxMovedExamples is how many of the review's moves a run keeps.
+const maxMovedExamples = 5
 
 func clipRunes(s string, n int) string {
 	r := []rune(strings.Join(strings.Fields(s), " "))

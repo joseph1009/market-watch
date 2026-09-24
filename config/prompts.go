@@ -96,6 +96,7 @@ func RenderPrompt(id string, data any) (string, error) {
 var required = map[string][]string{
 	"brief.system":     {"## OVERVIEW", "## SECTION:"},
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
+	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
 	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
 	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CASE:", "NUMBERS:", "RISK:"},

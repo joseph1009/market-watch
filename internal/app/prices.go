@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/fundamentals"
@@ -16,8 +17,19 @@ const quoteBudget = 90 * time.Second
 
 // scanBudget bounds the price scan. The benchmarks and 95 watchlist shares are
 // about two minutes at the free tier's pace; past the budget, what is left
-// unpriced goes without, and the benchmarks, read first, are never among it.
+// unpriced is read from the charts instead.
 const scanBudget = 150 * time.Second
+
+// chartBudget bounds reading from the charts what the quote feed did not
+// price. A chart answers in about a tenth of a second, so a whole watchlist
+// takes seconds; the bound is for a chart source that has stopped answering
+// too.
+const chartBudget = 45 * time.Second
+
+// chartWorkers is how many chart requests are open at once: enough for a
+// hundred shares in seconds, few enough not to hammer an endpoint that is
+// under no obligation to answer.
+const chartWorkers = 4
 
 // collectPrices reads what the market did: the benchmark funds, then every
 // watchlist share.
@@ -26,24 +38,97 @@ const scanBudget = 150 * time.Second
 // no feed wrote about it is the one the reader most needs told about, and it
 // can only be seen by pricing it (movers.go). It is the slowest thing a brief
 // gathers, so it runs first, beside the filings and the searches.
+//
+// The quote feed goes first, being keyed and documented. Whatever it does not
+// answer for is read from the daily charts, so a feed that stops answering
+// costs the brief seconds rather than its prices and movers.
 func (a *App) collectPrices(ctx context.Context, watched []string) []model.Quote {
 	if !a.Quotes.Enabled() {
 		return nil
 	}
 
 	symbols := append(prices.BenchmarkSymbols(), watched...)
-
-	ctx, cancel := context.WithTimeout(ctx, scanBudget)
-	defer cancel()
-
 	started := time.Now()
-	quotes, missed := a.Quotes.Fetch(ctx, symbols)
+
+	scan, cancel := context.WithTimeout(ctx, scanBudget)
+	quotes, missed := a.Quotes.Fetch(scan, symbols)
+	cancel()
+	charted := a.fromCharts(ctx, missed)
+
 	a.Log.Info("prices",
 		"asked", len(symbols),
 		"read", len(quotes),
-		"missing", len(missed),
+		"from_charts", len(charted),
+		"missing", len(missed)-len(charted),
 		"took", time.Since(started).Round(time.Second))
-	return quotes
+	return inOrder(symbols, append(quotes, charted...))
+}
+
+// fromCharts prices US shares from their daily charts: the last close set
+// against the one before, dated when the chart says it was struck. Symbols the
+// charts do not answer for are left out.
+func (a *App) fromCharts(ctx context.Context, symbols []string) []model.Quote {
+	if a.Market == nil || len(symbols) == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, chartBudget)
+	defer cancel()
+
+	found := make([]*model.Quote, len(symbols))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range chartWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				chart := prices.ChartSymbol(symbols[i], "US")
+				if chart == "" {
+					continue
+				}
+				series, err := a.Market.Fetch(ctx, chart)
+				if err != nil {
+					continue
+				}
+				if q, ok := prices.Latest(series); ok {
+					q.Symbol = symbols[i]
+					found[i] = &q
+				}
+			}
+		}()
+	}
+queue:
+	for i := range symbols {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break queue
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	var out []model.Quote
+	for _, q := range found {
+		if q != nil {
+			out = append(out, *q)
+		}
+	}
+	return out
+}
+
+// inOrder puts quotes back in the order they were asked for, benchmarks first,
+// whichever source answered.
+func inOrder(symbols []string, quotes []model.Quote) []model.Quote {
+	bySymbol := prices.Index(quotes)
+	out := make([]model.Quote, 0, len(quotes))
+	for _, s := range symbols {
+		if q, ok := bySymbol[s]; ok {
+			out = append(out, q)
+			delete(bySymbol, s)
+		}
+	}
+	return out
 }
 
 // historyBudget bounds the daily-history read. One request, so a short budget:

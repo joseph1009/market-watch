@@ -19,11 +19,12 @@ and waits for nothing. It exists to check formatting and delivery.
 
 ## The stages
 
-A brief makes five kinds of call, and an analysis makes one:
+A brief makes six kinds of call, and an analysis makes one:
 
 | Stage | What it does | Prompt | Default model | Override | Reply format |
 |---|---|---|---|---|---|
-| `triage` | Rates every article 1-5 and places it in up to two watchlists | `triage.system` | Haiku | `MODEL_TRIAGE` | `number\|rating\|watchlist ids` |
+| `triage` | Rates every article 1-5 and places it in up to two sectors | `triage.system` | Sonnet | `MODEL_TRIAGE` | `number\|rating\|watchlist ids` |
+| `review` | Checks where the sorting put everything that could reach the brief, and moves what belongs elsewhere, **with web search** | `review.system` | Sonnet | `MODEL_REVIEW` | `number\|section ids`, one line per move |
 | `brief` | Writes the brief | `brief.system` | Opus | `MODEL_BRIEF` | `## OVERVIEW` then `## SECTION: <id>` blocks |
 | `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Haiku | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
 | `ideas` | Researches companies worth a closer look, **with web search** | `ideas.system` | Opus | `MODEL_IDEAS` | `name\|ticker\|exchange\|news or connected\|article numbers\|how the news bears on it` |
@@ -34,17 +35,22 @@ Sorting sends the day's articles in batches of 60, two at a time
 (`RELAY_CONCURRENCY`). When a person is answering, the batches are 150 each, so
 there are fewer files to deal with.
 
-`ideas` is the only stage with tools: web search and reading pages, and
-nothing else, no shell, no files and no connectors. Every other stage runs
-with none. A subagent answering an `ideas` request by hand needs web access
-too.
+Sorting was Haiku until the keywords went (24 September 2026). With nothing but
+company names matched by rule, where an article goes rests on reading it
+against the sector descriptions, and Sonnet reads less literally; the review is
+the check on that reading. `REVIEW=false` turns the review off.
+
+`ideas` and `review` are the only stages with tools: web search and reading
+pages, and nothing else, no shell, no files and no connectors. The review is
+told to search only to learn what an unfamiliar company does. Every other stage
+runs with none. A subagent answering either by hand needs web access too.
 
 ## The prompts
 
 Every instruction sent to a model is in
-[internal/prompts/prompts.md](../internal/prompts/prompts.md), one section per
+[config/prompts.md](../config/prompts.md), one section per
 `=== id ===` line. The analysis also carries
-[internal/fundamentals/method.md](../internal/fundamentals/method.md), the
+[config/method.md](../config/method.md), the
 playbook for reading accounts.
 
 Editing the prose needs no Go. What has to survive an edit are the markers the
@@ -120,7 +126,8 @@ those in the main session and there is no room left for the work.
 1. Read `ledger.md` in the newest run directory. It says which stages are
    waiting and how large each is.
 2. For each waiting request, spawn one subagent with the model that stage
-   would get (Haiku to sort and spot names, Opus to write), told to:
+   would get (Sonnet to sort and review, Haiku to spot names, Opus to write),
+   told to:
    - read that one request file and nothing else,
    - write the reply file in the format the request's own `===== SYSTEM =====`
      block asks for,
@@ -231,18 +238,70 @@ moved against the index since. BUY counts as right when it is ahead of the
 index, SELL when it is behind. The verdicts are twelve-month calls, so read the
 scorecard for a pattern over months, not for any one name.
 
+## Changing the watchlist
+
+What the brief follows is three files in [config/](../config/), read by the whole
+service and compiled into it:
+
+- [sectors.yaml](../config/sectors.yaml): the sections, in order, each described in
+  plain words. The sorting and the review judge an article against the
+  description, and the news search asks for its first sentence -- so that
+  sentence names the sector's ground, and the ones after it say what else
+  belongs there and what belongs in another section instead.
+- [companies.yaml](../config/companies.yaml): the companies, by sector, each with its
+  ticker, the names headlines use, and `match: ticker` or `match: name` where
+  one of them is an ordinary word. The comments at the top say how matching
+  works; the ones beside Target, UPS, Arm and Morgan Stanley say why they are
+  set the way they are.
+- [sources.yaml](../config/sources.yaml): the feeds, their weights, and which are
+  switched off and why.
+
+There are no keywords. A story that names no followed company reaches a section
+because the sorting read it and judged it belonged there.
+
+**From your computer.** Edit the file, then commit and deploy. There is nothing
+to migrate: the service reads the file as it is.
+
+**From Telegram**, without a deploy:
+
+```
+/watchlist add industrials-defense PLTR Palantir
+/watchlist add semis-ai Tokyo Electron        (no ticker: followed by name)
+/watchlist remove consumer-retail TGT
+/watchlist edits                              (what has changed here)
+/watchlist reset                              (drop every change made here)
+/sources off yahoo-finance
+```
+
+A ticker given without a name takes the one the SEC files it under, less the
+"Inc" and "Corp". These changes are kept on the server's disk, on top of the
+files, and `/watchlist` marks the companies added this way.
+
+**Bringing Telegram changes into the files.** Run, from the repository root:
+
+```
+scripts/sync-from-fly.sh
+```
+
+It copies the server's data into `./data` and writes the changes into
+`config/companies.yaml` and `config/sources.yaml`, touching only the lines they
+change. Read them with `git diff config/`, then commit and deploy. On its next
+start the service finds the files saying what its changes said and drops them,
+so the list kept on the server is only ever what the files do not yet say; you
+never edit the files by hand to catch up with Telegram.
+
 ## News search
 
 With `TAVILY_API_KEY` set, each brief searches for the news as well as polling
 the feeds: three general searches (markets, the economy, Asia) and one per
-watchlist, worded from the watchlist's sector sentence, each restricted to the
+sector, worded from the first sentence of its description, each restricted to the
 publications in `internal/search/outlets.go`. The results join the feeds before
 dedupe and are rated, ranked and cited like any other article. Their source ids
 start with `web:`, as in `web:reuters.com`.
 
 Each brief also searches for why a share moved, when one on a watchlist moved
 at least three percentage points further than the S&P 500 fund — "Why did
-MCDONALDS (MCD) shares fall today?" — at most five a brief, furthest first.
+McDonald's (MCD) shares fall today?" — at most five a brief, furthest first.
 Every watchlist share is priced at the start of the run to find them, which
 takes about two minutes at Finnhub's free pace and runs beside the feeds. The
 log line `searched movers` names them. The same prices give each section its
@@ -362,9 +421,15 @@ repository, and runs every call through it as on a desktop. It logs in with
 
 Deploying again later is the same script.
 
+### Moving the data down
+
+`scripts/sync-from-fly.sh` copies the volume's files into `./data`, so a local
+run starts where the server is, and writes the Telegram changes into `config/`
+("Changing the watchlist", above). What it replaces is kept in `data/.backup/`.
+
 ### Moving the data up
 
-The volume starts empty. The service seeds its own watchlists, but it knows
+The volume starts empty. The lists come from `config/`, but the service knows
 nothing of what earlier briefs covered, so its first brief may repeat them. To
 carry the local record over:
 

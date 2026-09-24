@@ -12,6 +12,7 @@ package prices
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,7 +34,22 @@ const (
 	// share that moved without making the news is still seen. The bound is
 	// there so a watchlist grown far past that cannot stretch the run for ever.
 	maxSymbols = 150
+
+	// requestTimeout bounds one quote. The feed answers in under a second when
+	// it is well; a request it has left hanging is not going to be answered.
+	requestTimeout = 5 * time.Second
+
+	// maxFailures is how many requests may fail before the rest of the list is
+	// left unasked and returned as missed, for the caller to price elsewhere.
+	// On 24 September 2026 the feed held most requests open without answering,
+	// and three of 107 shares were read before the scan's budget ran out. An
+	// unknown symbol, answered at once with zeros, is not counted: that is the
+	// symbol's fault, not the feed's.
+	maxFailures = 3
 )
+
+// errNoQuote is the feed's answer for a symbol it does not know.
+var errNoQuote = errors.New("no quote")
 
 // Client reads quotes.
 type Client struct {
@@ -50,7 +66,8 @@ func (c *Client) Enabled() bool { return c != nil && c.APIKey != "" }
 
 // Fetch reads one quote per symbol, in order, skipping what it cannot get. The
 // symbols it failed on are returned so the caller can say so rather than
-// leaving a silent gap.
+// leaving a silent gap, and so are the ones it stopped short of once the feed
+// had failed maxFailures times.
 func (c *Client) Fetch(ctx context.Context, symbols []string) ([]model.Quote, []string) {
 	if !c.Enabled() || len(symbols) == 0 {
 		return nil, nil
@@ -60,10 +77,14 @@ func (c *Client) Fetch(ctx context.Context, symbols []string) ([]model.Quote, []
 	}
 
 	var (
-		quotes []model.Quote
-		missed []string
+		quotes   []model.Quote
+		missed   []string
+		failures int
 	)
 	for i, symbol := range symbols {
+		if failures == maxFailures {
+			return quotes, append(missed, symbols[i:]...)
+		}
 		if i > 0 {
 			select {
 			case <-ctx.Done():
@@ -75,6 +96,9 @@ func (c *Client) Fetch(ctx context.Context, symbols []string) ([]model.Quote, []
 		q, err := c.one(ctx, symbol)
 		if err != nil {
 			missed = append(missed, symbol)
+			if !errors.Is(err, errNoQuote) {
+				failures++
+			}
 			continue
 		}
 		quotes = append(quotes, q)
@@ -88,6 +112,8 @@ func (c *Client) Fetch(ctx context.Context, symbols []string) ([]model.Quote, []
 func (c *Client) one(ctx context.Context, symbol string) (model.Quote, error) {
 	url := fmt.Sprintf("%s?symbol=%s&token=%s", c.url(), strings.ToUpper(symbol), c.APIKey)
 
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return model.Quote{}, err
@@ -115,7 +141,7 @@ func (c *Client) one(ctx context.Context, symbol string) (model.Quote, error) {
 		return model.Quote{}, err
 	}
 	if body.Current == 0 {
-		return model.Quote{}, fmt.Errorf("%s: no quote", symbol)
+		return model.Quote{}, fmt.Errorf("%s: %w", symbol, errNoQuote)
 	}
 
 	q := model.Quote{

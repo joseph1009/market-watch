@@ -6,9 +6,11 @@ you, and why it is worth doing.
 ## Waiting on you
 
 - **Push the repository.** Every commit is still local only.
-- **Deploy news search.** Built and checked locally, not yet deployed.
+- **Deploy.** News search, the movers, inflation, the `config/` lists and the
+  review are built and checked locally, not yet deployed.
   `scripts/fly-deploy.sh` now sends `TAVILY_API_KEY` from `.env` as a Fly
-  secret along with the others.
+  secret along with the others. The volume's `prefs.yaml` loads as it is: its
+  old copies of the watchlists and feeds are ignored from then on.
 
 ## Reliability
 
@@ -26,12 +28,19 @@ you, and why it is worth doing.
 
 ## Brief quality
 
-- **Judge the wider watchlists after a week.** Each watchlist now describes its
-  sector in a sentence, so an article is placed by what it bears on rather than
-  by the words it happens to contain. `/stats` reports how many were placed that
-  way and shows five of them. Read those for a week. If they are stories you
-  would want, the net is set right; if they are stretches, tighten the sentences
-  or raise `MinPlacementRating`. Only once that is settled is it worth adding
+- **Judge the sorting and the review after a week.** The keywords are gone:
+  an article reaches a section by naming a followed company, or because Sonnet
+  read it against the sector's description in `config/sectors.yaml` and the
+  review agreed. `/stats` reports how many were placed by judgment and how many
+  the review moved, with five of each. Read those for a week. If the placements
+  are stories you would want and the moves are corrections, the net is set
+  right; if they are stretches, sharpen the descriptions, raise
+  `MinPlacementRating`, or turn the review off with `REVIEW=false`. The same
+  week says whether the top-up earns its place: `/stats` shows how many
+  stories rated 3 were offered to thin sections, how many the review kept, and
+  five of them. If what it keeps reads as padding, set `ThinSection` in
+  `internal/triage/topup.go` to 0 and the thin sections go back to
+  disappearing. Only once that is settled is it worth adding
   sector feeds -- chip trade press, energy and shipping, drug development,
   freight -- since a gate that works makes extra sources cheap and a gate that
   does not makes them mush. The test for any new feed is the one that condemned
@@ -47,19 +56,26 @@ you, and why it is worth doing.
   does not resolve Tokyo or Singapore at all. `TWELVEDATA_API_KEY` was dropped
   rather than left as a promise the tier cannot keep.
   The new names now do the same and show the move beside the ticker. What is
-  left is `collectPrices` in `internal/app/prices.go`, which still reads the US
-  quote feed alone. It prices every watchlist share, and today all 95 trade in
-  New York, so nothing is missing; but a Tokyo or London listing added to a
-  watchlist would go without a price, a moves line or a mover search. The same
-  two-source split would fix it, and the chart source needs no pacing.
+  left is `collectPrices` in `internal/app/prices.go`, which reads US listings
+  only: the quote feed, and the charts for whatever that misses. It prices
+  every company followed, and today all 95 tickers trade in New York, so
+  nothing is missing; but a Tokyo or London listing added to
+  `config/companies.yaml` would go without a price, a moves line or a mover
+  search. Giving companies an exchange and spelling it with `ChartSymbol`
+  would fix it.
 - **Judge the verdicts after three months.** `/scorecard` will by then hold a
   few hundred. If BUY is not ahead of the index more often than not, or SELL
   not behind it, the verdicts are adding nothing the index would not, and
   should change or stop. Worth checking separately: the companies found in
   the news against the connected ones.
 - **Promotion.** A command to move a name from "new names in the news" straight
-  into a watchlist. `/watchlist add <group> <ticker>` already does the work; this
-  would just save the typing.
+  into a sector. `/watchlist add <sector> <ticker> <name>` already does the
+  work; this would just save the typing.
+- **Tickers for the companies followed by name.** Morgan Stanley, Moderna and
+  Spotify are followed by name alone, which leaves them without a price, a
+  moves line or filings. Their tickers were left out because MS and SPOT match
+  ordinary words; `match: name` in `config/companies.yaml` now keeps a ticker
+  out of matching while still pricing it, so they could have one.
 
 ## /analyse — further
 
@@ -98,7 +114,7 @@ you, and why it is worth doing.
 - `/analyse <ticker>`: SEC filings read and written up, any SEC filer
   including foreign ones with a US listing, in their own currency, with the
   current year so far beside the full years, and the share price against them,
-  read with the method in `internal/fundamentals/method.md`.
+  read with the method in `config/method.md`.
 - What the share has done: returns over weeks and months, fifty and two-hundred
   day averages, the year's high and low, volume-weighted average price, volume
   against its averages, and volatility.
@@ -108,8 +124,9 @@ you, and why it is worth doing.
 - Deployed to Fly as `joseph-market-watch` (personal organisation, Singapore),
   with Claude Code on the machine logged in by `CLAUDE_CODE_OAUTH_TOKEN`.
 - The relay is the only way the service calls a model. Each call is a file
-  answered by Claude Code headless, one process per call, Haiku to sort and
-  spot names and Opus to write, or answered by hand with subagents. No API
+  answered by Claude Code headless, one process per call -- Sonnet to sort and
+  review, Haiku to spot names, Opus to write -- or answered by hand with
+  subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
 - Worth a closer look: after the brief, up to six companies the news bears on,
@@ -120,13 +137,20 @@ you, and why it is worth doing.
   old.
 - A channel for other readers: the daily brief is posted there too, and
   `/share` posts the latest brief or analysis. Readers can only read.
-- Watchlists as sectors: each one says in a sentence what it covers, an article
-  belongs to at most two of them, a section is written from at most 25, and the
-  general block keeps only what was rated 4 or 5.
-- Keyword matches are rated too: one rated 1 or 2 is not written about, which
-  keeps broker notes, board appointments and listicles out of the sections.
-- Every prompt in one file, checked at startup for the markers its replies are
-  parsed by.
+- The watchlist as files: `config/sectors.yaml` describes each section,
+  `config/companies.yaml` lists the companies followed, `config/sources.yaml`
+  the feeds. No keywords, no migrations: `/watchlist` and `/sources` changes
+  are kept on the server on top of the files, and `scripts/sync-from-fly.sh`
+  writes them in.
+- Sorting and a review, both Sonnet: an article belongs to at most two sectors,
+  the review moves what the sorting misplaced, a section with fewer than ten
+  stories is filled from those rated 3 where the review agrees, a section is
+  written from at most 25, and the general block keeps only what was rated 4
+  or 5. A name match
+  rated 1 or 2 is not written about, which keeps broker notes, board
+  appointments and listicles out of the sections.
+- Every prompt in one file, `config/prompts.md`, checked at startup for the
+  markers its replies are parsed by.
 - Citations: every claim carries a link to the article behind it.
 - Repeats: stories earlier briefs carried are marked, not reported again.
 - Weekends: no brief on days the market was shut.

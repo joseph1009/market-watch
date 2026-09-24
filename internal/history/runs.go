@@ -43,16 +43,33 @@ type Run struct {
 	// low.
 	CutImportant int `json:"cut_important"`
 
-	// Placed is how many articles a watchlist claimed on substance alone,
-	// having matched none of its tickers or keywords, and PlacedExamples a few
+	// Placed is how many articles a sector claimed on substance alone, having
+	// matched none of its companies' tickers or names, and PlacedExamples a few
 	// of them written as "headline -> sector".
 	//
 	// These are the numbers that say whether describing a watchlist as a
 	// sector was a good idea. The count alone cannot: sixty placements is
-	// either sixty stories keywords would have missed or sixty stretches, and
+	// either sixty stories matching would have missed or sixty stretches, and
 	// only reading a few tells you which.
 	Placed         int      `json:"placed,omitempty"`
 	PlacedExamples []string `json:"placed_examples,omitempty"`
+
+	// Moved is how many articles the review put in a different section from
+	// the sorting, and MovedExamples a few of them as "headline: from → to".
+	// Read together they say whether the review earns its minutes: a handful
+	// of broker notes moved out of Financials is the point of it, and dozens of
+	// sound placements shuffled would say it is second-guessing.
+	Moved         int      `json:"moved,omitempty"`
+	MovedExamples []string `json:"moved_examples,omitempty"`
+
+	// ToppedUp is how many placements filled a thin section from the ones
+	// the sorting rated 3, TopUpsKept how many articles the review let stay,
+	// and TopUpExamples a few of those. Few kept of many offered says the
+	// reserve is mostly padding; examples that read as the sector's news say
+	// the top-up is doing its job.
+	ToppedUp      int      `json:"topped_up,omitempty"`
+	TopUpsKept    int      `json:"top_ups_kept,omitempty"`
+	TopUpExamples []string `json:"top_up_examples,omitempty"`
 
 	NewNames int      `json:"new_names"`
 	Failed   []string `json:"failed_sources,omitempty"`
@@ -124,8 +141,9 @@ func (r *Runs) Summary(display *time.Location) string {
 	}
 
 	var (
-		kept, matched, cut, names, repeats, trivial, placed int
-		failures                                            = map[string]int{}
+		kept, matched, cut, names, repeats, trivial, placed, moved int
+		toppedUp, topUpsKept                                       int
+		failures                                                   = map[string]int{}
 	)
 	for _, run := range r.runs {
 		kept += run.Kept
@@ -135,6 +153,9 @@ func (r *Runs) Summary(display *time.Location) string {
 		repeats += run.Repeats
 		trivial += run.Trivial
 		placed += run.Placed
+		moved += run.Moved
+		toppedUp += run.ToppedUp
+		topUpsKept += run.TopUpsKept
 		for _, f := range run.Failed {
 			failures[f]++
 		}
@@ -148,6 +169,12 @@ func (r *Runs) Summary(display *time.Location) string {
 	fmt.Fprintf(&b, "<b>Per brief, on average</b>\n")
 	fmt.Fprintf(&b, "%d articles kept, %d matched to a watchlist\n", kept/n, matched/n)
 	fmt.Fprintf(&b, "of those, %d placed by judgment rather than by name\n", placed/n)
+	if moved > 0 {
+		fmt.Fprintf(&b, "%d moved to another section by the review\n", moved/n)
+	}
+	if toppedUp > 0 {
+		fmt.Fprintf(&b, "%d added to thin sections, %d of them kept by the review\n", toppedUp/n, topUpsKept/n)
+	}
 	fmt.Fprintf(&b, "%d removed as trivia, %d already covered\n", trivial/n, repeats/n)
 	fmt.Fprintf(&b, "%d new names surfaced\n\n", names/n)
 
@@ -163,6 +190,20 @@ func (r *Runs) Summary(display *time.Location) string {
 			lines[i] = telegram.Escape(e)
 		}
 		fmt.Fprintf(&b, "<b>Placed by judgment, most recently</b>\n%s\n\n", strings.Join(lines, "\n"))
+	}
+	if ex := r.runs[0].MovedExamples; len(ex) > 0 {
+		lines := make([]string, len(ex))
+		for i, e := range ex {
+			lines[i] = telegram.Escape(e)
+		}
+		fmt.Fprintf(&b, "<b>Moved by the review, most recently</b>\n%s\n\n", strings.Join(lines, "\n"))
+	}
+	if ex := r.runs[0].TopUpExamples; len(ex) > 0 {
+		lines := make([]string, len(ex))
+		for i, e := range ex {
+			lines[i] = telegram.Escape(e)
+		}
+		fmt.Fprintf(&b, "<b>Added to thin sections, most recently</b>\n%s\n\n", strings.Join(lines, "\n"))
 	}
 
 	if cut > 0 {

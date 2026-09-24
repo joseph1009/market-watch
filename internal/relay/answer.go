@@ -14,11 +14,17 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// DefaultModels is which model answers each stage. Sorting and spotting are
-// coarse judgments over a lot of text, which is what a small model is for;
-// the brief and the analysis are the writing the reader actually reads.
+// DefaultModels is which model answers each stage. Spotting new names is a
+// coarse judgment over a lot of text, which is what a small model is for; the
+// brief and the analysis are the writing the reader actually reads.
+//
+// Sorting was Haiku too, until the keywords went (2026-09-24). With nothing but
+// company names matched by rule, where an article goes rests on reading it
+// against the sector descriptions, and Sonnet reads less literally. The review
+// that checks the sorting is Sonnet for the same reason.
 var DefaultModels = map[string]string{
-	Triage:   "haiku",
+	Triage:   "sonnet",
+	Review:   "sonnet",
 	Names:    "haiku",
 	Brief:    "opus",
 	Ideas:    "opus",
@@ -33,7 +39,7 @@ var DefaultModels = map[string]string{
 // client turned thinking off for the same reason. The brief and the analysis
 // keep it: deciding what a day meant, or what a set of accounts says, is the
 // judgment it is for.
-var quickStages = map[string]bool{Triage: true, Names: true}
+var quickStages = map[string]bool{Triage: true, Names: true, Review: true}
 
 // noThinking is the settings override that turns thinking off for one call.
 const noThinking = `{"alwaysThinkingEnabled":false}`
@@ -43,7 +49,10 @@ const noThinking = `{"alwaysThinkingEnabled":false}`
 // companies supply, buy from or compete with the ones in the news, and what has
 // happened to them lately. It still gets no shell, no files and no connectors,
 // so a page that tries to steer it can change its answer and nothing more.
-var webStages = map[string]bool{Ideas: true}
+//
+// The review may search too, to learn what an unfamiliar company does when an
+// article does not say and its section depends on it.
+var webStages = map[string]bool{Ideas: true, Review: true}
 
 // webTools are the tools a web stage is given, and pre-approved for, since a
 // headless call has nobody to ask.

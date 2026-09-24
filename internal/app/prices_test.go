@@ -69,3 +69,45 @@ func TestNamesOutsideTheUSArePricedWithNoQuoteKey(t *testing.T) {
 		t.Errorf("a US name was priced with no key: %+v", out[1].Quote)
 	}
 }
+
+// A quote feed that stops answering costs the brief seconds, not its prices:
+// the feed is left after a few failures, and every share it did not price is
+// read from its chart, in the order asked and under the symbol it was asked by.
+func TestSharesTheQuoteFeedMissesArePricedFromTheCharts(t *testing.T) {
+	var asked int
+	quotes := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		if r.URL.Query().Get("symbol") == prices.MarketSymbol {
+			_, _ = w.Write([]byte(`{"c":500,"d":-5,"dp":-1,"pc":505,"t":1789000000}`))
+			return
+		}
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(quotes.Close)
+
+	a, _ := newTestApp(t)
+	a.Quotes = &prices.Client{APIKey: "test", HTTP: quotes.Client(), URL: quotes.URL, Pause: time.Millisecond}
+	a.Market = chartServer(t, "USD", 60)
+
+	watched := []string{"NVDA", "BRK.B"}
+	got := a.collectPrices(context.Background(), watched)
+
+	want := append(prices.BenchmarkSymbols(), watched...)
+	if len(got) != len(want) {
+		t.Fatalf("got %d prices, want all %d", len(got), len(want))
+	}
+	for i, q := range got {
+		if q.Symbol != want[i] {
+			t.Errorf("price %d is %s, want %s", i, q.Symbol, want[i])
+		}
+	}
+	if got[0].Price != 500 {
+		t.Errorf("the market fund = %v, want the quote feed's 500", got[0].Price)
+	}
+	if got[len(got)-1].Price != 159 {
+		t.Errorf("BRK.B = %v, want its last close of 159 from the chart", got[len(got)-1].Price)
+	}
+	if asked > 1+3 {
+		t.Errorf("the quote feed was asked %d times; it should be left after three failures", asked)
+	}
+}

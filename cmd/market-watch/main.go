@@ -175,7 +175,11 @@ func runClear(ctx context.Context, service *app.App, log *slog.Logger) error {
 // one place that says so before the first brief does.
 func stageModels(cfg *config.Config) string {
 	c := relay.Claude{Models: cfg.StageModels}
-	stages := []string{relay.Triage, relay.Brief, relay.Names, relay.Analysis}
+	stages := []string{relay.Triage}
+	if cfg.Triage && cfg.Review {
+		stages = append(stages, relay.Review)
+	}
+	stages = append(stages, relay.Brief, relay.Names, relay.Analysis)
 	if cfg.Ideas {
 		stages = append(stages, relay.Ideas, relay.Verdicts)
 	}

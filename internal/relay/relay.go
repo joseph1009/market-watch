@@ -33,6 +33,7 @@ import (
 // The stages, named as they appear in the files.
 const (
 	Triage   = "triage"   // rating and placing the day's articles
+	Review   = "review"   // checking where the sorting put them
 	Brief    = "brief"    // writing the brief
 	Names    = "names"    // spotting companies no watchlist tracks
 	Ideas    = "ideas"    // researching companies worth a closer look

@@ -41,6 +41,16 @@ type Article struct {
 	// to 5 (moves markets). Zero means unrated: triage was off, or the batch
 	// carrying this article failed.
 	Rating int `json:"rating,omitempty"`
+
+	// Reserve is where the sorting would have placed the article had it rated
+	// it one higher: the sections it judged a fit at a rating of 3, a point
+	// short of placing it. They are used only to fill a section too thin to
+	// write (triage.TopUp).
+	Reserve []string `json:"reserve,omitempty"`
+
+	// ToppedUp says the article's sections came from its Reserve. The review
+	// must confirm each such placement, or it is withdrawn.
+	ToppedUp bool `json:"topped_up,omitempty"`
 }
 
 // Carriers are every source the story arrived from: its own, then the ones

@@ -2,9 +2,11 @@ package prices
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -241,5 +243,37 @@ func TestLatestNeedsASessionToCompareAgainst(t *testing.T) {
 	}
 	if _, ok := Latest(Series{}); ok {
 		t.Error("an empty history was priced")
+	}
+}
+
+// A bar is dated by its day, and midnight on the day of a New York session is
+// earlier than the brief the evening before. A price is dated when it was
+// struck wherever the chart says, or every one of them would read as stale.
+func TestLatestIsDatedWhenThePriceWasStruck(t *testing.T) {
+	var stamps, closes []string
+	day := time.Date(2026, 8, 1, 13, 30, 0, 0, time.UTC)
+	for i := 0; i < 30; i++ {
+		stamps = append(stamps, strconv.FormatInt(day.AddDate(0, 0, i).Unix(), 10))
+		closes = append(closes, strconv.Itoa(100+i))
+	}
+	struck := time.Date(2026, 8, 30, 20, 0, 0, 0, time.UTC)
+	body := fmt.Sprintf(`{"chart":{"result":[{"meta":{"currency":"USD","symbol":"NVDA","regularMarketTime":%d},"timestamp":[%s],"indicators":{"quote":[{"close":[%s]}]}}],"error":null}}`,
+		struck.Unix(), strings.Join(stamps, ","), strings.Join(closes, ","))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	h := &History{HTTP: server.Client(), URL: server.URL + "/"}
+	s, err := h.Fetch(context.Background(), "NVDA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := Latest(s)
+	if !ok {
+		t.Fatal("no price from thirty sessions")
+	}
+	if !got.AsOf.Equal(struck) {
+		t.Errorf("as at %v, want when it was struck, %v", got.AsOf, struck)
 	}
 }
