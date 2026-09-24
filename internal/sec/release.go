@@ -22,15 +22,15 @@ const releaseDocMaxBytes = 8 << 20
 // whatever the filer chose -- a2026q3ex991-pressrelease.htm at Micron,
 // q2fy27pr.htm at Nvidia, a2q26erfexhibit991narrative.htm at JPMorgan.
 var (
-	indexRow   = regexp.MustCompile(`(?is)<tr[^>]*>(.*?)</tr>`)
-	rowHref    = regexp.MustCompile(`(?i)href="([^"]+\.html?)"`)
-	release991 = regexp.MustCompile(`(?i)>\s*EX-99\.0?1\s*<`)
-	release99  = regexp.MustCompile(`(?i)>\s*EX-99(\.\d+)?\s*<`)
+	indexRow  = regexp.MustCompile(`(?is)<tr[^>]*>(.*?)</tr>`)
+	rowHref   = regexp.MustCompile(`(?i)href="([^"]+\.html?)"`)
+	release99 = regexp.MustCompile(`(?i)>\s*EX-99(\.\d+)?\s*<`)
 )
 
 // EarningsRelease finds the company's latest results announcement -- the
-// press release filed with an 8-K under Item 2.02 since the given time -- and
-// returns it as text, cut to maxRunes.
+// press release filed with an 8-K under Item 2.02, or with a 6-K whose cover
+// lists results, since the given time -- and returns it as text, cut to
+// maxRunes.
 //
 // The accounts say what was filed; the release says what the company chose
 // to lead with, and is usually where its outlook for the next quarter, the
@@ -57,8 +57,10 @@ func (c *Client) EarningsRelease(ctx context.Context, ticker string, since time.
 		return Filing{}, "", fmt.Errorf("submissions arrays are ragged for CIK %d", co.CIK)
 	}
 
+	covers := 0
 	for i := 0; i < n; i++ {
-		if r.Form[i] != "8-K" || !hasItem(r.Items[i], "2.02") {
+		form := r.Form[i]
+		if form != "8-K" && form != "6-K" {
 			continue
 		}
 		filed, err := time.Parse("2006-01-02", r.FilingDate[i])
@@ -69,10 +71,37 @@ func (c *Client) EarningsRelease(ctx context.Context, ticker string, since time.
 			break // newest first: every later one is older still
 		}
 		filing := Filing{
-			Ticker: strings.ToUpper(ticker), Company: doc.Name, Items: []string{"2.02"},
+			Ticker: strings.ToUpper(ticker), Company: doc.Name,
 			Filed: filed, Accession: r.AccessionNumber[i],
 		}
-		url, err := c.releaseURL(ctx, co.CIK, r.AccessionNumber[i])
+
+		exhibit := "99.1"
+		if form == "8-K" {
+			if !hasItem(r.Items[i], "2.02") {
+				continue
+			}
+			filing.Items = []string{"2.02"}
+		} else {
+			if covers == maxCovers {
+				break
+			}
+			covers++
+			primary := ""
+			if i < len(r.PrimaryDocument) {
+				primary = r.PrimaryDocument[i]
+			}
+			exhibits, err := c.coverExhibits(ctx, co.CIK, r.AccessionNumber[i], primary)
+			if err != nil {
+				return filing, "", err
+			}
+			found, ok := resultsExhibit(exhibits)
+			if !ok {
+				continue
+			}
+			exhibit = found.number
+		}
+
+		url, err := c.releaseURL(ctx, co.CIK, r.AccessionNumber[i], exhibit)
 		if err != nil {
 			return filing, "", err
 		}
@@ -95,14 +124,18 @@ func hasItem(items, want string) bool {
 	return false
 }
 
-// releaseURL reads a filing's index page and picks exhibit 99.1, or failing
-// that the first exhibit 99 of any number.
-func (c *Client) releaseURL(ctx context.Context, cik int, accession string) (string, error) {
+// releaseURL reads a filing's index page and picks the exhibit wanted, such
+// as "99.1", or failing that the first exhibit 99 of any number.
+func (c *Client) releaseURL(ctx context.Context, cik int, accession, wanted string) (string, error) {
 	folder := fmt.Sprintf("%s/%d/%s", c.archiveURL(), cik, strings.ReplaceAll(accession, "-", ""))
 	page, err := c.document(ctx, folder+"/"+accession+"-index.html")
 	if err != nil {
 		return "", err
 	}
+	// The index writes 99.1 as EX-99.1 or, at some filers, EX-99.01.
+	major, minor, _ := strings.Cut(wanted, ".")
+	want := regexp.MustCompile(`(?i)>\s*EX-` + regexp.QuoteMeta(major) + `\.0?` + regexp.QuoteMeta(minor) + `\s*<`)
+
 	var fallback string
 	for _, row := range indexRow.FindAllStringSubmatch(page, -1) {
 		href := rowHref.FindStringSubmatch(row[1])
@@ -110,7 +143,7 @@ func (c *Client) releaseURL(ctx context.Context, cik int, accession string) (str
 			continue
 		}
 		name := href[1][strings.LastIndex(href[1], "/")+1:]
-		if release991.MatchString(row[1]) {
+		if want.MatchString(row[1]) {
 			return folder + "/" + name, nil
 		}
 		if fallback == "" && release99.MatchString(row[1]) {

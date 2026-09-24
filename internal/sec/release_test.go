@@ -65,3 +65,62 @@ func TestTheLatestResultsReleaseIsFoundByItsExhibitType(t *testing.T) {
 		t.Error("a results filing older than the cut-off was used")
 	}
 }
+
+// A foreign filer reports on 6-K, with no item codes. The cover page names each
+// exhibit, and the results are told apart by title from the share returns and
+// a meeting's voting results filed after them -- here as exhibit 99.2, so the
+// exhibit named on the cover is the one read.
+func TestResultsAreFoundInAForeignFilersSixK(t *testing.T) {
+	cover := func(exhibits ...string) string {
+		return `<html><body><p>FORM 6-K</p><p>Report of Foreign Private Issuer</p><p>EXHIBITS</p>` +
+			strings.Join(exhibits, "") + `<p>SIGNATURES</p></body></html>`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tickers":
+			w.Write([]byte(`{"0":{"cik_str":1577552,"ticker":"BABA","title":"Alibaba Group Holding Ltd"}}`))
+		case "/submissions/CIK0001577552.json":
+			w.Write([]byte(`{"name":"Alibaba Group Holding Ltd","filings":{"recent":{
+				"accessionNumber":["0001104659-26-109625","0001104659-26-105208","0001104659-26-099220"],
+				"filingDate":["2026-09-22","2026-09-04","2026-08-20"],
+				"form":["6-K","6-K","6-K"],
+				"items":["","",""],
+				"primaryDocument":["agm_6k.htm","return_6k.htm","results_6k.htm"]}}}`))
+		case "/archive/1577552/000110465926109625/agm_6k.htm":
+			w.Write([]byte(cover(`<p>Exhibit 99.1 &ndash; Voting Results of Annual General Meeting</p>`)))
+		case "/archive/1577552/000110465926105208/return_6k.htm":
+			w.Write([]byte(cover(`<p>Exhibit 99.1 &ndash; Monthly Return with The Stock Exchange of Hong Kong Limited</p>`)))
+		case "/archive/1577552/000110465926099220/results_6k.htm":
+			w.Write([]byte(cover(
+				`<p>Exhibit 99.1 &ndash; Announcement &ndash; Date of Board Meeting</p>`,
+				`<p>Exhibit 99.2 &ndash; Press Release &ndash; Alibaba Group Announces June&nbsp;Quarter 2026 Results</p>`)))
+		case "/archive/1577552/000110465926099220/0001104659-26-099220-index.html":
+			w.Write([]byte(`<table>
+<tr><td>1</td><td>FORM 6-K</td><td><a href="/Archives/edgar/data/1577552/000110465926099220/results_6k.htm">results_6k.htm</a></td><td>6-K</td></tr>
+<tr><td>2</td><td>EXHIBIT 99.1</td><td><a href="/Archives/edgar/data/1577552/000110465926099220/ex99-1.htm">ex99-1.htm</a></td><td>EX-99.1</td></tr>
+<tr><td>3</td><td>EXHIBIT 99.2</td><td><a href="/Archives/edgar/data/1577552/000110465926099220/ex99-2.htm">ex99-2.htm</a></td><td>EX-99.2</td></tr>
+</table>`))
+		case "/archive/1577552/000110465926099220/ex99-2.htm":
+			w.Write([]byte(`<p>Alibaba Group Announces June Quarter 2026 Results</p><p>Revenue was RMB243,000 million.</p>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), UserAgent: "test",
+		TickerIndexURL: srv.URL + "/tickers",
+		SubmissionsURL: srv.URL + "/submissions/CIK%010d.json",
+		ArchiveURL:     srv.URL + "/archive"}
+
+	filing, text, err := c.EarningsRelease(context.Background(), "BABA", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(filing.URL, "/ex99-2.htm") || filing.Filed.Day() != 20 {
+		t.Errorf("filing = %+v, want exhibit 99.2 of the 20 August 6-K", filing)
+	}
+	if !strings.Contains(text, "RMB243,000 million") {
+		t.Errorf("text = %q", text)
+	}
+}

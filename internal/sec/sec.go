@@ -63,6 +63,10 @@ type Filing struct {
 	Filed     time.Time
 	URL       string
 	Accession string
+
+	// Exhibits is what a foreign filer's 6-K says it holds, by the titles on
+	// its cover page, since a 6-K has no item codes to describe it by.
+	Exhibits []string
 }
 
 // Client reads the SEC submissions API.
@@ -216,7 +220,12 @@ func (c *Client) recent(ctx context.Context, co company, since time.Time) ([]Fil
 	if err := c.getJSON(ctx, fmt.Sprintf(c.submissionsURL(), co.CIK), &doc); err != nil {
 		return nil, err
 	}
+	return materialFilings(doc, co, since)
+}
 
+// materialFilings picks a company's material 8-Ks since a date out of its
+// submissions, newest first.
+func materialFilings(doc submissions, co company, since time.Time) ([]Filing, error) {
 	r := doc.Filings.Recent
 	n := len(r.Form)
 	// The arrays are parallel by contract. A short one means the shape changed,
@@ -405,7 +414,8 @@ func (c *Client) MainTicker(ctx context.Context, ticker string) bool {
 	return ok && co.Main
 }
 
-// Recent returns a company's material 8-K filings since a date, newest first.
+// Recent returns what a company has announced to the SEC since a date, newest
+// first: its material 8-Ks, and a foreign filer's 6-Ks less the routine ones.
 // Exported so an analysis can say what the company has told the SEC lately,
 // which is the nearest thing to company news that a filings API holds.
 func (c *Client) Recent(ctx context.Context, ticker string, since time.Time) ([]Filing, error) {
@@ -418,10 +428,21 @@ func (c *Client) Recent(ctx context.Context, ticker string, since time.Time) ([]
 		return nil, fmt.Errorf("no SEC filer for ticker %q", ticker)
 	}
 
-	filings, err := c.recent(ctx, co, since)
+	var doc submissions
+	if err := c.getJSON(ctx, fmt.Sprintf(c.submissionsURL(), co.CIK), &doc); err != nil {
+		return nil, err
+	}
+	filings, err := materialFilings(doc, co, since)
 	if err != nil {
 		return nil, err
 	}
+	announced, err := c.announcements(ctx, doc, co, since)
+	if err != nil {
+		return nil, err
+	}
+	filings = append(filings, announced...)
+	sort.SliceStable(filings, func(i, j int) bool { return filings[i].Filed.After(filings[j].Filed) })
+
 	for i := range filings {
 		filings[i].Ticker = strings.ToUpper(ticker)
 	}
@@ -429,8 +450,12 @@ func (c *Client) Recent(ctx context.Context, ticker string, since time.Time) ([]
 }
 
 // Describe names an 8-K's item codes in plain English, which is what makes a
-// filing readable to anyone who does not know the codes by heart.
+// filing readable to anyone who does not know the codes by heart. A 6-K has
+// no codes, and is described by the titles on its cover instead.
 func (f Filing) Describe() string {
+	if len(f.Exhibits) > 0 {
+		return strings.Join(f.Exhibits, "; ")
+	}
 	var out []string
 	for _, code := range f.Items {
 		if plain, ok := materialItems[code]; ok {

@@ -239,7 +239,11 @@ func (c *Client) Fetch(ctx context.Context, ticker string, years int) (Snapshot,
 
 	snap.Currency = reportingCurrency(byKey)
 	snap.Years = buildYears(byKey, years, snap.Currency)
-	snap.YTD, snap.PriorYTD = buildYTD(byKey, snap.Currency)
+	var lastYear time.Time
+	if len(snap.Years) > 0 {
+		lastYear = snap.Years[0].End
+	}
+	snap.YTD, snap.PriorYTD = buildYTD(byKey, snap.Currency, lastYear)
 	snap.Balance = buildBalance(byKey, snap.Currency)
 	if len(snap.Years) == 0 && len(snap.Balance.Figures) == 0 {
 		return Snapshot{}, fmt.Errorf("%s files with the SEC but reports no figures this reads", snap.Ticker)
@@ -508,7 +512,13 @@ const (
 // a number; "96,221 against 49,116 for the same half last year" is a fact about
 // the business, and without the prior period the reader is left to do the
 // arithmetic from a full year that covers a different stretch of time.
-func buildYTD(byKey map[string][]Observation, currency string) (current, prior *Year) {
+//
+// Only a period ending after lastYear, the latest annual report, counts. A
+// foreign filer's half-year reports are often filed without figures the SEC
+// can read, so the newest interim figures it holds can be years old: Alibaba's
+// "year so far" was the half year to 30 Sep 2020, shown beside its 2026
+// accounts and used for a return on equity that meant nothing.
+func buildYTD(byKey map[string][]Observation, currency string, lastYear time.Time) (current, prior *Year) {
 	// The cumulative period ending on the latest date the company has filed:
 	// where a quarter and a year-to-date figure share an end date, the longer
 	// one is the one that says how the year is going.
@@ -517,6 +527,9 @@ func buildYTD(byKey map[string][]Observation, currency string) (current, prior *
 	for _, con := range incomeConcepts {
 		for _, o := range keepCurrency(byKey[con.key], currency) {
 			if !o.Duration() || o.Days() < minYTDDays || o.Days() > maxYTDDays {
+				continue
+			}
+			if !o.End.After(lastYear) {
 				continue
 			}
 			if o.End.After(end) || (o.End.Equal(end) && o.Days() > days) {

@@ -94,10 +94,10 @@ for three shares of 107 before the scan's budget ran out.
 
 [`collectFilings`](../internal/app/filings.go#L25) runs next, so filings arrive on
 the same footing as news rather than being bolted on afterwards. It calls
-[`sec.Client.Collect`](../internal/sec/sec.go#L102), which looks each watchlist
+[`sec.Client.Collect`](../internal/sec/sec.go#L106), which looks each watchlist
 ticker up in EDGAR's ticker index, reads its recent submissions, keeps only the
-8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L260)), and
-turns each into an `model.Article` via [`Filing.article`](../internal/sec/sec.go#L168).
+8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L269)), and
+turns each into an `model.Article` via [`Filing.article`](../internal/sec/sec.go#L172).
 
 [`collectSearch`](../internal/app/search.go#L26) runs next, for the same reason.
 It builds the searches with [`search.Queries`](../internal/search/queries.go#L56)
@@ -397,8 +397,9 @@ does not inherit whatever the caller's context has left:
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), picks the filer's own
    reporting currency, prefers later filings over restated earlier ones
-   ([`supersedes`](../internal/fundamentals/metrics.go#L409)) and builds the current
-   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L511)).
+   ([`supersedes`](../internal/fundamentals/metrics.go#L413)) and builds the current
+   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L521)),
+   from interim periods that end after the latest annual report only.
 2. [`quoteFor`](../internal/app/commands.go#L580) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
@@ -658,18 +659,32 @@ uses: `titleTokens`, `stripOutletSuffix`, `similarity`, `sameStory`, and
 
 **[sec.go](../internal/sec/sec.go)** — EDGAR. `Client.Collect` turns recent material
 filings into articles; `tickerIndex` maps symbols to CIKs; `recent` reads a
-company's submissions; `materialCodes` keeps only the 8-K items that matter;
-`LookupCIK`, `Recent`, `AnnualReport` and `BusinessSection` serve `/analyse`;
+company's submissions and `materialFilings` picks the 8-Ks out of them;
+`materialCodes` keeps only the 8-K items that matter; `LookupCIK`, `Recent`
+(material 8-Ks, and a foreign filer's 6-Ks), `AnnualReport` and
+`BusinessSection` serve `/analyse`;
 `MainTicker` says whether a ticker is its company's own main listing, which
 keeps a bank's notes out of the market's movers.
 
 **[release.go](../internal/sec/release.go)** — `EarningsRelease` finds the latest
 8-K under Item 2.02 and reads the press release filed with it: the document
 its index page lists as EX-99.1, whatever the file is called
-(`releaseURL`), as text cut to a length.
+(`releaseURL`), as text cut to a length. A foreign filer reports on 6-K, with
+no item codes, so for those it takes the 6-K whose cover lists results.
 
-**[business.go](../internal/sec/business.go)** — pulls Item 1 out of an annual
-report's HTML: `businessText`, `plainText`.
+**[covers.go](../internal/sec/covers.go)** — reads a 6-K's cover page, which lists
+its exhibits by title (`coverExhibits`, `exhibits`, at most `maxCovers` a
+search), and picks the one announcing results (`resultsExhibit`). That finds
+Alibaba's, JD's and PDD's; a filer whose cover gives no title, as at Sea, or
+whose 6-K is the announcement itself, as at TSMC and Novo Nordisk, has no
+release found. `announcements` turns a foreign filer's 6-Ks into what it has
+announced lately, by the same titles, leaving out the Hong Kong share returns,
+meeting notices and other routine filings (`routineTitle`).
+
+**[business.go](../internal/sec/business.go)** — pulls the business description
+out of an annual report's HTML: Item 1 of a 10-K, or part B of Item 4, Business
+Overview, of a foreign filer's 20-F (`businessText`, `longestSection`,
+`plainText`).
 
 ### internal/search
 

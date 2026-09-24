@@ -31,6 +31,39 @@ func TestBusinessSectionSkipsTheTableOfContents(t *testing.T) {
 	}
 }
 
+// A 20-F has no Item 1 business: the description is part B of Item 4. The
+// filing refers to that part by name all through its risk factors, and those
+// references, like the contents entry, must not be taken for the section.
+func TestBusinessSectionReadsATwentyFsBusinessOverview(t *testing.T) {
+	doc := `<html><body>
+	<p>ITEM 4.</p><p>INFORMATION ON THE COMPANY</p>
+	<p>B. Business Overview</p><p>C. Organizational Structure</p>
+	<p>ITEM 3. KEY INFORMATION</p>
+	<p>For more, see "Item 4. Information on the Company -- B. Business Overview -- Regulation". ` +
+		strings.Repeat("Regulation may change and hurt our results. ", 40) + `</p>
+	<p>ITEM 4. INFORM ATION ON THE COMPANY</p>
+	<p>A. History and Development of the Company</p>
+	<p>We were incorporated in the Cayman Islands in 1999.</p>
+	<p>B. Business Overview</p>
+	<p>We run China's largest online marketplaces and a cloud business. ` +
+		strings.Repeat("Merchants reach consumers through our platforms and pay us for marketing. ", 12) +
+		`</p>
+	<p>C. Organizational Structure</p>
+	<p>The following diagram shows our subsidiaries.</p>
+	</body></html>`
+
+	got := businessText(doc, 0)
+	if !strings.HasPrefix(got, "We run China's largest online marketplaces") {
+		t.Fatalf("the business overview was not found:\n%s", got)
+	}
+	if strings.Contains(got, "Regulation may change") || strings.Contains(got, "Cayman Islands") {
+		t.Errorf("took text from outside part B:\n%s", got)
+	}
+	if strings.Contains(got, "subsidiaries") {
+		t.Errorf("the extract ran past the end of part B:\n%s", got)
+	}
+}
+
 // A filer with no recognisable heading gets no description rather than a
 // mangled one: the analysis says it is unavailable instead of inventing it.
 func TestBusinessSectionReturnsNothingWhenItCannotFindIt(t *testing.T) {

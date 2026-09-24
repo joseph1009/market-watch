@@ -544,6 +544,34 @@ func TestBalanceDateIsNotTheCoverPageDate(t *testing.T) {
 	}
 }
 
+// Alibaba's half-year reports carry no figures the SEC can read, so the newest
+// interim period it held was from 2020. Shown as "the year so far" beside the
+// 2026 accounts, it was worse than nothing.
+func TestYearSoFarIgnoresPeriodsBeforeTheLastAnnualReport(t *testing.T) {
+	day := func(s string) time.Time {
+		d, _ := time.Parse(time.DateOnly, s)
+		return d
+	}
+	half := func(start, end string, v float64) Observation {
+		return Observation{Start: day(start), End: day(end), Value: v, Unit: "CNY", Form: "6-K"}
+	}
+	byKey := map[string][]Observation{
+		"revenue": {
+			half("2020-04-01", "2020-09-30", 308_812),
+			half("2019-04-01", "2019-09-30", 233_939),
+		},
+	}
+
+	if current, prior := buildYTD(byKey, "CNY", day("2026-03-31")); current != nil || prior != nil {
+		t.Errorf("year so far = %+v / %+v, want none older than the annual report", current, prior)
+	}
+
+	// The same figures after a 2020 annual report are the year so far.
+	if current, _ := buildYTD(byKey, "CNY", day("2020-03-31")); current == nil || !current.End.Equal(day("2020-09-30")) {
+		t.Errorf("year so far = %+v, want the half year to 30 Sep 2020", current)
+	}
+}
+
 // Without an interim filing there is nothing to roll forward, and the full year
 // is the honest basis -- said plainly rather than passed off as trailing.
 func TestMultiplesFallBackToTheFullYear(t *testing.T) {
