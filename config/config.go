@@ -122,6 +122,19 @@ type Config struct {
 	// month and a brief uses about fifteen.
 	TavilyAPIKey string
 
+	// MassiveAPIKey reads the whole US market's last two sessions, which is
+	// where the closer look's new names start: the biggest moves among the
+	// companies nobody follows. The free plan is enough. Empty leaves the
+	// research to the day's news alone.
+	MassiveAPIKey string
+
+	// Consensus reads what analysts expect of a company, and what its
+	// insiders, short sellers and funds have done, from the data behind
+	// Nasdaq's website, for the closer look and /analyse. On by default; it
+	// needs no key, and CONSENSUS=false turns it off if Nasdaq starts
+	// refusing.
+	Consensus bool
+
 	DataDir string
 
 	// ScheduleLocation and ReportAt together fix when the daily report fires.
@@ -180,6 +193,7 @@ func Load() (*Config, error) {
 		FREDAPIKey:       envOr("FRED_API_KEY", ""),
 		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
 		TavilyAPIKey:     envOr("TAVILY_API_KEY", ""),
+		MassiveAPIKey:    envOr("MASSIVE_API_KEY", ""),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 
@@ -257,6 +271,9 @@ func Load() (*Config, error) {
 	if cfg.Discover, err = envBool("DISCOVER", true); err != nil {
 		return nil, err
 	}
+	if cfg.Consensus, err = envBool("CONSENSUS", true); err != nil {
+		return nil, err
+	}
 	if cfg.Ideas, err = envBool("IDEAS", true); err != nil {
 		return nil, err
 	}
@@ -280,6 +297,7 @@ var stageModelVars = map[string]string{
 	"brief":    "MODEL_BRIEF",
 	"names":    "MODEL_NAMES",
 	"ideas":    "MODEL_IDEAS",
+	"screen":   "MODEL_SCREEN",
 	"verdicts": "MODEL_VERDICTS",
 	"analysis": "MODEL_ANALYSIS",
 }

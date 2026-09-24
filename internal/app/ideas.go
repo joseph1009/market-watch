@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joseph1009/market-watch/config"
@@ -13,9 +14,17 @@ import (
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
-// "Worth a closer look" follows the brief: companies today's news bears on,
-// found by research on the web, each with a buy, hold or sell verdict. See the
-// ideas package for how, and docs/RUNBOOK.md for the stages.
+// "Worth a closer look" follows the brief: about twenty companies a day, each
+// with a buy, hold or sell verdict. Most are new names -- found by research on
+// the web from the day's news and the market's largest moves -- and the rest
+// are companies the watchlists follow, where a screen of all of them found the
+// move and the news not fitting each other. See the ideas package for how,
+// and docs/RUNBOOK.md for the stages.
+//
+// The daily run's closer look arrives an hour after the brief (look.go), so
+// the brief is never held up by it and the plan's allowance is not asked for
+// both at once. A brief asked for with /now, or sent with -once, is followed
+// at once.
 //
 // It follows the brief to the same places: the owner always, and the channel
 // on the days the brief goes there, which is the scheduled run and -once
@@ -33,22 +42,70 @@ import (
 // analysis, and a verdict reaching the channel is the daily run's doing or
 // nothing.
 
-// ideasBudget bounds the whole pass: research with the web, the facts for each
-// company, and the verdicts. The run lock is held throughout, so a /now sent
-// meanwhile waits; this is what keeps that wait finite.
-const ideasBudget = 25 * time.Minute
+const (
+	// ideasBudget bounds the whole pass: research with the web and the screen
+	// side by side, the facts for each company, and the verdicts. It usually
+	// takes ten to fifteen minutes. The run lock is held throughout, so a /now
+	// sent meanwhile waits; this is what keeps that wait finite.
+	ideasBudget = 30 * time.Minute
 
-// ideaYears is how much of each company's accounts the verdict sees. Three
-// years shows a direction without the table growing past what six companies
-// can share in one request.
-const ideaYears = 3
+	// ideaYears is how much of each company's accounts the verdict sees. Three
+	// years shows a direction without a batch of five outgrowing one request.
+	ideaYears = 3
 
-// sendIdeas researches, judges and delivers. Every failure costs this section
-// only: the brief has already arrived. share says whether the channel gets it
-// too, and carries the same value the brief was sent with, so the two never
-// disagree about who is reading today.
-func (a *App) sendIdeas(ctx context.Context, done *briefDone, share bool) {
-	if a.Researcher == nil || a.Judge == nil || done == nil {
+	// ideaReleaseRunes is how much of each results release a verdict reads:
+	// the headline figures and the quarter's table, which is where the
+	// numbers a verdict turns on are. /analyse reads twice as much.
+	ideaReleaseRunes = 3500
+
+	// factWorkers is how many companies' facts are read at once. Each is SEC
+	// reads, paced across all of them by the accounts client, and six Nasdaq
+	// reads of a second or two each.
+	factWorkers = 4
+
+	// screenWorkers is how many followed companies' histories are read at once
+	// for the screen.
+	screenWorkers = 4
+
+	// moversBudget bounds the market's movers: two to five requests, twelve
+	// and a half seconds apart on the free plan.
+	moversBudget = 2 * time.Minute
+
+	// The movers the research is shown: fifteen of them, biggest move first,
+	// each a share of at least US$5 on which at least US$25m changed hands, in
+	// a company worth at least US$2bn. On the first day it was read, without
+	// the last floor, the list was a real-estate trust up 191% and three
+	// biotechs a tenth of that size -- spikes, not news. The sixty largest
+	// moves are sized, to find fifteen that clear it.
+	moverMinPrice  = 5
+	moverMinVolume = 25e6
+	moverMinValue  = 2e9
+	moverCount     = 15
+	moverSized     = 60
+)
+
+// look is what the closer look starts from: the brief it follows, and whether
+// the channel is reading today. It is written to the data volume while it
+// waits its hour, so it carries the brief's text and articles rather than the
+// report, whose citations are not kept on disk.
+type look struct {
+	Due        time.Time         `json:"due"`
+	Share      bool              `json:"share"`
+	Brief      string            `json:"brief"`
+	Cited      []model.Article   `json:"cited"`
+	Candidates []model.Candidate `json:"candidates,omitempty"`
+}
+
+func lookFrom(rep model.Report, share bool) look {
+	return look{Share: share, Brief: briefText(rep), Cited: rep.Cited, Candidates: rep.Candidates}
+}
+
+// sendIdeas researches, screens, judges and delivers. Every failure costs this
+// section only: the brief has already arrived. lk.Share says whether the
+// channel gets it too, and carries the value the brief was sent with, so the
+// two never disagree about who is reading today.
+func (a *App) sendIdeas(ctx context.Context, lk look) {
+	if a.Researcher == nil || a.Judge == nil {
 		return
 	}
 	prefs := a.Prefs()
@@ -60,46 +117,43 @@ func (a *App) sendIdeas(ctx context.Context, done *briefDone, share bool) {
 	defer cancel()
 	started := time.Now()
 
-	found, usage, err := a.Researcher.Propose(ctx, ideas.Input{
-		Brief:      briefText(done.rep),
-		Cited:      done.rep.Cited,
-		Candidates: done.rep.Candidates,
-		Tracked:    trackedNames(prefs.Groups),
-	})
-	if err != nil {
-		a.Log.Warn("could not research companies worth a closer look", "error", err)
-		return
-	}
-	a.Log.Info("ideas researched",
-		"verified", len(found),
-		"input_tokens", usage.InputTokens,
-		"output_tokens", usage.OutputTokens,
-		"took", time.Since(started).Round(time.Second))
-	if len(found) == 0 {
+	// The new names and the followed companies are found side by side: the
+	// research is minutes of web searches, the screen a minute of prices and
+	// one short call, and neither needs the other.
+	var found, picked []model.Idea
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); found = a.researchNewNames(ctx, lk, prefs.Groups) }()
+	go func() { defer wg.Done(); picked = a.screenFollowed(ctx, lk, prefs.Groups) }()
+	wg.Wait()
+
+	all := append(picked, found...)
+	if len(all) == 0 {
 		return
 	}
 
-	facts := make([]string, len(found))
-	charts := make([]string, len(found))
-	for i := range found {
-		found[i], charts[i], facts[i] = a.ideaFacts(ctx, found[i])
-	}
-
-	judged, vusage, err := a.Judge.Judge(ctx, found, facts, done.rep.Cited)
+	facts, charts := a.factsFor(ctx, all)
+	judged, usage, err := a.Judge.Judge(ctx, all, facts, lk.Cited, a.backdrop(ctx))
 	if err != nil {
-		a.Log.Warn("could not judge the companies worth a closer look", "error", err)
-		return
+		a.Log.Warn("some verdicts are missing", "error", err)
+	}
+	var shown []model.Idea
+	for _, idea := range judged {
+		if idea.Shown() {
+			shown = append(shown, idea)
+		}
 	}
 	a.Log.Info("ideas judged",
 		"judged", len(judged),
-		"of", len(found),
-		"input_tokens", vusage.InputTokens,
-		"output_tokens", vusage.OutputTokens)
-	if len(judged) == 0 {
+		"of", len(all),
+		"shown", len(shown),
+		"input_tokens", usage.InputTokens,
+		"output_tokens", usage.OutputTokens)
+	if len(shown) == 0 {
 		return
 	}
 
-	messages := telegram.RenderIdeas(judged, done.rep.Cited, telegram.IdeasOptions{})
+	messages := telegram.RenderIdeas(shown, lk.Cited, telegram.IdeasOptions{})
 	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
 	if len(ids) > 0 {
 		// Cleared with the brief it follows, when REPLACE_PREVIOUS is on.
@@ -117,14 +171,163 @@ func (a *App) sendIdeas(ctx context.Context, done *briefDone, share bool) {
 
 	// The channel is posted before the verdicts are scored, for the reason the
 	// brief is: the reader's copy should not wait on bookkeeping.
-	if share {
-		a.shareIdeas(ctx, telegram.RenderIdeas(judged, done.rep.Cited, telegram.IdeasOptions{ForChannel: true}))
+	if lk.Share {
+		a.shareIdeas(ctx, telegram.RenderIdeas(shown, lk.Cited, telegram.IdeasOptions{ForChannel: true}))
 	}
 
-	a.recordVerdicts(ctx, judged, found, charts)
+	a.recordVerdicts(ctx, shown, all, charts)
 	a.Log.Info("ideas delivered",
 		"messages", len(messages),
 		"took", time.Since(started).Round(time.Second))
+}
+
+// researchNewNames finds the companies nobody follows that today's news, or
+// today's largest moves, bear on.
+func (a *App) researchNewNames(ctx context.Context, lk look, groups []model.Group) []model.Idea {
+	started := time.Now()
+	followed := map[string]bool{}
+	for _, t := range watchedTickers(groups) {
+		followed[t] = true
+	}
+	found, usage, err := a.Researcher.Propose(ctx, ideas.Input{
+		Brief:      lk.Brief,
+		Cited:      lk.Cited,
+		Candidates: lk.Candidates,
+		Tracked:    trackedNames(groups),
+		Followed:   followed,
+		Movers:     a.marketMovers(ctx, followed),
+	})
+	if err != nil {
+		a.Log.Warn("could not research new names for a closer look", "error", err)
+		return nil
+	}
+	a.Log.Info("ideas researched",
+		"verified", len(found),
+		"input_tokens", usage.InputTokens,
+		"output_tokens", usage.OutputTokens,
+		"took", time.Since(started).Round(time.Second))
+	return found
+}
+
+// marketMovers are the day's largest moves among the US companies nobody
+// follows, named as the SEC knows them. Funds, and the notes a bank issues,
+// are left out -- a leveraged fund moving three times its index is arithmetic,
+// not news -- and so are companies worth less than moverMinValue, whose moves
+// are mostly noise.
+func (a *App) marketMovers(ctx context.Context, followed map[string]bool) []ideas.Mover {
+	if !a.Movers.Enabled() || a.Filings == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, moversBudget)
+	defer cancel()
+
+	type filer struct {
+		cik  int
+		name string
+	}
+	filers := map[string]filer{}
+	moves, err := a.Movers.Movers(ctx, a.now(), prices.MoverRules{
+		MinPrice:        moverMinPrice,
+		MinDollarVolume: moverMinVolume,
+		Limit:           moverSized,
+		Keep: func(symbol string) bool {
+			if followed[symbol] {
+				return false
+			}
+			// The SEC writes a share class with a dash: BRK-B, not BRK.B.
+			sec := strings.ReplaceAll(symbol, ".", "-")
+			cik, name, err := a.Filings.LookupCIK(ctx, sec)
+			if err != nil || isFund(name) || !a.Filings.MainTicker(ctx, sec) {
+				return false
+			}
+			filers[symbol] = filer{cik, name}
+			return true
+		},
+	})
+	if err != nil {
+		a.Log.Warn("could not read the market's movers", "error", err)
+		return nil
+	}
+
+	var out []ideas.Mover
+	for _, m := range moves {
+		if len(out) == moverCount {
+			break
+		}
+		f := filers[m.Symbol]
+		if a.Accounts != nil {
+			shares, err := a.Accounts.SharesOutstanding(ctx, f.cik)
+			if err != nil || m.Close*shares < moverMinValue {
+				continue // too small, or no share count to tell
+			}
+		}
+		out = append(out, ideas.Mover{Symbol: m.Symbol, Name: f.name, Percent: m.Percent, DollarVolume: m.DollarVolume})
+	}
+	a.Log.Info("market movers", "sized", len(moves), "kept", len(out))
+	return out
+}
+
+// isFund reports whether a registered name is a fund's rather than a
+// company's.
+func isFund(name string) bool {
+	upper := " " + strings.ToUpper(name) + " "
+	for _, word := range []string{" ETF", " FUND", " ETN", "PROSHARES", "DIREXION", "ISHARES", "SPDR", "SHARES TRUST"} {
+		if strings.Contains(upper, word) {
+			return true
+		}
+	}
+	return false
+}
+
+// screenFollowed chooses which of the followed companies get a verdict today.
+func (a *App) screenFollowed(ctx context.Context, lk look, groups []model.Group) []model.Idea {
+	if a.Screener == nil {
+		return nil
+	}
+	started := time.Now()
+	rows := a.screenRows(ctx, groups, lk.Cited)
+	picked, usage, err := a.Screener.Pick(ctx, lk.Brief, lk.Cited, rows)
+	if err != nil {
+		a.Log.Warn("could not screen the followed companies", "error", err)
+		return nil
+	}
+	a.Log.Info("followed companies screened",
+		"rows", len(rows),
+		"picked", len(picked),
+		"input_tokens", usage.InputTokens,
+		"output_tokens", usage.OutputTokens,
+		"took", time.Since(started).Round(time.Second))
+	return picked
+}
+
+// factsFor reads each idea's facts, a few companies at a time, and returns
+// the ideas' fact sheets and chart symbols by position. The ideas themselves
+// are updated in place with their prices.
+func (a *App) factsFor(ctx context.Context, all []model.Idea) (facts, charts []string) {
+	facts = make([]string, len(all))
+	charts = make([]string, len(all))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range factWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				all[i], charts[i], facts[i] = a.ideaFacts(ctx, all[i])
+			}
+		}()
+	}
+queue:
+	for i := range all {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break queue
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	return facts, charts
 }
 
 // ideaFacts reads what a verdict should rest on, and returns the idea with its
@@ -132,9 +335,10 @@ func (a *App) sendIdeas(ctx context.Context, done *briefDone, share bool) {
 // written for the model.
 //
 // For a US listing that files with the SEC, the sheet is the same table the
-// analysis reads: accounts, valuation and trading. For anything else it is the
-// price and the trading alone, and it says so, so the verdict cannot quietly
-// pretend to a knowledge of the accounts it does not have.
+// analysis reads: accounts, valuation and trading, what analysts expect, and
+// the latest results release. For anything else it is the price and the
+// trading alone, and it says so, so the verdict cannot quietly pretend to a
+// knowledge of the accounts it does not have.
 func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, string, string) {
 	chart := prices.ChartSymbol(idea.Ticker, idea.Exchange)
 	if chart != "" {
@@ -152,6 +356,8 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 			snap, err := a.Accounts.Fetch(ctx, idea.Ticker, ideaYears)
 			if err == nil {
 				snap.Price, snap.Trading = idea.Quote, idea.Trading
+				a.addExpectations(ctx, &snap)
+				a.addRelease(ctx, &snap, ideaReleaseRunes)
 				idea.Accounts = true
 				return idea, chart, snap.Table()
 			}

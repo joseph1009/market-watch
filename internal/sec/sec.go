@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +75,7 @@ type Client struct {
 	// real SEC endpoints.
 	TickerIndexURL string
 	SubmissionsURL string
+	ArchiveURL     string
 
 	// tickers caches the ticker-to-CIK index for the process lifetime. It is a
 	// ~1MB file that changes rarely, and refetching it per run would be the
@@ -85,6 +88,11 @@ type Client struct {
 type company struct {
 	CIK  int
 	Name string
+
+	// Main is whether this is the company's first ticker in the index, which
+	// lists each company's own shares before its other lines: BMO before the
+	// exchange-traded notes the bank issues, GOOGL before GOOG.
+	Main bool
 }
 
 // Collect returns articles for the material filings of the given tickers.
@@ -282,9 +290,21 @@ func (c *Client) tickerIndex(ctx context.Context) (map[string]company, error) {
 			return
 		}
 
+		// In row order, so the first ticker seen for a company is its main
+		// one.
+		keys := make([]int, 0, len(raw))
+		for k := range raw {
+			if n, err := strconv.Atoi(k); err == nil {
+				keys = append(keys, n)
+			}
+		}
+		sort.Ints(keys)
 		c.tickers = make(map[string]company, len(raw))
-		for _, row := range raw {
-			c.tickers[strings.ToUpper(row.Ticker)] = company{CIK: row.CIK, Name: row.Title}
+		seen := make(map[int]bool, len(raw))
+		for _, k := range keys {
+			row := raw[strconv.Itoa(k)]
+			c.tickers[strings.ToUpper(row.Ticker)] = company{CIK: row.CIK, Name: row.Title, Main: !seen[row.CIK]}
+			seen[row.CIK] = true
 		}
 	})
 	return c.tickers, c.initErr
@@ -370,6 +390,19 @@ func (c *Client) LookupCIK(ctx context.Context, ticker string) (cik int, name st
 		return 0, "", fmt.Errorf("no SEC filer for ticker %q", ticker)
 	}
 	return co.CIK, co.Name, nil
+}
+
+// MainTicker reports whether a ticker is its company's own main listing,
+// rather than a second share class or a note the company issues. A bank's
+// leveraged notes are filed under the bank, and without this a note tracking
+// gold miners at three times the move reads as the bank moving.
+func (c *Client) MainTicker(ctx context.Context, ticker string) bool {
+	index, err := c.tickerIndex(ctx)
+	if err != nil {
+		return false
+	}
+	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
+	return ok && co.Main
 }
 
 // Recent returns a company's material 8-K filings since a date, newest first.

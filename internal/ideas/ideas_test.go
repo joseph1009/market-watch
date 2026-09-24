@@ -69,7 +69,7 @@ func TestResearchKeepsOnlyCompaniesWhoseTickerChecksOut(t *testing.T) {
 	if len(got[1].Articles) != 2 || got[1].Articles[1].ID != "a2" {
 		t.Errorf("SK Hynix articles = %+v, want both cited stories", got[1].Articles)
 	}
-	if !strings.Contains(c.system, "up to 6 listed companies") {
+	if !strings.Contains(c.system, "up to 14 listed companies") {
 		t.Errorf("the system prompt did not carry the limit: %q", c.system[:200])
 	}
 	if !strings.Contains(c.prompt, "[1] Micron raises HBM outlook (CNBC)") {
@@ -138,7 +138,7 @@ VERDICT: STRONG BUY
 CONFIDENCE: high`
 
 	c := &fakeCompleter{reply: reply}
-	got, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"FACTS FOR RAMBUS", "FACTS FOR HYNIX", "", ""}, cited)
+	got, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"FACTS FOR RAMBUS", "FACTS FOR HYNIX", "", ""}, cited, nil)
 	if err != nil {
 		t.Fatalf("Judge: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestTheFactSheetNamesTheCurrencyOfEachPrice(t *testing.T) {
 	}
 
 	c := &fakeCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low\nCASE: Nothing to act on."}
-	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"", ""}, cited); err != nil {
+	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"", ""}, cited, nil); err != nil {
 		t.Fatalf("Judge: %v", err)
 	}
 

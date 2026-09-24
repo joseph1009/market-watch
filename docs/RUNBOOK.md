@@ -19,7 +19,8 @@ and waits for nothing. It exists to check formatting and delivery.
 
 ## The stages
 
-A brief makes six kinds of call, and an analysis makes one:
+A brief makes four kinds of call, its closer look three more, and an analysis
+one:
 
 | Stage | What it does | Prompt | Default model | Override | Reply format |
 |---|---|---|---|---|---|
@@ -27,8 +28,9 @@ A brief makes six kinds of call, and an analysis makes one:
 | `review` | Checks where the sorting put everything that could reach the brief, and moves what belongs elsewhere, **with web search** | `review.system` | Sonnet | `MODEL_REVIEW` | `number\|section ids`, one line per move |
 | `brief` | Writes the brief | `brief.system` | Opus | `MODEL_BRIEF` | `## OVERVIEW` then `## SECTION: <id>` blocks |
 | `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Haiku | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
-| `ideas` | Researches companies worth a closer look, **with web search** | `ideas.system` | Opus | `MODEL_IDEAS` | `name\|ticker\|exchange\|news or connected\|article numbers\|how the news bears on it` |
-| `verdicts` | Gives each of them BUY, HOLD or SELL from the facts fetched for it | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `CASE:`, `NUMBERS:`, `RISK:` |
+| `ideas` | Researches new names worth a closer look, from the brief and the market's largest moves, **with web search** | `ideas.system` | Opus | `MODEL_IDEAS` | `name\|ticker\|exchange\|news or connected\|article numbers\|how the news bears on it` |
+| `screen` | Chooses the followed companies whose move and news do not fit, from a table of all of them | `screen.system` | Sonnet | `MODEL_SCREEN` | `ticker\|what does not fit` |
+| `verdicts` | Gives each of them BUY, HOLD or SELL from the facts fetched for it, five a call | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `CHANGED:`, `MOVE:`, `REACTION:`, `CASE:`, `NUMBERS:`, `RISK:` |
 | `analysis` | Writes up one company's accounts for `/analyse` | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with capitalised headings |
 
 Sorting sends the day's articles in batches of 60, two at a time
@@ -186,27 +188,58 @@ subscription.
 
 ## Worth a closer look
 
-After each brief, a second message comes to your chat: up to six listed
-companies today's news bears on, each with a verdict.
+An hour after the daily brief, a second message follows it: about twenty listed
+companies, each with a verdict. About fourteen are new names, and up to six are
+companies you follow.
 
-1. **Research** (`ideas`, Opus with web search) starts from the brief and its
-   new names, and picks companies of two kinds: ones the stories are about, and
-   ones they bear on without naming, such as a supplier, a customer or a rival.
-   Every ticker is checked against the exchange, and one that does not check out
-   is dropped.
-2. **Facts** are fetched for each: a year of daily prices from the chart source
-   on any of the fourteen exchanges, today's move — from the quote feed for a US
-   listing, and from the last two closes, in the local currency, for a listing
-   anywhere else — and for a company that files with the SEC, three years of
-   accounts and what its price implies. A company with no SEC filings is judged
-   on its price and trading alone, and the message says so.
-3. **Verdicts** (`verdicts`, Opus, no tools) give BUY, HOLD or SELL over twelve
-   months with a confidence, the case, the deciding figures and the main risk.
-   BUY and SELL mean better or worse than the S&P 500.
+1. **New names** (`ideas`, Opus with web search) start from the brief, its new
+   names, and the day's fifteen largest moves among US companies nobody
+   follows and worth at least US$2bn, read from Massive (`MASSIVE_API_KEY`). The research picks companies
+   of two kinds: ones the stories or the moves are about, and ones they bear on
+   without naming, such as a supplier, a customer or a rival. It never picks a
+   company you follow. Every ticker is checked against the exchange, and one
+   that does not check out is dropped.
+2. **Followed companies** (`screen`, Sonnet, no tools) are chosen from a table
+   of all of them: each one's move today against the week, month, six months,
+   year and year to date, where it sits against its averages and its year's
+   range, the multiple of today's price on the next two years' forecasts, which
+   way the forecasts moved in four weeks, the distance to the price target, and
+   the day's articles that name it. It picks those where what changed and how
+   the share moved do not fit each other, and none on a day with nothing to
+   pick.
+3. **Facts** are fetched for each, four at a time: a year of daily prices from
+   the chart source on any of the fourteen exchanges, today's move, and for a
+   company that files with the SEC, three years of accounts, what its price
+   implies, the first part of its latest results release, and what analysts
+   expect of it and what its insiders, short sellers and funds have done (from
+   Nasdaq, `CONSENSUS`). A company with no SEC filings is judged on its price
+   and trading alone, and the message says so.
+4. **Verdicts** (`verdicts`, Opus, no tools, five companies a call, two calls at
+   once) give BUY, HOLD or SELL over twelve months with a confidence; what the
+   news changed and by how much; how far the share moved; whether that move
+   overreacted, underreacted or matched the change; the case; the two to four
+   numbers that decide it; and the biggest risk. The oil price, the dollar and
+   the cost of money are set above them all. BUY and SELL mean better or worse
+   than the S&P 500. **A followed company is shown only as BUY or SELL**: its
+   HOLD is left out.
 
-The message is sent after the brief, and the brief reaches the channel before
-the research starts, so neither waits on it. It adds about five to fifteen
-minutes to a run, most of it the research. `IDEAS=false` turns it off.
+It takes ten to fifteen minutes, most of it the research and the verdicts. The
+research and the screen run side by side. The hour's wait is kept on the data
+volume (`pending-look.json`), so a restart or a deploy in that hour delays it
+rather than losing it; one more than six hours late is dropped. After `/now`,
+or `--once`, it follows at once. `IDEAS=false` turns it off.
+
+**Cost.** No search credits: the research searches with Claude's own web
+search, not Tavily. On the plan, reckoned from the size of what it reads rather
+than measured, it is about two and a half times the six-company closer look it
+replaced, and the whole day about a third more than before. The ledger of a
+`look` run in `relay/` has the actual sizes.
+
+**Nasdaq is unofficial.** Its figures come from the endpoints Nasdaq's own
+website reads, with no key and no agreement, like the chart source. They can
+change or refuse without notice. `market-watch --check` asks for one company's
+forecasts and says whether they came back; `CONSENSUS=false` stops asking,
+and the verdicts and analyses go on without them.
 
 **It goes to the channel with the daily brief.** Not through `/share`, which
 only ever posts a brief or an analysis, and not from a brief asked for with
@@ -307,9 +340,11 @@ takes about two minutes at Finnhub's free pace and runs beside the feeds. The
 log line `searched movers` names them. The same prices give each section its
 line of biggest moves under the heading.
 
-**Cost.** One credit per search: about fifteen per brief, and up to five more on
-a day with movers. The free plan is 1,000 credits a month; weekday briefs use
-about 330, up to 440 with movers, which leaves room for `/now`.
+**Cost.** One credit per search: about fifteen per brief, up to five more on
+a day with movers, and two for each `/analyse`, which searches the company's
+last month. The free plan is 1,000 credits a month; weekday briefs use about
+330, up to 440 with movers, which leaves room for `/now` and a few hundred
+analyses. The closer look spends none.
 `market-watch --check` proves the key without spending a credit, and shows
 Tavily's count of credits used, but that count runs late: on 23 September it
 still read 0 after 27 searches. `/stats` shows the credits each brief spent, as

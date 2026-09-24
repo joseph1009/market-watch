@@ -28,6 +28,13 @@ const (
 	defaultConcurrency = 2
 	requestPause       = 120 * time.Millisecond
 
+	// paceGap is the least time between two requests from one client, across
+	// every goroutine using it: seven a second, leaving room under the ten for
+	// the filing client beside it. The pause above spaces one company's reads;
+	// the closer look reads four companies at once, which without this would
+	// run at four times the pace and have the SEC block the address.
+	paceGap = 143 * time.Millisecond
+
 	maxBodyBytes = 8 << 20
 )
 
@@ -78,6 +85,68 @@ type Client struct {
 
 	mu   sync.Mutex
 	tags map[int][]TagInfo
+
+	// Unpaced turns the pace off, for tests against a local stub.
+	Unpaced bool
+
+	paceMu sync.Mutex
+	next   time.Time
+}
+
+// pace holds a request until its turn under paceGap.
+func (c *Client) pace(ctx context.Context) error {
+	if c.Unpaced {
+		return nil
+	}
+	c.paceMu.Lock()
+	now := time.Now()
+	if c.next.Before(now) {
+		c.next = now
+	}
+	wait := c.next.Sub(now)
+	c.next = c.next.Add(paceGap)
+	c.paceMu.Unlock()
+	if wait <= 0 {
+		return nil
+	}
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// SharesOutstanding is the latest count of common shares the company gave on
+// a filing's cover, summed across its classes where it gave several on the
+// same date. It is what a market value is reckoned from.
+func (c *Client) SharesOutstanding(ctx context.Context, cik int) (float64, error) {
+	obs, err := c.Concept(ctx, cik, "dei", "EntityCommonStockSharesOutstanding")
+	if err != nil {
+		return 0, err
+	}
+	var latest time.Time
+	for _, o := range obs {
+		if o.End.After(latest) {
+			latest = o.End
+		}
+	}
+	// One figure per class and filing: the same date can arrive from a 10-Q
+	// and an amendment, so each distinct value is counted once.
+	seen := map[float64]bool{}
+	total := 0.0
+	for _, o := range obs {
+		if o.End.Equal(latest) && !seen[o.Value] {
+			seen[o.Value] = true
+			total += o.Value
+		}
+	}
+	if total <= 0 {
+		return 0, ErrNotReported
+	}
+	return total, nil
 }
 
 // Concept fetches every observation a company has reported for one tag.
@@ -213,6 +282,9 @@ func Instant(obs []Observation) []Observation {
 }
 
 func (c *Client) getJSON(ctx context.Context, url string, into any) error {
+	if err := c.pace(ctx); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err

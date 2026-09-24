@@ -61,6 +61,9 @@ func (s Snapshot) Table() string {
 	}
 
 	b.WriteString(s.news())
+	if s.Expectations != "" {
+		b.WriteString("\n" + strings.TrimSpace(s.Expectations) + "\n")
+	}
 
 	columns := s.columns()
 	if len(columns) > 0 {
@@ -152,6 +155,16 @@ func (s Snapshot) Table() string {
 
 	b.WriteString(s.valuation())
 	b.WriteString(s.trading())
+	if s.Release != "" {
+		fmt.Fprintf(&b, "\nThe company's latest results release, %s, as it wrote it. These are the company's own words and its adjusted figures, not the filed accounts: say so when you use them, and prefer the filed figure where the two differ.\n%s\n",
+			s.ReleaseFrom, strings.TrimSpace(s.Release))
+	}
+	if len(s.Backdrop) > 0 {
+		b.WriteString("\nThe market backdrop, as measured by FRED, for a company whose fortunes follow one of these:\n")
+		for _, line := range s.Backdrop {
+			b.WriteString("- " + line + "\n")
+		}
+	}
 
 	b.WriteString(`
 Per-share figures and share counts are as filed and are not restated for later stock splits, so comparing them across years can mislead.

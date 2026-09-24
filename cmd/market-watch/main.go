@@ -181,7 +181,7 @@ func stageModels(cfg *config.Config) string {
 	}
 	stages = append(stages, relay.Brief, relay.Names, relay.Analysis)
 	if cfg.Ideas {
-		stages = append(stages, relay.Ideas, relay.Verdicts)
+		stages = append(stages, relay.Ideas, relay.Screen, relay.Verdicts)
 	}
 	var parts []string
 	for _, stage := range stages {
@@ -244,6 +244,30 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 			log.Warn("news search unavailable; the brief will use the feeds alone", "error", err)
 		} else {
 			log.Info("search ok", "plan", usage.Plan, "credits_used", usage.Used, "credits_limit", usage.Limit)
+		}
+	}
+
+	// The market's movers and the analysts' consensus are optional too. One
+	// session's bars prove the Massive key, one of the five requests a minute
+	// the free plan allows; one company's forecasts prove Nasdaq still answers.
+	if service.Movers.Enabled() {
+		day := time.Now().AddDate(0, 0, -1)
+		for day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			day = day.AddDate(0, 0, -1)
+		}
+		bars, err := service.Movers.Session(ctx, day)
+		if err != nil {
+			log.Warn("market movers unavailable; the closer look's research will go without them", "error", err)
+		} else {
+			log.Info("market movers ok", "session", day.Format(time.DateOnly), "listings", len(bars))
+		}
+	}
+	if service.Consensus != nil {
+		r, err := service.Consensus.Estimates(ctx, "MSFT")
+		if err != nil {
+			log.Warn("analysts' consensus unavailable; verdicts and analyses will go without it (CONSENSUS=false stops asking)", "error", err)
+		} else {
+			log.Info("consensus ok", "years_of_forecasts", len(r.Years))
 		}
 	}
 

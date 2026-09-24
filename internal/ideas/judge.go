@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -12,29 +13,94 @@ import (
 // Judge gives each idea its verdict.
 type Judge struct {
 	Completer Completer
+
+	// Batch is how many companies one call judges, and Concurrency how many
+	// calls run at once.
+	Batch       int
+	Concurrency int
 }
+
+const (
+	// DefaultBatch keeps one request to five fact sheets, a little under a
+	// hundred kilobytes: twenty companies in one would be a request of four
+	// hundred, most of which the model would skim.
+	DefaultBatch = 5
+
+	// DefaultJudgeConcurrency runs two batches at a time, which judges twenty
+	// in two rounds without asking the plan for four Opus calls at once.
+	DefaultJudgeConcurrency = 2
+)
 
 // verdictsPrompt governs the verdicts. Its text lives in config/prompts.md.
 var verdictsPrompt = config.Prompt("verdicts.system")
 
 // Judge returns the ideas that received a verdict, in the order given. facts
-// is each idea's fact sheet, by position: its trading, and its accounts where
-// they were read.
+// is each idea's fact sheet, by position: its trading, and its accounts and
+// expectations where they were read. backdrop is the market's commodities and
+// rates, written once above them all.
 //
 // An idea the reply skips, or answers with something other than BUY, HOLD or
 // SELL, is dropped rather than shown without one: the section is verdicts, and
-// a company listed without one would read as an oversight.
-func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, cited []model.Article) ([]model.Idea, model.Usage, error) {
+// a company listed without one would read as an oversight. A batch that fails
+// costs its own companies; the error says how many batches that was, and the
+// rest are returned.
+func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, cited []model.Article, backdrop []string) ([]model.Idea, model.Usage, error) {
 	if j.Completer == nil || len(ideas) == 0 {
 		return nil, model.Usage{}, nil
 	}
 
-	text, usage, err := j.Completer.Complete(ctx, verdictsPrompt, judgePrompt(ideas, facts, cited))
-	if err != nil {
-		return nil, usage, err
+	size := j.batch()
+	type outcome struct {
+		blocks map[string]verdict
+		usage  model.Usage
+		err    error
+	}
+	var bounds [][2]int
+	for start := 0; start < len(ideas); start += size {
+		bounds = append(bounds, [2]int{start, min(start+size, len(ideas))})
+	}
+	outcomes := make([]outcome, len(bounds))
+	sem := make(chan struct{}, j.concurrency())
+	var wg sync.WaitGroup
+	for i, b := range bounds {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				outcomes[i].err = ctx.Err()
+				return
+			}
+			text, usage, err := j.Completer.Complete(ctx, verdictsPrompt,
+				judgePrompt(ideas[b[0]:b[1]], facts[min(b[0], len(facts)):min(b[1], len(facts))], cited, backdrop))
+			outcomes[i] = outcome{blocks: parseVerdicts(text), usage: usage, err: err}
+		}()
+	}
+	wg.Wait()
+
+	blocks := map[string]verdict{}
+	var (
+		usage  model.Usage
+		failed int
+		first  error
+	)
+	for _, o := range outcomes {
+		usage.InputTokens += o.usage.InputTokens
+		usage.OutputTokens += o.usage.OutputTokens
+		if o.err != nil {
+			failed++
+			if first == nil {
+				first = o.err
+			}
+			continue
+		}
+		for k, v := range o.blocks {
+			blocks[k] = v
+		}
 	}
 
-	blocks := parseVerdicts(text)
 	var out []model.Idea
 	for _, idea := range ideas {
 		v, ok := blocks[strings.ToUpper(idea.Symbol())]
@@ -46,16 +112,41 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		}
 		idea.Verdict, idea.Confidence = v.verdict, v.confidence
 		idea.Case, idea.Numbers, idea.Risk = v.theCase, v.numbers, v.risk
+		idea.Changed, idea.Moved, idea.Reaction = v.changed, v.moved, v.reaction
 		out = append(out, idea)
+	}
+	if failed > 0 {
+		return out, usage, fmt.Errorf("%d of %d verdict batches failed: %w", failed, len(bounds), first)
 	}
 	return out, usage, nil
 }
 
-func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article) string {
+func (j *Judge) batch() int {
+	if j.Batch > 0 {
+		return j.Batch
+	}
+	return DefaultBatch
+}
+
+func (j *Judge) concurrency() int {
+	if j.Concurrency > 0 {
+		return j.Concurrency
+	}
+	return DefaultJudgeConcurrency
+}
+
+func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string) string {
 	var b strings.Builder
 	b.WriteString("The articles, numbered as in today's brief:\n")
 	for i, a := range cited {
 		fmt.Fprintf(&b, "[%d] %s (%s)\n", i+1, oneLine(a.Title), a.SourceName)
+	}
+
+	if len(backdrop) > 0 {
+		b.WriteString("\nThe market backdrop, as measured by FRED:\n")
+		for _, line := range backdrop {
+			b.WriteString("- " + line + "\n")
+		}
 	}
 
 	b.WriteString("\nThe companies:\n")
@@ -64,7 +155,10 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article) stri
 		fmt.Fprintf(&b, "%s, registered as %s.\n", idea.Name, idea.Listed)
 
 		kind := "In today's news"
-		if idea.Connected {
+		switch {
+		case idea.Followed:
+			kind = "Followed by the investor, and chosen today because"
+		case idea.Connected:
 			kind = "Not in today's news, but connected to it"
 		}
 		fmt.Fprintf(&b, "%s: %s", kind, idea.Link)
@@ -74,6 +168,9 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article) stri
 			}
 		}
 		b.WriteString("\n")
+		if idea.Followed {
+			b.WriteString("Only BUY or SELL will be shown for it: a HOLD is left out.\n")
+		}
 
 		if q := idea.Quote; q != nil {
 			// With the unit, always. A Hong Kong listing is quoted in Hong Kong
@@ -91,6 +188,7 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article) stri
 
 type verdict struct {
 	verdict, confidence, theCase, numbers, risk string
+	changed, moved, reaction                    string
 }
 
 // parseVerdicts reads the reply's blocks, keyed by the symbol each opens with.
@@ -118,6 +216,9 @@ func parseVerdicts(text string) map[string]verdict {
 		{"CASE:", func(v *verdict) *string { return &v.theCase }},
 		{"NUMBERS:", func(v *verdict) *string { return &v.numbers }},
 		{"RISK:", func(v *verdict) *string { return &v.risk }},
+		{"CHANGED:", func(v *verdict) *string { return &v.changed }},
+		{"MOVE:", func(v *verdict) *string { return &v.moved }},
+		{"REACTION:", func(v *verdict) *string { return &v.reaction }},
 	}
 
 	for _, raw := range strings.Split(text, "\n") {

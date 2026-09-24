@@ -32,7 +32,7 @@ FLY="$(command -v fly || command -v flyctl || true)"
 # The secrets the service reads, where .env gives them a value; an optional one
 # left empty is not sent. ANTHROPIC_API_KEY is deliberately not one of them:
 # nothing uses it, and Claude Code would prefer it to the subscription.
-SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_CHANNEL_ID|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY|TAVILY_API_KEY)=[^[:space:]]'
+SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_CHANNEL_ID|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY|TAVILY_API_KEY|MASSIVE_API_KEY)=[^[:space:]]'
 # The chat id is required because it pins the one chat the bot will answer.
 # Without it, whoever sends /start first on the new machine becomes its owner.
 for name in TELEGRAM_BOT_TOKEN CLAUDE_CODE_OAUTH_TOKEN TELEGRAM_CHAT_ID USER_AGENT; do

@@ -1340,3 +1340,38 @@ func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
 		t.Errorf("a section with no movers got a line:\n%s", out)
 	}
 }
+
+// A followed company comes first, under its own heading, and every verdict
+// shows what changed, how the share moved and whether the one justifies the
+// other, with the judgment itself on the verdict line.
+func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
+	cited := []model.Article{{ID: "a1", Title: "Micron raises HBM outlook", URL: "https://example.com/1"}}
+	ideas := []model.Idea{
+		{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Connected: true, Link: "Its chips go into every HBM stack.",
+			Verdict: model.Buy, Confidence: "medium", Accounts: true},
+		{Name: "Micron", Ticker: "MU", Exchange: "US", Followed: true, Link: "Forecasts up while the share fell.",
+			Verdict: model.Buy, Confidence: "high", Accounts: true,
+			Changed:  "Next year's expected earnings rose 4% to 158.67 a share [1].",
+			Moved:    "Down 9% in a week and 3% today, against a flat S&P 500.",
+			Reaction: "Underreacted: the outlook rose and the price fell."},
+	}
+	out := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{}), "\n")
+
+	for _, want := range []string{
+		"<b>Companies you follow</b>",
+		"<b>BUY</b> · high confidence · underreacted",
+		`<i>What changed:</i> Next year's expected earnings rose 4% to 158.67 a share <a href="https://example.com/1">[1]</a>.`,
+		"<i>The move:</i> Down 9% in a week",
+		"<i>Justified?</i> Underreacted: the outlook rose",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("closer look is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "Companies you follow") > strings.Index(out, "Connected to today's news") {
+		t.Error("the followed companies did not come first")
+	}
+	if strings.Contains(out, "medium confidence · ") {
+		t.Error("a verdict without a reaction was given one")
+	}
+}

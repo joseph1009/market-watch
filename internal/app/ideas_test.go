@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/discover"
+	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
+	"github.com/joseph1009/market-watch/internal/report"
 )
 
 // stubCompleter answers every call with the same text, or fails.
@@ -58,8 +60,8 @@ func TestACloserLookNotSharedStaysWithTheOwner(t *testing.T) {
 		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
 		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
 
-	brief := a.remember("the brief of Thu 10 Sep", []string{"the brief"})
-	a.sendIdeas(context.Background(), &briefDone{sent: brief, rep: todaysBrief}, false)
+	a.remember("the brief of Thu 10 Sep", []string{"the brief"})
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	for _, want := range []string{"Worth a closer look", "Rambus", "RMBS", "<b>BUY</b>", "medium confidence", "Connected to today's news"} {
@@ -92,7 +94,7 @@ func TestTheDailyCloserLookReachesTheChannelUnderItsWarning(t *testing.T) {
 		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
 		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
 
-	a.sendIdeas(context.Background(), &briefDone{rep: todaysBrief}, true)
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true))
 
 	channel := strings.Join(messagesTo(*sent, testChannel), "\n")
 	for _, want := range []string{"Worth a closer look", "Rambus", "<b>BUY</b>", "not financial advice", "nobody checking its work", "someone licensed"} {
@@ -114,7 +116,7 @@ func TestFailedResearchSendsNothing(t *testing.T) {
 	a.prefs.ChatID = 4242
 	withIdeas(a, stubCompleter{err: errors.New("claude: timed out")}, stubCompleter{})
 
-	a.sendIdeas(context.Background(), &briefDone{rep: todaysBrief}, false)
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	if len(*sent) != 0 {
 		t.Errorf("sent %+v after the research failed", *sent)
@@ -130,7 +132,7 @@ func TestNoVerdictsMeansNoMessage(t *testing.T) {
 		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
 		stubCompleter{reply: "I would rather not say."})
 
-	a.sendIdeas(context.Background(), &briefDone{rep: todaysBrief}, false)
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	if len(*sent) != 0 {
 		t.Errorf("sent %+v with no verdicts", *sent)
@@ -240,5 +242,107 @@ func TestAUSListingKeepsItsLiveQuote(t *testing.T) {
 	}
 	if idea.Quote.Unit() != "USD" {
 		t.Errorf("price is in %q, want USD", idea.Quote.Unit())
+	}
+}
+
+// The daily brief is sent at once and its closer look an hour later: queued on
+// the data volume, where a restart in that hour does not lose it, and sent to
+// the owner and the channel once it falls due.
+func TestTheDailyCloserLookFollowsTheBriefByAnHour(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.Cfg.TelegramChannelID = testChannel
+	now := a.Now()
+
+	feedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel><title>Stub</title>
+<item><title>Micron raises HBM outlook</title><link>https://feed.example/mu</link>
+<description>Micron raised it.</description><pubDate>Thu, 10 Sep 2026 10:00:00 GMT</pubDate></item>
+</channel></rss>`))
+	}))
+	defer feedSrv.Close()
+	a.prefs.Sources = []model.Source{{ID: "stub-feed", Name: "Stub", URL: feedSrv.URL, Weight: 8, Enabled: true}}
+	a.Fetcher = &feed.Fetcher{Client: feedSrv.Client(), Now: a.Now}
+	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nMicron raised its outlook [1].\n"}}
+	withIdeas(a,
+		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
+		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
+
+	if err := a.publishScheduled(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(messagesTo(*sent, 4242), "\n"); !strings.Contains(got, "Micron raised its outlook") || strings.Contains(got, "Worth a closer look") {
+		t.Fatalf("after the brief the owner has:\n%s", got)
+	}
+	lk, err := a.pendingLook()
+	if err != nil || lk == nil || !lk.Due.Equal(now.Add(LookDelay)) || !lk.Share || len(lk.Cited) != 1 {
+		t.Fatalf("queued %+v (err %v), want the brief's look due in an hour, for the channel too", lk, err)
+	}
+
+	// Not yet due: nothing is sent, and the wait is until it is, or the poll.
+	a.Now = func() time.Time { return now.Add(59 * time.Minute) }
+	if wait := a.sendDueLook(context.Background()); wait != lookPoll {
+		t.Errorf("a minute early, wait %v", wait)
+	}
+	a.Now = func() time.Time { return now.Add(LookDelay + time.Minute) }
+	a.sendDueLook(context.Background())
+
+	for _, chat := range []int64{4242, testChannel} {
+		if got := strings.Join(messagesTo(*sent, chat), "\n"); !strings.Contains(got, "Worth a closer look") || !strings.Contains(got, "Rambus") {
+			t.Errorf("chat %d has no closer look:\n%s", chat, got)
+		}
+	}
+	if lk, _ := a.pendingLook(); lk != nil {
+		t.Error("the look was sent and is still queued")
+	}
+}
+
+// A look that waited through most of a day, the process being down, is
+// dropped rather than sent: yesterday's verdicts are not news.
+func TestAStaleCloserLookIsDropped(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	withIdeas(a,
+		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
+		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium"})
+	lk := lookFrom(todaysBrief, false)
+	lk.Due = a.now().Add(-lookStale - time.Minute)
+	if err := a.queueLook(lk); err != nil {
+		t.Fatal(err)
+	}
+	a.sendDueLook(context.Background())
+	if len(*sent) != 0 {
+		t.Errorf("sent %+v", *sent)
+	}
+	if lk, _ := a.pendingLook(); lk != nil {
+		t.Error("the stale look is still queued")
+	}
+}
+
+// The screen's choices among the followed companies join the new names; a
+// followed company judged HOLD is left out, and a followed BUY leads.
+func TestAFollowedHoldIsLeftOutOfTheCloserLook(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.prefs.Groups = []model.Group{{ID: "semis", Name: "Semis", Companies: []model.Company{
+		{Symbol: "MU", Name: "Micron"}, {Symbol: "NVDA", Name: "Nvidia"},
+	}}}
+	withIdeas(a,
+		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
+		stubCompleter{reply: "=== MU\nVERDICT: BUY\nCONFIDENCE: high\nREACTION: underreacted, the outlook rose and the price fell.\n" +
+			"=== NVDA\nVERDICT: HOLD\nCONFIDENCE: medium\n" +
+			"=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low"})
+	a.Screener = &ideas.Screener{Completer: stubCompleter{reply: "MU|Forecasts up while the share fell.\nNVDA|Big run."}}
+
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+
+	owner := strings.Join(messagesTo(*sent, 4242), "\n")
+	for _, want := range []string{"Companies you follow", "Micron", "underreacted", "Rambus", "<b>HOLD</b> · low confidence"} {
+		if !strings.Contains(owner, want) {
+			t.Errorf("the closer look is missing %q:\n%s", want, owner)
+		}
+	}
+	if strings.Contains(owner, "Nvidia") {
+		t.Errorf("a followed HOLD was shown:\n%s", owner)
 	}
 }

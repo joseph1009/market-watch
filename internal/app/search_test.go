@@ -3,15 +3,18 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/feed"
+	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -172,4 +175,36 @@ type briefStub struct{ reply string }
 
 func (s briefStub) Complete(context.Context, string, string) (report.Completion, error) {
 	return report.Completion{Text: s.reply}, nil
+}
+
+// /analyse finds what has been written about a company by searching the last
+// month, twice, whether or not the news feed has a key; what the searches
+// return that is not about the company is left out, as the feed's is.
+func TestTheAnalysisSearchesForTheCompanysNews(t *testing.T) {
+	a, _ := newTestApp(t)
+	var mu sync.Mutex
+	var asked []string
+	searchSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		asked = append(asked, string(body))
+		mu.Unlock()
+		w.Write([]byte(`{"results":[
+			{"title":"Micron raises its outlook on HBM demand - Reuters","url":"https://www.reuters.com/tech/micron-outlook","content":"Micron said...","published_date":"Wed, 09 Sep 2026 09:00:00 GMT"},
+			{"title":"Oil slips as supply fears ease - Reuters","url":"https://www.reuters.com/markets/oil","content":"Brent fell.","published_date":"Wed, 09 Sep 2026 10:00:00 GMT"}],"usage":{"credits":1}}`))
+	}))
+	defer searchSrv.Close()
+	a.Search = &search.Client{APIKey: "tvly-test", URL: searchSrv.URL, Now: a.Now}
+
+	snap := fundamentals.Snapshot{Ticker: "MU", Company: "MICRON TECHNOLOGY INC"}
+	if err := a.addNews(context.Background(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.News) != 1 || !strings.Contains(snap.News[0].Title, "Micron raises its outlook") {
+		t.Errorf("news = %+v, want the Micron story alone, once", snap.News)
+	}
+	all := strings.Join(asked, "\n")
+	if len(asked) != 2 || !strings.Contains(all, "Micron (MU) news") || !strings.Contains(all, "2026-08-11") {
+		t.Errorf("searched %d times:\n%s\nwant two searches by name, from a month back", len(asked), all)
+	}
 }

@@ -1,0 +1,96 @@
+{
+ "data": {
+  "title": null,
+  "numberOfTrades": {
+   "asOf": null,
+   "headers": {
+    "insiderTrade": "Insider Trade",
+    "months3": "3 Months",
+    "months12": "12 Months"
+   },
+   "rows": [
+    {
+     "insiderTrade": "Number of Open Market Buys",
+     "months3": "1",
+     "months12": "22"
+    },
+    {
+     "insiderTrade": "Number of Sells",
+     "months3": "12",
+     "months12": "73"
+    },
+    {
+     "insiderTrade": "Total Insider Trades",
+     "months3": "13",
+     "months12": "95"
+    }
+   ]
+  },
+  "numberOfSharesTraded": {
+   "asOf": null,
+   "headers": {
+    "insiderTrade": "Insider Trade",
+    "months3": "3 Months",
+    "months12": "12 Months"
+   },
+   "rows": [
+    {
+     "insiderTrade": "Number of Shares Bought",
+     "months3": "27",
+     "months12": "322,016"
+    },
+    {
+     "insiderTrade": "Number of Shares Sold",
+     "months3": "178,816",
+     "months12": "1,629,606"
+    },
+    {
+     "insiderTrade": "Total Shares Traded",
+     "months3": "178,843",
+     "months12": "1,951,622"
+    },
+    {
+     "insiderTrade": "Net Activity",
+     "months3": "(178,789)",
+     "months12": "(1,307,590)"
+    }
+   ]
+  },
+  "transactionTable": {
+   "totalRecords": "217",
+   "table": {
+    "asOf": null,
+    "headers": {
+     "insider": "Insider",
+     "relation": "Relation",
+     "lastDate": "Last Date",
+     "transactionType": "Transaction",
+     "ownType": "Owner Type",
+     "sharesTraded": "Shares Traded",
+     "lastPrice": "Price",
+     "sharesHeld": "Shares Held"
+    },
+    "rows": [
+     {
+      "insider": "MEHROTRA SANJAY",
+      "relation": "Officer",
+      "lastDate": "8/21/2026",
+      "transactionType": "Automatic Sell",
+      "ownType": "Direct",
+      "sharesTraded": "40,000",
+      "lastPrice": "$959.14",
+      "sharesHeld": "264,503",
+      "url": "/market-activity/insiders/mehrotra-sanjay-420038"
+     }
+    ]
+   }
+  },
+  "filerTransactionTable": null
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

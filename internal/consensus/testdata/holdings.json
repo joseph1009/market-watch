@@ -1,0 +1,101 @@
+{
+ "data": {
+  "ownershipSummary": {
+   "SharesOutstandingPCT": {
+    "label": "Institutional Ownership",
+    "value": "87.97%"
+   },
+   "ShareoutstandingTotal": {
+    "label": "Total Shares Outstanding (millions)",
+    "value": "1,129"
+   },
+   "TotalHoldingsValue": {
+    "label": "Total Value of Holdings (millions)",
+    "value": "$1,064,913"
+   }
+  },
+  "activePositions": {
+   "asOf": null,
+   "headers": {
+    "positions": "Active Positions",
+    "holders": "Holders",
+    "shares": "Shares"
+   },
+   "rows": [
+    {
+     "positions": "Increased Positions",
+     "holders": "2,363",
+     "shares": "92,846,197"
+    },
+    {
+     "positions": "Decreased Positions",
+     "holders": "1,597",
+     "shares": "97,369,810"
+    },
+    {
+     "positions": "Held Positions",
+     "holders": "165",
+     "shares": "803,283,815"
+    },
+    {
+     "positions": "Total Institutional Shares",
+     "holders": "4,125",
+     "shares": "993,499,822"
+    }
+   ]
+  },
+  "newSoldOutPositions": {
+   "asOf": null,
+   "headers": {
+    "positions": "Active Positions",
+    "holders": "Holders",
+    "shares": "Shares"
+   },
+   "rows": [
+    {
+     "positions": "New Positions",
+     "holders": "1,057",
+     "shares": "10,362,396"
+    },
+    {
+     "positions": "Sold Out Positions",
+     "holders": "121",
+     "shares": "3,519,170"
+    }
+   ]
+  },
+  "holdingsTransactions": {
+   "totalRecords": "4125",
+   "institutionalHolders": "4,125 Institutional Holders",
+   "sharesHeld": "993,499,822 Total Shares Held",
+   "table": {
+    "asOf": null,
+    "headers": {
+     "ownerName": "Owner Name",
+     "date": "Date",
+     "sharesHeld": "Shares Held",
+     "sharesChange": "Change (Shares)",
+     "sharesChangePCT": "Change (%)",
+     "marketValue": "Value (In 1,000s)"
+    },
+    "rows": [
+     {
+      "ownerName": "Vanguard Group Inc",
+      "date": "12/31/2025",
+      "sharesHeld": "106,608,094",
+      "sharesChange": "1,954,644",
+      "sharesChangePCT": "1.868%",
+      "marketValue": "$114,271,084",
+      "url": "/market-activity/institutional-portfolio/vanguard-group-inc-61322"
+     }
+    ]
+   }
+  }
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

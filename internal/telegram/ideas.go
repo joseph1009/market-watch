@@ -53,16 +53,20 @@ func RenderIdeas(ideas []model.Idea, cited []model.Article, opts IdeasOptions) [
 	}
 	segs := []segment{{blocks: []string{"<b>🔎 Worth a closer look</b>\n" + note}}}
 
+	// The companies the reader follows come first: they are the ones a
+	// verdict is most likely to be acted on, and the screen chose them only
+	// where the move and the news did not fit.
 	for _, group := range []struct {
-		heading   string
-		connected bool
+		heading string
+		in      func(model.Idea) bool
 	}{
-		{"In the news", false},
-		{"Connected to today's news", true},
+		{"Companies you follow", func(i model.Idea) bool { return i.Followed }},
+		{"In the news", func(i model.Idea) bool { return !i.Followed && !i.Connected }},
+		{"Connected to today's news", func(i model.Idea) bool { return !i.Followed && i.Connected }},
 	} {
 		var blocks []string
 		for _, idea := range ideas {
-			if idea.Connected == group.connected {
+			if group.in(idea) {
 				blocks = append(blocks, renderIdea(idea, cited))
 			}
 		}
@@ -89,6 +93,9 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	if idea.Confidence != "" {
 		b.WriteString(" · " + escape(idea.Confidence) + " confidence")
 	}
+	if word := reactionWord(idea.Reaction); word != "" {
+		b.WriteString(" · " + word)
+	}
 	if !idea.Accounts {
 		b.WriteString(" · <i>no SEC accounts behind it</i>")
 	}
@@ -100,6 +107,15 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 		}
 	}
 
+	if idea.Changed != "" {
+		b.WriteString("\n<i>What changed:</i> " + linkCitations(escape(idea.Changed), cited))
+	}
+	if idea.Moved != "" {
+		b.WriteString("\n<i>The move:</i> " + escape(idea.Moved))
+	}
+	if idea.Reaction != "" {
+		b.WriteString("\n<i>Justified?</i> " + escape(idea.Reaction))
+	}
 	if idea.Case != "" {
 		b.WriteString("\n" + linkCitations(escape(idea.Case), cited))
 	}
@@ -110,4 +126,20 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 		b.WriteString("\n<i>Risk:</i> " + escape(idea.Risk))
 	}
 	return b.String()
+}
+
+// reactionWord is the judgment at the head of the REACTION field, for the
+// verdict line: "underreacted", "overreacted" or "matched", or nothing when
+// the field opens some other way.
+func reactionWord(reaction string) string {
+	words := strings.Fields(reaction)
+	if len(words) == 0 {
+		return ""
+	}
+	first := strings.ToLower(strings.Trim(words[0], ".,:;-–—"))
+	switch first {
+	case "overreacted", "underreacted", "matched":
+		return first
+	}
+	return ""
 }

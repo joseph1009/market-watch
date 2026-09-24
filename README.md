@@ -7,8 +7,12 @@ Each evening, US time, it reads about forty news feeds and runs about fifteen
 news searches. It also reads the SEC's recent filings and prices every company
 it follows. A model sorts the day's articles into the reader's sectors, and a
 second pass checks where each one landed. Opus then writes the brief, section
-by section, from what survived. Between briefs the bot answers commands, the
-largest of which reads a company's filed accounts and writes them up.
+by section, from what survived. An hour later it sends a closer look at about
+twenty companies -- new names from the day's news and the market's largest
+moves, and followed companies whose move and news do not fit -- each with a
+buy, hold or sell verdict. Between briefs the bot answers commands, the largest
+of which reads a company's filed accounts, results and analysts' expectations
+and writes them up.
 
 Every model call goes through Claude Code, run headless on the machine, on a
 Claude subscription. There is no API key and no API spend.

@@ -56,6 +56,22 @@ var Indicators = []Indicator{
 	{ID: "CPILFESL", Label: "US core inflation, excluding food and energy, change from a year earlier (core CPI)", Unit: "%", Units: "pc1", Monthly: true},
 }
 
+// Backdrop are the prices behind the sectors: what an oil producer sells, what
+// a builder pays for copper, what a lender or a leveraged buyer borrows at, and
+// the dollar that every exporter's sales are converted from. A share's move
+// means something different when the commodity it follows moved the same way,
+// so the closer look and /analyse read these beside a company's own figures.
+var Backdrop = []Indicator{
+	{ID: "DGS10", Label: "US 10-year Treasury yield", Unit: "%"},
+	{ID: "DCOILWTICO", Label: "West Texas crude oil, US$ a barrel"},
+	{ID: "DCOILBRENTEU", Label: "Brent crude oil, US$ a barrel"},
+	{ID: "DHHNGSP", Label: "Henry Hub natural gas, US$ per million British thermal units"},
+	{ID: "PCOPPUSDM", Label: "Copper, US$ a tonne, monthly average", Monthly: true},
+	{ID: "DTWEXBGS", Label: "The dollar against a broad basket of currencies, as an index"},
+	{ID: "BAMLH0A0HYM2", Label: "Extra yield on high-yield company bonds over Treasuries (the credit spread)", Unit: "%"},
+	{ID: "T10YIE", Label: "Inflation the bond market expects over ten years (the breakeven rate)", Unit: "%"},
+}
+
 // Reading is the latest value of a series and how far it has moved.
 type Reading struct {
 	Indicator
@@ -75,6 +91,43 @@ func (r Reading) Change() float64 { return r.Latest - r.Previous }
 
 // WeeklyChange is the move over roughly a week of observations.
 func (r Reading) WeeklyChange() float64 { return r.Latest - r.WeekAgo }
+
+// Line writes the reading as a model should read it: the level, when, and
+// which way it has moved, in words.
+//
+// A monthly figure is dated by the month it measures, and its previous
+// reading is last month's, not yesterday's.
+func (r Reading) Line() string {
+	if r.Monthly {
+		line := fmt.Sprintf("%s: %.2f%s for %s", r.Label, r.Latest, r.Unit, r.AsOf.Format("January 2006"))
+		if r.HasPrevious {
+			line += fmt.Sprintf(", %s from the month before", DescribeMove(r.Change()))
+		}
+		return line
+	}
+	line := fmt.Sprintf("%s: %.2f%s as of %s", r.Label, r.Latest, r.Unit, r.AsOf.Format("2 Jan"))
+	if r.HasPrevious {
+		line += fmt.Sprintf(", %s since the previous session", DescribeMove(r.Change()))
+	}
+	if r.HasWeekAgo {
+		line += fmt.Sprintf(", %s over the past week", DescribeMove(r.WeeklyChange()))
+	}
+	return line
+}
+
+// DescribeMove spells a change out in words. The reader is a language model,
+// and a bare "-0.04" invites it to describe a fall as a rise.
+func DescribeMove(delta float64) string {
+	const flat = 0.005 // below this the move rounds to nothing at two decimals
+	switch {
+	case delta > flat:
+		return fmt.Sprintf("up %.2f", delta)
+	case delta < -flat:
+		return fmt.Sprintf("down %.2f", -delta)
+	default:
+		return "unchanged"
+	}
+}
 
 // FRED reads the St. Louis Fed's data service. An empty APIKey disables it: the key is free but not
 // universal, and a brief without market levels is a normal brief.

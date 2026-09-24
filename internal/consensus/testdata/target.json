@@ -1,0 +1,33 @@
+{
+ "data": {
+  "symbol": "mu",
+  "consensusOverview": {
+   "lowPriceTarget": 1100.0,
+   "highPriceTarget": 2200.0,
+   "priceTarget": 1563.04,
+   "buy": 29,
+   "sell": 0,
+   "hold": 1
+  },
+  "historicalConsensus": [
+   {
+    "z": {
+     "buy": 24,
+     "hold": 3,
+     "sell": 0,
+     "date": "09/01/2025",
+     "consensus": "Buy",
+     "latest": null
+    },
+    "x": 1756684800,
+    "y": 119.01
+   }
+  ]
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

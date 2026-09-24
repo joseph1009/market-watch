@@ -38,6 +38,7 @@ func conceptServer(t *testing.T, byTag map[string]string) *Client {
 		Lookup:  fakeLookup{},
 		HTTP:    srv.Client(),
 		BaseURL: srv.URL + "/api/xbrl/companyconcept/CIK%010d/%s/%s.json",
+		Unpaced: true,
 	}
 }
 

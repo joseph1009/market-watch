@@ -214,19 +214,35 @@ func (a *App) summarise(ticker string, series prices.Series) *model.Trading {
 // newsBudget bounds the company-news read, on the same reasoning.
 const newsBudget = 25 * time.Second
 
-// addNews attaches what has been written about the company lately.
+// addNews attaches what has been written about the company lately: the news
+// feed's headlines for it, and what two searches of the last month find
+// (searchCompany). The two run side by side, and either alone fills the
+// section; the feed's company news has been the first thing to go when
+// Finnhub stalls.
 func (a *App) addNews(ctx context.Context, snapshot *fundamentals.Snapshot) error {
-	if !a.Press.Enabled() {
-		return nil
+	var (
+		fromFeed []model.Article
+		feedErr  error
+		wg       sync.WaitGroup
+	)
+	if a.Press.Enabled() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ctx, newsBudget)
+			defer cancel()
+			fromFeed, feedErr = a.Press.Company(ctx, snapshot.Ticker, a.now())
+		}()
 	}
+	fromSearch := a.searchCompany(ctx, snapshot)
+	wg.Wait()
 
-	ctx, cancel := context.WithTimeout(ctx, newsBudget)
-	defer cancel()
-
-	if err := fundamentals.AddNews(ctx, a.Press, snapshot, a.now()); err != nil {
-		return err
+	fundamentals.SetNews(snapshot, append(fromFeed, fromSearch...))
+	a.Log.Info("company news", "ticker", snapshot.Ticker,
+		"from_feed", len(fromFeed), "from_search", len(fromSearch), "kept", len(snapshot.News))
+	if len(snapshot.News) == 0 && feedErr != nil {
+		return feedErr
 	}
-	a.Log.Info("company news", "ticker", snapshot.Ticker, "kept", len(snapshot.News))
 	return nil
 }
 

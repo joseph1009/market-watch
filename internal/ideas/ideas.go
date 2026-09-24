@@ -33,10 +33,11 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// DefaultMax is how many companies the research may propose. Each costs a
-// fetch of its accounts and a verdict, and a message of six is still read on a
-// phone; one of fifteen is skimmed.
-const DefaultMax = 6
+// DefaultMax is how many new companies the research may propose: fourteen of
+// the day's twenty, the rest being followed companies the screen chose
+// (Screener). Each costs a fetch of its accounts and a verdict, and the
+// section runs an hour after the brief, when neither holds anything up.
+const DefaultMax = 14
 
 // Completer is the model call both stages make.
 type Completer interface {
@@ -55,6 +56,23 @@ type Input struct {
 	// already follows.
 	Candidates []model.Candidate
 	Tracked    []string
+
+	// Followed are the tickers the watchlists follow, which the research
+	// must not return: they are the screen's to choose, and one found twice
+	// would take a new name's place.
+	Followed map[string]bool
+
+	// Movers are the day's largest moves among US companies nobody follows,
+	// where a new name is most likely to be found: a share that moved a
+	// fifth has a reason, and the research can go and find it.
+	Movers []Mover
+}
+
+// Mover is one of the day's largest moves across the market.
+type Mover struct {
+	Symbol, Name string
+	Percent      float64
+	DollarVolume float64
 }
 
 // Researcher proposes and verifies the companies.
@@ -82,6 +100,7 @@ func (r *Researcher) Propose(ctx context.Context, in Input) ([]model.Idea, model
 	}
 
 	found := parseIdeas(text, in.Cited)
+	found = unfollowed(found, in.Followed)
 	found, err = verify(ctx, r.Verifier, found)
 	if err != nil {
 		// Unchecked tickers are not shown, and a verdict needs a ticker, so a
@@ -125,12 +144,31 @@ func researchPrompt(in Input) string {
 		}
 	}
 
+	if len(in.Movers) > 0 {
+		b.WriteString("\nThe day's largest moves among US companies the investor does not track, with what changed hands:\n")
+		for _, m := range in.Movers {
+			fmt.Fprintf(&b, "- %s (%s) %+.1f%%, US$%.0fm traded\n", m.Name, m.Symbol, m.Percent, m.DollarVolume/1e6)
+		}
+	}
+
 	if len(in.Tracked) > 0 {
-		b.WriteString("\nCompanies the investor already tracks: ")
+		b.WriteString("\nCompanies the investor already tracks, which are judged separately and must not be chosen: ")
 		b.WriteString(strings.Join(in.Tracked, ", "))
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// unfollowed drops the US listings the watchlists follow.
+func unfollowed(ideas []model.Idea, followed map[string]bool) []model.Idea {
+	var out []model.Idea
+	for _, idea := range ideas {
+		if (idea.Exchange == "US" || idea.Exchange == "") && followed[idea.Ticker] {
+			continue
+		}
+		out = append(out, idea)
+	}
+	return out
 }
 
 var ideaLine = regexp.MustCompile(`^\s*-?\s*([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]*)\|(.+?)\s*$`)

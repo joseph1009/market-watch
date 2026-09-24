@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/config"
+	"github.com/joseph1009/market-watch/internal/consensus"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
@@ -61,6 +62,14 @@ type App struct {
 	Market *prices.History
 	Press  *prices.News
 
+	// Consensus reads what analysts expect of a company and what its
+	// insiders, short sellers and funds have done; Movers the whole US
+	// market's last two sessions. The first informs every verdict and
+	// analysis, the second is where the closer look's new names start. Either
+	// being nil costs only what it adds.
+	Consensus *consensus.Client
+	Movers    *prices.Massive
+
 	// Runs records what each brief cost and did, so the numbers that only ever
 	// reached a log can be read back with /stats.
 	Runs *history.Runs
@@ -83,7 +92,11 @@ type App struct {
 	// companies the news bears on, found with web search, each given a
 	// verdict. Scorecard records every verdict so /scorecard can say how they
 	// have done. Nil Researcher or Judge disables the section.
+	//
+	// Screener chooses the followed companies that get a verdict alongside
+	// the new names. Nil leaves the section to the new names.
 	Researcher *ideas.Researcher
+	Screener   *ideas.Screener
 	Judge      *ideas.Judge
 	Scorecard  *ideas.Scorecard
 
@@ -171,7 +184,14 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			HTTP:      &http.Client{Timeout: 30 * time.Second},
 			UserAgent: cfg.UserAgent,
 		},
+		Movers: &prices.Massive{
+			APIKey: cfg.MassiveAPIKey,
+			HTTP:   &http.Client{Timeout: 60 * time.Second},
+		},
 		prefs: prefs,
+	}
+	if cfg.Consensus {
+		a.Consensus = &consensus.Client{HTTP: &http.Client{Timeout: 20 * time.Second}}
 	}
 	covered, err := history.Load(filepath.Join(cfg.DataDir, "covered.json"))
 	if err != nil {
@@ -231,6 +251,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			Completer: rel.Plain(relay.Ideas),
 			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
 		}
+		a.Screener = &ideas.Screener{Completer: rel.Plain(relay.Screen)}
 		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts)}
 	}
 	// Loaded whether or not new verdicts are being made, so /scorecard still
@@ -269,21 +290,29 @@ var ErrNoChat = errors.New("no chat configured: send /start to the bot")
 // SendReport runs the whole pipeline and delivers the result to the owner:
 // the brief, and after it the companies worth a closer look.
 func (a *App) SendReport(ctx context.Context) error {
-	return a.brief(ctx, false)
+	return a.brief(ctx, false, false)
 }
 
-// Publish is what the schedule does each day: the brief to the owner, then the
-// same brief to the channel if there is one, then the closer look to both. A
-// channel that refuses either is reported to the owner rather than returned,
-// since the owner's copy arrived.
+// Publish sends the brief to the owner, then the same brief to the channel if
+// there is one, then the closer look to both, straight after. It is what
+// -once -share does; the schedule does the same with the closer look an hour
+// later (publishScheduled). A channel that refuses either is reported to the
+// owner rather than returned, since the owner's copy arrived.
 func (a *App) Publish(ctx context.Context) error {
-	return a.brief(ctx, true)
+	return a.brief(ctx, true, false)
+}
+
+// publishScheduled is the daily run: Publish, with the closer look queued for
+// LookDelay after the brief, which RunLooks then sends.
+func (a *App) publishScheduled(ctx context.Context) error {
+	return a.brief(ctx, true, true)
 }
 
 // brief is one whole run. The channel gets the brief before the research
 // starts, so readers are not kept waiting on minutes of web searches whose
-// result they will never see.
-func (a *App) brief(ctx context.Context, share bool) error {
+// result they will never see. With later, the closer look is queued for an
+// hour's time instead of run now.
+func (a *App) brief(ctx context.Context, share, later bool) error {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
@@ -313,7 +342,18 @@ func (a *App) brief(ctx context.Context, share bool) error {
 	if share {
 		a.shareBrief(ctx, done.sent)
 	}
-	a.sendIdeas(ctx, done, share)
+	lk := lookFrom(done.rep, share)
+	if later && a.Researcher != nil && a.Judge != nil {
+		lk.Due = a.now().Add(LookDelay)
+		err := a.queueLook(lk)
+		if err == nil {
+			a.Log.Info("closer look queued", "at", lk.Due.In(a.Cfg.DisplayLocation).Format(time.RFC1123))
+			return nil
+		}
+		// Sent now rather than not at all.
+		a.Log.Warn("could not queue the closer look; sending it now", "error", err)
+	}
+	a.sendIdeas(ctx, lk)
 	return nil
 }
 
@@ -598,7 +638,7 @@ func (a *App) RunScheduler(ctx context.Context) error {
 
 		// Only the scheduled brief goes to the channel by itself. One asked for
 		// with /now is usually a check, and waits for /share.
-		if err := a.Publish(ctx); err != nil {
+		if err := a.publishScheduled(ctx); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -629,13 +669,17 @@ func (a *App) Serve(ctx context.Context) error {
 		a.Log.Info("discarded updates queued while offline", "count", n)
 	}
 
-	errs := make(chan error, 2)
+	errs := make(chan error, 3)
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
 		errs <- a.RunScheduler(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		errs <- a.RunLooks(ctx)
 	}()
 	go func() {
 		defer wg.Done()

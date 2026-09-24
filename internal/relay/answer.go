@@ -28,6 +28,7 @@ var DefaultModels = map[string]string{
 	Names:    "haiku",
 	Brief:    "opus",
 	Ideas:    "opus",
+	Screen:   "sonnet",
 	Verdicts: "opus",
 	Analysis: "opus",
 }

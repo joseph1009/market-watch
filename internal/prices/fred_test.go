@@ -148,3 +148,17 @@ func TestObservationsWithNoUsableValuesAreAnError(t *testing.T) {
 		t.Errorf("errs = %v, want one", errs)
 	}
 }
+
+// Directions are spelled out because the reader of this block is a language
+// model, and a bare "-0.04" invites it to describe a fall as a rise.
+func TestMarketLevelsStateDirectionInWords(t *testing.T) {
+	if got := DescribeMove(-0.04); got != "down 0.04" {
+		t.Errorf("DescribeMove(-0.04) = %q", got)
+	}
+	if got := DescribeMove(0.04); got != "up 0.04" {
+		t.Errorf("DescribeMove(0.04) = %q", got)
+	}
+	if got := DescribeMove(0.001); got != "unchanged" {
+		t.Errorf("DescribeMove(0.001) = %q, want unchanged", got)
+	}
+}

@@ -164,6 +164,24 @@ type Snapshot struct {
 	// claims rather than filed facts, which the analysis is told to say.
 	News []model.Article
 
+	// Expectations is what analysts expect of the company, and what its
+	// insiders, short sellers and funds have done, written out already
+	// (consensus.Report.Facts). The accounts say what happened; this says
+	// what the price was measured against.
+	Expectations string
+
+	// Release is the company's latest results announcement in its own words,
+	// and ReleaseFrom which one. It carries what the XBRL does not: the
+	// outlook for the next quarter, and the business measures behind the
+	// totals.
+	Release     string
+	ReleaseFrom string
+
+	// Backdrop is the commodities, the dollar and the cost of money on the
+	// day, written out already (prices.Reading.Line), for the company whose
+	// fortunes follow one of them.
+	Backdrop []string
+
 	// Currency is what the company reports money in. Filers use their own:
 	// Alibaba reports in yuan, TSMC in Taiwan dollars, Toyota in yen. Printing
 	// those under a dollar heading would be a straightforward falsehood.

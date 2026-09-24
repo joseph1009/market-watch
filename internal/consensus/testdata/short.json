@@ -1,0 +1,33 @@
+{
+ "data": {
+  "symbol": "mu",
+  "shortInterestTable": {
+   "headers": {
+    "settlementDate": "Settlement Date",
+    "interest": "Short Interest",
+    "avgDailyShareVolume": "Avg. Daily Share Volume",
+    "daysToCover": "Days to Cover"
+   },
+   "rows": [
+    {
+     "settlementDate": "08/31/2026",
+     "interest": "29,705,339",
+     "avgDailyShareVolume": "25,645,506",
+     "daysToCover": 1.158306
+    },
+    {
+     "settlementDate": "08/14/2026",
+     "interest": "30,016,025",
+     "avgDailyShareVolume": "33,755,659",
+     "daysToCover": 1.0
+    }
+   ]
+  }
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

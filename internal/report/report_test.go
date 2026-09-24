@@ -392,20 +392,6 @@ func TestPromptSeparatesMarketLevelsFromArticles(t *testing.T) {
 	}
 }
 
-// Directions are spelled out because the reader of this block is a language
-// model, and a bare "-0.04" invites it to describe a fall as a rise.
-func TestMarketLevelsStateDirectionInWords(t *testing.T) {
-	if got := describeMove(-0.04); got != "down 0.04" {
-		t.Errorf("describeMove(-0.04) = %q", got)
-	}
-	if got := describeMove(0.04); got != "up 0.04" {
-		t.Errorf("describeMove(0.04) = %q", got)
-	}
-	if got := describeMove(0.001); got != "unchanged" {
-		t.Errorf("describeMove(0.001) = %q, want unchanged", got)
-	}
-}
-
 func TestPromptOmitsTheLevelsBlockWithoutData(t *testing.T) {
 	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
 	g := &Generator{Completer: fake, Now: testTime}

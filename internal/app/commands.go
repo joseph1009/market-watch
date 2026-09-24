@@ -468,7 +468,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 
 	ticker := strings.ToUpper(strings.TrimSpace(args[0]))
 	if err := a.Bot.SendMessage(ctx, msg.Chat.ID,
-		fmt.Sprintf("Reading %s's filings — about a minute.", escape(ticker))); err != nil {
+		fmt.Sprintf("Reading %s's filings, results and what analysts expect — two minutes or so.", escape(ticker))); err != nil {
 		return err
 	}
 
@@ -496,6 +496,9 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 		if err := a.addNews(ctx, &snapshot); err != nil {
 			a.Log.Warn("analysis news", "ticker", ticker, "error", err)
 		}
+		a.addExpectations(ctx, &snapshot)
+		a.addRelease(ctx, &snapshot, analysisReleaseRunes)
+		snapshot.Backdrop = a.backdrop(ctx)
 	}
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)

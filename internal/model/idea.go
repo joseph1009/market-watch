@@ -23,6 +23,12 @@ type Idea struct {
 	// for one they bear on without naming.
 	Connected bool
 
+	// Followed is a company the watchlists follow, chosen by the screen of
+	// the followed companies rather than found by the research. Only BUY and
+	// SELL are shown for one: a HOLD on a company the reader already follows
+	// tells them nothing its section would not.
+	Followed bool
+
 	// Link is how today's news bears on it, in a sentence, and Articles the
 	// stories it hangs on, in the brief's numbering.
 	Link     string
@@ -46,6 +52,24 @@ type Idea struct {
 	Case       string
 	Numbers    string
 	Risk       string
+
+	// Changed is what the news changed in the business and by how much,
+	// Moved how far the share went and against what, and Reaction whether
+	// the one fits the other: overreacted, underreacted or matched, and why.
+	// Together they are the question the section answers -- whether the
+	// price move is justified by the change.
+	Changed  string
+	Moved    string
+	Reaction string
+}
+
+// Shown reports whether the verdict belongs in the section: every verdict on
+// a company the research found, and only BUY or SELL on a followed one.
+func (i Idea) Shown() bool {
+	if i.Verdict == "" {
+		return false
+	}
+	return !i.Followed || i.Verdict != Hold
 }
 
 // Symbol is how the idea is written for a reader: "000660.KS", "RMBS".

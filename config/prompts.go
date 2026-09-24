@@ -99,7 +99,8 @@ var required = map[string][]string{
 	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
 	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
-	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CASE:", "NUMBERS:", "RISK:"},
+	"screen.system":    {"{{.Max}}", "ticker|what does not fit"},
+	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "In the business:", "In the numbers:"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }

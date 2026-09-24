@@ -58,6 +58,12 @@ func AddNews(ctx context.Context, h Headlines, snap *Snapshot, now time.Time) er
 	return nil
 }
 
+// SetNews keeps, of articles gathered from anywhere -- the news feed, a
+// search -- the ones actually about the company, as AddNews does.
+func SetNews(snap *Snapshot, articles []model.Article) {
+	snap.News = Relevant(articles, snap.Ticker, snap.Company, maxHeadlines)
+}
+
 // Relevant keeps the articles that are actually about this company, newest
 // first, with near-duplicates collapsed and no single day taking the whole
 // list.

@@ -6,10 +6,14 @@ you, and why it is worth doing.
 ## Waiting on you
 
 - **Push the repository.** Every commit is still local only.
-- **Deploy.** News search, the movers, inflation, the `config/` lists and the
-  review are built and checked locally, not yet deployed.
-  `scripts/fly-deploy.sh` now sends `TAVILY_API_KEY` from `.env` as a Fly
-  secret along with the others. The volume's `prefs.yaml` loads as it is: its
+- **Add `MASSIVE_API_KEY` to `.env`.** The closer look's research reads the
+  market's largest moves from it; without it the research works from the news
+  alone. `market-watch --check` then proves it with one request.
+- **Deploy.** News search, the movers, inflation, the `config/` lists, the
+  review, the thin-section top-up, the new data sources and the twenty-company
+  closer look are built and checked locally, not yet deployed.
+  `scripts/fly-deploy.sh` sends `TAVILY_API_KEY` and `MASSIVE_API_KEY` from
+  `.env` as Fly secrets along with the others. The volume's `prefs.yaml` loads as it is: its
   old copies of the watchlists and feeds are ignored from then on.
 
 ## Reliability
@@ -63,14 +67,26 @@ you, and why it is worth doing.
   `config/companies.yaml` would go without a price, a moves line or a mover
   search. Giving companies an exchange and spelling it with `ChartSymbol`
   would fix it.
+- **Judge the twenty-company closer look after two weeks.** Read a fortnight
+  of them for two things. Whether the followed companies the screen picks are
+  real mismatches rather than big moves, and whether the new names include the
+  market's movers with a reason, not only the day's headline companies. And
+  what it costs the plan: the `look` runs' ledgers in `relay/` have the sizes.
+  If it is too much, `ideas.DefaultMax` and `ideas.DefaultPicks` are the two
+  numbers to lower.
 - **Judge the verdicts after three months.** `/scorecard` will by then hold a
   few hundred. If BUY is not ahead of the index more often than not, or SELL
   not behind it, the verdicts are adding nothing the index would not, and
   should change or stop. Worth checking separately: the companies found in
-  the news against the connected ones.
+  the news against the connected ones, and the followed companies the screen
+  chose against the new names.
 - **Promotion.** A command to move a name from "new names in the news" straight
   into a sector. `/watchlist add <sector> <ticker> <name>` already does the
   work; this would just save the typing.
+- **Market-wide movers in the brief.** Massive's two sessions already name the
+  day's largest moves across the market for the closer look. A line of them in
+  the overview -- the ten biggest moves among companies of some size, followed
+  or not -- would give the brief the same view, for no extra request.
 - **Tickers for the companies followed by name.** Morgan Stanley, Moderna and
   Spotify are followed by name alone, which leaves them without a price, a
   moves line or filings. Their tickers were left out because MS and SPOT match
@@ -91,6 +107,11 @@ you, and why it is worth doing.
   against its averages, or free cash flow against capital spending, would carry
   more of it in less space. Telegram takes images; drawing one means a Go
   plotting library.
+- **Peers beside the company.** The SEC's frames API returns one figure for
+  every filer for one period in a single request -- every company's revenue
+  for the second quarter, say. Set against the companies in the same SIC code,
+  it would let the analysis and the verdicts say whether a margin or a growth
+  rate is high for the industry, which today they are told not to judge.
 - **Companies with no US listing.** The analysis reads SEC filings, so Tencent,
   Keyence and anything without a US listing are not covered. Japan's EDINET is a
   free XBRL API and would cover Tokyo; Hong Kong and mainland Europe need a paid
@@ -129,12 +150,22 @@ you, and why it is worth doing.
   subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
-- Worth a closer look: after the brief, up to six companies the news bears on,
-  found with web search, each with a buy, hold or sell verdict from its trading
-  and SEC accounts. It goes to the channel with the daily brief, under a note
-  saying a model wrote it and that it is not advice; `/now` keeps it to you.
-  `/scorecard` measures every verdict against the S&P 500 once it is a week
-  old.
+- Worth a closer look: an hour after the brief, about twenty companies, each
+  with a buy, hold or sell verdict. Up to fourteen new names found with web
+  search from the news and the market's largest moves (Massive); up to six
+  followed companies, chosen by a screen of all of them where the move and the
+  news do not fit, and shown only as BUY or SELL. Each verdict says what
+  changed, how the share moved and whether the move was justified, with two to
+  four numbers and the biggest risk, from its trading, SEC accounts, latest
+  results release and what analysts expect. It goes to the channel with the
+  daily brief, under a note saying a model wrote it and that it is not advice;
+  `/now` keeps it to you. `/scorecard` measures every verdict against the S&P
+  500 once it is a week old.
+- More data behind the verdicts and `/analyse`: analysts' forecasts and their
+  revisions, price targets, results against forecast, insider trades, short
+  interest and fund holdings (Nasdaq); the latest results release (SEC); oil,
+  gas, copper, the dollar, the credit spread and inflation expectations (FRED);
+  and for `/analyse`, two news searches of the company's last month (Tavily).
 - A channel for other readers: the daily brief is posted there too, and
   `/share` posts the latest brief or analysis. Readers can only read.
 - The watchlist as files: `config/sectors.yaml` describes each section,

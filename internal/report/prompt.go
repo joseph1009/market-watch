@@ -337,39 +337,9 @@ func renderMarketData(levels []prices.Reading) string {
 	var b strings.Builder
 	b.WriteString("\nMarket levels, as reported by FRED. These are measured values, not claims made by any article -- use them to anchor the macro section, and do not attribute them to a source:\n")
 	for _, r := range levels {
-		// A monthly figure is dated by the month it measures, and its previous
-		// reading is last month's, not yesterday's.
-		if r.Monthly {
-			fmt.Fprintf(&b, "- %s: %.2f%s for %s", r.Label, r.Latest, r.Unit, r.AsOf.Format("January 2006"))
-			if r.HasPrevious {
-				fmt.Fprintf(&b, ", %s from the month before", describeMove(r.Change()))
-			}
-			b.WriteString("\n")
-			continue
-		}
-		fmt.Fprintf(&b, "- %s: %.2f%s as of %s",
-			r.Label, r.Latest, r.Unit, r.AsOf.Format("2 Jan"))
-		if r.HasPrevious {
-			fmt.Fprintf(&b, ", %s since the previous session", describeMove(r.Change()))
-		}
-		if r.HasWeekAgo {
-			fmt.Fprintf(&b, ", %s over the past week", describeMove(r.WeeklyChange()))
-		}
-		b.WriteString("\n")
+		b.WriteString("- " + r.Line() + "\n")
 	}
 	return b.String()
-}
-
-func describeMove(delta float64) string {
-	const flat = 0.005 // below this the move rounds to nothing at two decimals
-	switch {
-	case delta > flat:
-		return fmt.Sprintf("up %.2f", delta)
-	case delta < -flat:
-		return fmt.Sprintf("down %.2f", -delta)
-	default:
-		return "unchanged"
-	}
 }
 
 // renderPrices writes what shares actually did.

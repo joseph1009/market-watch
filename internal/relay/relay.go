@@ -37,6 +37,7 @@ const (
 	Brief    = "brief"    // writing the brief
 	Names    = "names"    // spotting companies no watchlist tracks
 	Ideas    = "ideas"    // researching companies worth a closer look
+	Screen   = "screen"   // choosing which followed companies to look at
 	Verdicts = "verdicts" // judging each of them
 	Analysis = "analysis" // writing up one company's accounts
 )
