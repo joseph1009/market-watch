@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -94,5 +95,34 @@ func TestParseClockTimeRejectsGarbage(t *testing.T) {
 	}
 	if got, err := ParseClockTime(" 08:05 "); err != nil || got.String() != "08:05" {
 		t.Errorf("ParseClockTime(\" 08:05 \") = %v, %v; want 08:05, nil", got, err)
+	}
+}
+
+// Every credential can reach an error's text -- Finnhub's key sits in the
+// query string that net/http repeats when a request times out -- so every one
+// is in the list the log and the chat messages are scrubbed of.
+func TestSecretsNameEveryCredential(t *testing.T) {
+	keys := map[string]string{
+		"TELEGRAM_BOT_TOKEN":      "123456:telegram-secret",
+		"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-claude-secret",
+		"FINNHUB_API_KEY":         "finnhub-secret",
+		"FRED_API_KEY":            "fred-secret-value",
+		"TAVILY_API_KEY":          "tvly-secret-value",
+		"MASSIVE_API_KEY":         "massive-secret",
+		"TWELVEDATA_API_KEY":      "twelvedata-secret",
+	}
+	for name, value := range keys {
+		t.Setenv(name, value)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, list := range [][]string{cfg.Secrets(), SecretsFromEnv()} {
+		for name, value := range keys {
+			if !slices.Contains(list, value) {
+				t.Errorf("%s is not among the secrets scrubbed", name)
+			}
+		}
 	}
 }

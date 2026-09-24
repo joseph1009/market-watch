@@ -109,7 +109,7 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		// The reply is a second route out for an error's text, and errors are
 		// where a credential ends up. The logger scrubs its own output; this
 		// path has to scrub its own.
-		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
+		clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
 		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
 	}
 }

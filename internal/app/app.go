@@ -877,7 +877,7 @@ func (a *App) reportFailure(ctx context.Context, cause error) {
 
 	// The error is the other route a credential can take out of the process, so
 	// it is scrubbed exactly as the log is.
-	clean := logging.Scrub(cause.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
+	clean := logging.Scrub(cause.Error(), a.Cfg.Secrets()...)
 	next := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
 
 	text := fmt.Sprintf(

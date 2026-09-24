@@ -302,6 +302,36 @@ var stageModelVars = map[string]string{
 	"analysis": "MODEL_ANALYSIS",
 }
 
+// secretVars are the environment variables that hold credentials. Any of them
+// can end up in an error's text: the Telegram token sits in the request path,
+// and Finnhub and FRED take their keys in the query string, which net/http
+// repeats in every failed request's error. A Finnhub timeout printed its key
+// that way. TWELVEDATA_API_KEY is no longer read, but may still be set.
+var secretVars = []string{
+	"TELEGRAM_BOT_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "FINNHUB_API_KEY",
+	"FRED_API_KEY", "TAVILY_API_KEY", "MASSIVE_API_KEY", "TWELVEDATA_API_KEY",
+}
+
+// Secrets are the credentials this configuration holds, for scrubbing out of
+// the log and out of anything sent to the chat.
+func (c *Config) Secrets() []string {
+	return []string{
+		c.TelegramBotToken, c.ClaudeToken, c.FinnhubAPIKey,
+		c.FREDAPIKey, c.TavilyAPIKey, c.MassiveAPIKey,
+		os.Getenv("TWELVEDATA_API_KEY"),
+	}
+}
+
+// SecretsFromEnv reads the same credentials straight from the environment,
+// for the path where the configuration itself failed to load.
+func SecretsFromEnv() []string {
+	out := make([]string, 0, len(secretVars))
+	for _, name := range secretVars {
+		out = append(out, os.Getenv(name))
+	}
+	return out
+}
+
 // PrefsPath is where the user-editable preferences file lives on the volume.
 func (c *Config) PrefsPath() string { return filepath.Join(c.DataDir, "prefs.yaml") }
 

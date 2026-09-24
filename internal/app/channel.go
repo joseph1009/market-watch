@@ -106,7 +106,7 @@ func (a *App) shareBrief(ctx context.Context, d *delivery) {
 	if owner == 0 {
 		return
 	}
-	clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
+	clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
 	text := fmt.Sprintf(
 		"Today's brief reached you but not the channel.\n\n<i>%s</i>\n\nSend /share to post it again. If part of it did arrive, that part will appear twice.",
 		escape(clean))
@@ -134,7 +134,7 @@ func (a *App) shareIdeas(ctx context.Context, messages []string) {
 		if owner == 0 {
 			return
 		}
-		clean := logging.Scrub(err.Error(), a.Cfg.TelegramBotToken, a.Cfg.ClaudeToken)
+		clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
 		text := fmt.Sprintf(
 			"Today's closer look reached you but not the channel.\n\n<i>%s</i>\n\nThere is no command to post it again: it goes with the daily run or not at all.",
 			escape(clean))

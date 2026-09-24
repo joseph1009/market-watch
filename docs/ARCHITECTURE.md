@@ -339,7 +339,7 @@ twenty companies (`ideas.LookSize`), found in two halves at once:
 ### Startup
 
 [`main`](../cmd/market-watch/main.go#L27) parses five flags — `--once`, `--share`,
-`--check`, `--clear`, `--fold` — and calls [`run`](../cmd/market-watch/main.go#L58), which:
+`--check`, `--clear`, `--fold` — and calls [`run`](../cmd/market-watch/main.go#L57), which:
 
 - [`config.Load`](../config/config.go#L180) reads the environment (and
   `.env` via [`LoadDotEnv`](../config/dotenv.go#L22)), reporting every
@@ -349,12 +349,15 @@ twenty companies (`ideas.LookSize`), found in two halves at once:
   process here rather than four hours later when a reply cannot be parsed;
 - wraps the log handler in [`logging.New`](../internal/logging/scrub.go#L35) so
   every line passes through the scrubber. This exists because `net/http` puts
-  the request URL into connection errors, and the bot token lives in that URL;
+  the request URL into connection errors, and the bot token lives in that URL,
+  as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
+  credential the configuration holds (`config.Secrets`), and the error text
+  sent to the chat is scrubbed of the same list;
 - [`app.New`](../internal/app/app.go#L132) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
-`--check` runs [`runCheck`](../cmd/market-watch/main.go#L197): Telegram, the
+`--check` runs [`runCheck`](../cmd/market-watch/main.go#L195): Telegram, the
 channel, the feeds, the search key, the schedule and Claude Code, each reported
 separately. The search key is proved with
 [`search.Client.Usage`](../internal/search/search.go#L302), which costs nothing; a
@@ -362,7 +365,7 @@ test search would spend a credit. Tavily's count of credits used runs late, so
 the run record keeps its own, from each search's reply. This
 is what the deploy script runs on the machine afterwards.
 
-`--fold` runs [`runFold`](../cmd/market-watch/main.go#L136) and nothing else: it
+`--fold` runs [`runFold`](../cmd/market-watch/main.go#L134) and nothing else: it
 writes the watchlist and feed changes made from Telegram, as
 [scripts/sync-from-fly.sh](../scripts/sync-from-fly.sh) has just copied them into
 `./data`, into the files in `config/`. It needs no credentials and sends nothing.

@@ -128,7 +128,7 @@ func liveService(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}
-	log := slog.New(logging.New(slog.NewTextHandler(os.Stderr, nil), cfg.TelegramBotToken, cfg.ClaudeToken))
+	log := slog.New(logging.New(slog.NewTextHandler(os.Stderr, nil), cfg.Secrets()...))
 	service, err := New(cfg, log)
 	if err != nil {
 		t.Fatalf("app: %v", err)

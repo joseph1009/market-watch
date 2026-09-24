@@ -49,8 +49,7 @@ func main() {
 		// The logger may not exist yet when configuration is what failed, so
 		// this path scrubs from the environment directly rather than relying on
 		// the handler.
-		fmt.Fprintln(os.Stderr, "market-watch:", logging.Scrub(err.Error(),
-			os.Getenv("TELEGRAM_BOT_TOKEN"), os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")))
+		fmt.Fprintln(os.Stderr, "market-watch:", logging.Scrub(err.Error(), config.SecretsFromEnv()...))
 		os.Exit(1)
 	}
 }
@@ -72,10 +71,9 @@ func run(once, share, check, clear bool) error {
 	// would mean finding every call site, and the leak that prompted this was
 	// one nobody had thought of: net/http puts the request URL into connection
 	// errors, and the bot token lives in that URL.
-	secrets := []string{cfg.TelegramBotToken, cfg.ClaudeToken}
 	log := slog.New(logging.New(
 		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}),
-		secrets...,
+		cfg.Secrets()...,
 	))
 	slog.SetDefault(log)
 
