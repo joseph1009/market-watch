@@ -397,12 +397,12 @@ func TestNoPriceMeansNoValuationBlock(t *testing.T) {
 }
 
 // The case for and against each weigh the business and the figures equally, as
-// two labelled groups, so neither a ratio-only case nor a story-only one gets
-// through. The labels are what the reader scans for.
+// two groups under their own sub-headings, so neither a ratio-only case nor a
+// story-only one gets through. The sub-headings are what the reader scans for.
 func TestSystemPromptBalancesTheBusinessAndTheNumbers(t *testing.T) {
 	for _, want := range []string{
-		`"In the business:"`,
-		`"In the numbers:"`,
+		`"### In the business"`,
+		`"### In the numbers"`,
 		"Neither group outranks the other",
 		"do not bring in market shares, customers or events from memory",
 	} {

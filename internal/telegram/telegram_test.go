@@ -61,7 +61,7 @@ func TestRenderIncludesProseSectionsAndFooter(t *testing.T) {
 		"Market Watch",
 		"Chips led the tape.",
 		"Breadth was narrow.",
-		"<b>Semiconductors &amp; AI</b>",
+		"<b>SEMICONDUCTORS &amp; AI</b>",
 		"NVDA carried the group.",
 		`<a href="https://example.com/a?x=1&amp;y=2">NVDA beats</a>`,
 		"<i>42 articles from 7 sources</i>",
@@ -182,7 +182,7 @@ func TestRenderSeparatesSections(t *testing.T) {
 	if !strings.Contains(out, divider) {
 		t.Errorf("no visual break between sections:\n%s", out)
 	}
-	if !strings.Contains(out, "<b>Overview</b>") {
+	if !strings.Contains(out, "<b>OVERVIEW</b>") {
 		t.Errorf("the overview is unlabelled:\n%s", out)
 	}
 }
@@ -605,7 +605,7 @@ func TestRenderPutsQuietAboveTheLastSectionsSources(t *testing.T) {
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
 
-	quiet := strings.Index(out, "<b>Quiet today</b>")
+	quiet := strings.Index(out, "<b>QUIET TODAY</b>")
 	sources := strings.Index(out, "<b>Sources</b>")
 	body := strings.Index(out, "NVDA carried the group.")
 	stats := strings.Index(out, "articles from")
@@ -637,11 +637,11 @@ func TestRenderShowsTheQuietBlockOnce(t *testing.T) {
 	rep.QuietGroups = []string{"Energy"}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	if got := strings.Count(out, "<b>Quiet today</b>"); got != 1 {
+	if got := strings.Count(out, "<b>QUIET TODAY</b>"); got != 1 {
 		t.Errorf("the quiet block appears %d times, want once", got)
 	}
 	// And on the last section, not the first.
-	if strings.Index(out, "<b>Quiet today</b>") < strings.Index(out, "Rates did the work.") {
+	if strings.Index(out, "<b>QUIET TODAY</b>") < strings.Index(out, "Rates did the work.") {
 		t.Errorf("the quiet block landed on the wrong section:\n%s", out)
 	}
 }
@@ -653,14 +653,14 @@ func TestRenderShowsQuietWithNoSectionsAtAll(t *testing.T) {
 	rep.QuietGroups = []string{"Energy", "Big Tech"}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	if !strings.Contains(out, "<b>Quiet today</b>") {
+	if !strings.Contains(out, "<b>QUIET TODAY</b>") {
 		t.Errorf("the quiet block vanished when there were no sections:\n%s", out)
 	}
 }
 
 func TestRenderOmitsQuietWhenEveryWatchlistHadNews(t *testing.T) {
 	out := strings.Join(Render(testReport(), time.UTC), "\n")
-	if strings.Contains(out, "Quiet today") {
+	if strings.Contains(out, "QUIET TODAY") {
 		t.Errorf("rendered a quiet block with nothing quiet:\n%s", out)
 	}
 }
@@ -826,7 +826,7 @@ func TestRenderKeepsEachSectionInOneMessage(t *testing.T) {
 		t.Fatalf("got %d messages; the fixture should span several", len(msgs))
 	}
 	for i := range rep.Sections {
-		heading := messageContaining(msgs, fmt.Sprintf("<b>Sector %d</b>", i))
+		heading := messageContaining(msgs, fmt.Sprintf("<b>SECTOR %d</b>", i))
 		closes := messageContaining(msgs, fmt.Sprintf("Section %d closes.", i))
 		if heading != closes {
 			t.Errorf("Sector %d opens in message %d but closes in message %d", i, heading, closes)
@@ -855,7 +855,7 @@ func TestRenderKeepsAHeadingWithItsProseWhenASectionMustSplit(t *testing.T) {
 	rep.Sections = []model.Section{{GroupID: "big", GroupName: "Big Section", Body: strings.Join(paras, "\n\n")}}
 
 	msgs := Render(rep, time.UTC)
-	heading := messageContaining(msgs, "<b>Big Section</b>")
+	heading := messageContaining(msgs, "<b>BIG SECTION</b>")
 	if heading < 0 {
 		t.Fatal("heading missing")
 	}
@@ -985,7 +985,7 @@ func TestSourcesOffOmitsTheSourceList(t *testing.T) {
 		t.Errorf("the general news list survived with sources off:\n%s", out)
 	}
 	// The brief itself has to be untouched.
-	for _, want := range []string{"Market Watch", "<b>Overview</b>", "articles from"} {
+	for _, want := range []string{"Market Watch", "<b>OVERVIEW</b>", "articles from"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("sources off also removed %q:\n%s", want, out)
 		}
@@ -1071,7 +1071,7 @@ func TestRenderNewNamesSection(t *testing.T) {
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
 
-	if !strings.Contains(out, "<b>New names in the news</b>") {
+	if !strings.Contains(out, "<b>NEW NAMES IN THE NEWS</b>") {
 		t.Errorf("no new-names section:\n%s", out)
 	}
 	if !strings.Contains(out, "Not recommendations") {
@@ -1282,7 +1282,7 @@ func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
 		"Worth a closer look",
 		"/scorecard",
 		"<b>In the news</b>",
-		"• <b>Micron</b> <code>MU</code> · +4.1% today",
+		"⚪ <b>Micron</b> <code>MU</code> · +4.1% today",
 		"<b>HOLD</b> · medium confidence",
 		`Priced for it already <a href="https://example.com/1">[1]</a>.`,
 		"<i>Numbers:</i> 25x earnings",
@@ -1307,7 +1307,7 @@ func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
 	// has never seen this before is told what wrote it and that it is not advice.
 	forChannel := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{ForChannel: true}), "\n")
 	for _, want := range []string{
-		"• <b>Micron</b>",
+		"<b>Micron</b>",
 		"<b>HOLD</b> · medium confidence",
 		"an AI model",
 		"nobody checking its work",
@@ -1332,7 +1332,7 @@ func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
 
-	want := "<b>Semiconductors &amp; AI</b>\n<i>Biggest moves: NVDA -6.2% · AMD +3.1%</i>"
+	want := "<b>SEMICONDUCTORS &amp; AI</b>\n<i>Biggest moves: NVDA -6.2% · AMD +3.1%</i>"
 	if !strings.Contains(out, want) {
 		t.Errorf("rendered brief lacks %q under the heading:\n%s", want, out)
 	}
@@ -1353,7 +1353,7 @@ func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
 			Verdict: model.Buy, Confidence: "high", Accounts: true,
 			Changed:  "Next year's expected earnings rose 4% to 158.67 a share [1].",
 			Moved:    "Down 9% in a week and 3% today, against a flat S&P 500.",
-			Reaction: "Underreacted: the outlook rose and the price fell."},
+			Reaction: "Underreacted: the outlook rose and the price fell [1].", Quote: &model.Quote{Percent: -3}},
 	}
 	out := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{}), "\n")
 
@@ -1363,6 +1363,8 @@ func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
 		`<i>What changed:</i> Next year's expected earnings rose 4% to 158.67 a share <a href="https://example.com/1">[1]</a>.`,
 		"<i>The move:</i> Down 9% in a week",
 		"<i>Justified?</i> Underreacted: the outlook rose",
+		"🟢 <b>Micron</b> <code>MU</code>\n<b>BUY</b>", // today's move is in the move's own line
+		`the price fell <a href="https://example.com/1">[1]</a>.`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("closer look is missing %q:\n%s", want, out)
@@ -1373,5 +1375,100 @@ func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
 	}
 	if strings.Contains(out, "medium confidence · ") {
 		t.Error("a verdict without a reaction was given one")
+	}
+	if strings.Contains(out, "Forecasts up while the share fell") {
+		t.Error("the research's reason was repeated beside what changed")
+	}
+}
+
+// Each part of a verdict is a paragraph of its own, the figures are listed one
+// to a line, and a short rule separates one company from the next -- but
+// never opens a message, where it would be drawn under nothing.
+func TestTheCloserLookIsSpacedOut(t *testing.T) {
+	idea := func(name string) model.Idea {
+		return model.Idea{Name: name, Ticker: name, Exchange: "US", Accounts: true,
+			Verdict: model.Sell, Confidence: "medium",
+			Changed:  "An order with no value attached.",
+			Moved:    "+4.4% today, +15.5% in a week",
+			Reaction: "Overreacted: a headline, no revenue.",
+			Case:     "Priced for a contract it has not won.",
+			Numbers:  "56 times revenue; free cash flow -$273m;  ; cash $2.1bn",
+			Risk:     "A real contract."}
+	}
+	// Enough of them to run over one message.
+	ideas := []model.Idea{idea("IONQ"), idea("QBTS")}
+	for _, name := range []string{"RGTI", "QUBT", "ARQQ", "LAES", "QMCO", "HON", "IBM", "GOOGL", "MSFT", "NVDA"} {
+		ideas = append(ideas, idea(name))
+	}
+	out := RenderIdeas(ideas, nil, IdeasOptions{})
+	if len(out) < 2 {
+		t.Fatalf("twelve companies fit one message; the test needs a break between messages")
+	}
+	all := strings.Join(out, "\n")
+
+	for _, want := range []string{
+		"<b>SELL</b> · medium confidence · overreacted\n\n<i>What changed:</i> An order",
+		"value attached.\n\n<i>The move:</i> +4.4% today, +15.5% in a week\n<i>Justified?</i> Overreacted",
+		"no revenue.\n\n<i>The case:</i> Priced for",
+		"<i>Numbers</i>\n• 56 times revenue\n• free cash flow -$273m\n• cash $2.1bn\n\n<i>Risk:</i> A real contract.",
+		"A real contract.\n\n" + companyRule + "\n🔴 <b>QBTS</b>",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("closer look is missing %q:\n%s", want, all)
+		}
+	}
+	for i, msg := range out {
+		if strings.HasPrefix(msg, companyRule) || strings.HasPrefix(msg, divider) {
+			t.Errorf("message %d opens with a rule:\n%s", i, msg)
+		}
+		// Within a message, a rule before every company but the first.
+		companies, rules := strings.Count(msg, "🔴 <b>"), strings.Count(msg, "\n"+companyRule+"\n")
+		if companies > 0 && rules != companies-1 {
+			t.Errorf("message %d has %d rules between %d companies:\n%s", i, rules, companies, msg)
+		}
+	}
+}
+
+// The brief's points sit under bold sub-headings, below a section heading in
+// capitals, with a blank line between bullets. A sub-heading written with a
+// blank line under it still heads its bullets, and one with a dash in it is
+// not bolded twice.
+func TestTheBriefIsSubheadingsAndBullets(t *testing.T) {
+	rep := testReport()
+	rep.Sections[0].Body = "### Oil & gas\n- Brent topped $100 as talks stalled.\n- Refiners fell.\n\n" +
+		"### Fed\n\n- Williams said another rise is reasonable.\n\n### Trump - Xi\n- The truce runs to 10 January."
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+
+	for _, want := range []string{
+		"<b>SEMICONDUCTORS &amp; AI</b>",
+		"<b>Oil &amp; gas</b>\n• Brent topped $100 as talks stalled.\n\n• Refiners fell.\n\n<b>Fed</b>\n• Williams said",
+		"<b>Trump - Xi</b>\n• The truce",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("brief is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "###") {
+		t.Errorf("a sub-heading marker reached the reader:\n%s", out)
+	}
+}
+
+// The analysis's sections are ruled off in capitals, with bold sub-headings
+// under them -- the case for and against among them -- even where a heading
+// was written straight onto its first sub-heading.
+func TestTheAnalysisIsSubheadingsAndBullets(t *testing.T) {
+	body := "WHAT THE COMPANY EARNS\n\n### Revenue\n- US$26.1bn → US$79.0bn, +203%.\n\n" +
+		"THE CASE FOR IT\n### In the business\n- Demand for HBM.\n\n### In the numbers\n- Margin 76.6%."
+
+	out := strings.Join(RenderPlain("MU", body), "\n")
+
+	for _, want := range []string{
+		divider + "\n<b>WHAT THE COMPANY EARNS</b>\n\n<b>Revenue</b>\n• US$26.1bn",
+		divider + "\n<b>THE CASE FOR IT</b>\n\n<b>In the business</b>\n• Demand for HBM.\n\n<b>In the numbers</b>\n• Margin 76.6%.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("analysis is missing %q:\n%s", want, out)
+		}
 	}
 }

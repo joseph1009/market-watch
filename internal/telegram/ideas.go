@@ -66,9 +66,16 @@ func RenderIdeas(ideas []model.Idea, cited []model.Article, opts IdeasOptions) [
 	} {
 		var blocks []string
 		for _, idea := range ideas {
-			if group.in(idea) {
-				blocks = append(blocks, renderIdea(idea, cited))
+			if !group.in(idea) {
+				continue
 			}
+			// With a blank line between each part of a verdict, a blank line
+			// alone no longer says where one company ends and the next begins.
+			block := renderIdea(idea, cited)
+			if len(blocks) > 0 {
+				block = companyRule + "\n" + block
+			}
+			blocks = append(blocks, block)
 		}
 		if len(blocks) == 0 {
 			continue
@@ -78,54 +85,101 @@ func RenderIdeas(ideas []model.Idea, cited []model.Article, opts IdeasOptions) [
 	return pack(segs)
 }
 
+// companyRule separates one company from the next: shorter than the divider
+// between groups, so the two breaks can be told apart.
+const companyRule = "─────"
+
+// verdictMarks lead each company's first line, so a reader scrolling twenty
+// of them can find the BUYs and SELLs without reading.
+var verdictMarks = map[string]string{model.Buy: "🟢", model.Sell: "🔴", model.Hold: "⚪"}
+
+// renderIdea lays out one company, each part of its verdict a paragraph of
+// its own. Run together as one block, twenty of them read as a wall of text,
+// which is how the first closer look on the new verdicts arrived.
 func renderIdea(idea model.Idea, cited []model.Article) string {
-	var b strings.Builder
-
-	b.WriteString("• <b>" + escape(idea.Name) + "</b>")
+	var head strings.Builder
+	if mark := verdictMarks[idea.Verdict]; mark != "" {
+		head.WriteString(mark + " ")
+	}
+	head.WriteString("<b>" + escape(idea.Name) + "</b>")
 	if s := idea.Symbol(); s != "" {
-		b.WriteString(" <code>" + escape(s) + "</code>")
+		head.WriteString(" <code>" + escape(s) + "</code>")
 	}
-	if idea.Quote != nil {
-		b.WriteString(" · " + escape(idea.Quote.Move()) + " today")
+	// Today's move, unless the verdict gives it below with the longer ones.
+	if idea.Quote != nil && idea.Moved == "" {
+		head.WriteString(" · " + escape(idea.Quote.Move()) + " today")
 	}
 
-	b.WriteString("\n<b>" + escape(idea.Verdict) + "</b>")
+	head.WriteString("\n<b>" + escape(idea.Verdict) + "</b>")
 	if idea.Confidence != "" {
-		b.WriteString(" · " + escape(idea.Confidence) + " confidence")
+		head.WriteString(" · " + escape(idea.Confidence) + " confidence")
 	}
 	if word := reactionWord(idea.Reaction); word != "" {
-		b.WriteString(" · " + word)
+		head.WriteString(" · " + word)
 	}
 	if !idea.Accounts {
-		b.WriteString(" · <i>no SEC accounts behind it</i>")
+		head.WriteString(" · <i>no SEC accounts behind it</i>")
 	}
+	parts := []string{head.String()}
 
-	b.WriteString("\n<i>Why it is here:</i> " + linkCitations(escape(idea.Link), cited))
+	// What changed says why the company is here, in the verdict's own
+	// numbers; the research's reason is shown only where there is no verdict
+	// to say it, rather than a second time in other words. The stories behind
+	// it follow either way.
+	label, why := "What changed:", idea.Changed
+	if why == "" {
+		label, why = "Why it is here:", idea.Link
+	}
+	line := "<i>" + label + "</i> " + linkCitations(escape(why), cited)
 	for _, a := range idea.Articles {
-		if n := citationNumber(a, cited); n > 0 && !strings.Contains(idea.Link, fmt.Sprintf("[%d]", n)) {
-			b.WriteString(fmt.Sprintf(" <a href=\"%s\">[%d]</a>", escape(a.URL), n))
+		if n := citationNumber(a, cited); n > 0 && !strings.Contains(why, fmt.Sprintf("[%d]", n)) {
+			line += fmt.Sprintf(" <a href=\"%s\">[%d]</a>", escape(a.URL), n)
 		}
 	}
+	parts = append(parts, line)
 
-	if idea.Changed != "" {
-		b.WriteString("\n<i>What changed:</i> " + linkCitations(escape(idea.Changed), cited))
-	}
+	// The move and whether it was justified are one thought, and stay
+	// together.
+	var move []string
 	if idea.Moved != "" {
-		b.WriteString("\n<i>The move:</i> " + escape(idea.Moved))
+		move = append(move, "<i>The move:</i> "+escape(idea.Moved))
 	}
 	if idea.Reaction != "" {
-		b.WriteString("\n<i>Justified?</i> " + escape(idea.Reaction))
+		move = append(move, "<i>Justified?</i> "+linkCitations(escape(idea.Reaction), cited))
 	}
+	if len(move) > 0 {
+		parts = append(parts, strings.Join(move, "\n"))
+	}
+
 	if idea.Case != "" {
-		b.WriteString("\n" + linkCitations(escape(idea.Case), cited))
+		parts = append(parts, "<i>The case:</i> "+linkCitations(escape(idea.Case), cited))
 	}
-	if idea.Numbers != "" {
-		b.WriteString("\n<i>Numbers:</i> " + escape(idea.Numbers))
+	if n := renderNumbers(idea.Numbers); n != "" {
+		parts = append(parts, n)
 	}
 	if idea.Risk != "" {
-		b.WriteString("\n<i>Risk:</i> " + escape(idea.Risk))
+		parts = append(parts, "<i>Risk:</i> "+linkCitations(escape(idea.Risk), cited))
 	}
-	return b.String()
+	return strings.Join(parts, "\n\n")
+}
+
+// renderNumbers lists the figures a verdict rests on one to a line, as the
+// prompt asks for them separated by semicolons. A reply that ran them into a
+// sentence stays on one line.
+func renderNumbers(numbers string) string {
+	var items []string
+	for _, item := range strings.Split(numbers, ";") {
+		if item = strings.TrimSpace(item); item != "" {
+			items = append(items, "• "+escape(item))
+		}
+	}
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return "<i>Numbers:</i> " + strings.TrimPrefix(items[0], "• ")
+	}
+	return "<i>Numbers</i>\n" + strings.Join(items, "\n")
 }
 
 // reactionWord is the judgment at the head of the REACTION field, for the

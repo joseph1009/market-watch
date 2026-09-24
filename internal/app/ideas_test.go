@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -344,5 +345,81 @@ func TestAFollowedHoldIsLeftOutOfTheCloserLook(t *testing.T) {
 	}
 	if strings.Contains(owner, "Nvidia") {
 		t.Errorf("a followed HOLD was shown:\n%s", owner)
+	}
+}
+
+// askedFor records which companies each verdict call was asked about.
+type askedFor struct {
+	reply string
+	mu    *sync.Mutex
+	calls *[]string
+}
+
+func (s askedFor) Complete(_ context.Context, _, prompt string) (string, model.Usage, error) {
+	var symbols []string
+	for _, line := range strings.Split(prompt, "\n") {
+		if sym, ok := strings.CutPrefix(line, "=== "); ok {
+			symbols = append(symbols, sym)
+		}
+	}
+	s.mu.Lock()
+	*s.calls = append(*s.calls, strings.Join(symbols, " "))
+	s.mu.Unlock()
+	return s.reply, model.Usage{}, nil
+}
+
+// Twenty are shown every day. The research's names past those needed stand
+// by, and a followed HOLD, which is not shown, is replaced by the first of
+// them -- judged in a round of its own, so a spare is judged only when it is
+// used.
+func TestAHiddenHoldIsReplacedSoTwentyAreShown(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.prefs.Groups = []model.Group{{ID: "semis", Name: "Semis", Companies: []model.Company{
+		{Symbol: "MU", Name: "Micron"}, {Symbol: "NVDA", Name: "Nvidia"},
+	}}}
+
+	// Twenty new names, QAA to QAT, best first; every one a HOLD, which is
+	// shown for a new name.
+	var research, verdicts strings.Builder
+	verified := stubVerifier{}
+	var names []string
+	for i := range ideas.LookSize {
+		sym := fmt.Sprintf("Q%c%c", 'A'+i/26, 'A'+i%26)
+		names = append(names, sym)
+		fmt.Fprintf(&research, "Company %s|%s|US|news|1|In the news.\n", sym, sym)
+		fmt.Fprintf(&verdicts, "=== %s\nVERDICT: HOLD\nCONFIDENCE: low\n", sym)
+		verified[sym+".US"] = "COMPANY " + sym
+	}
+	verdicts.WriteString("=== MU\nVERDICT: BUY\nCONFIDENCE: high\n=== NVDA\nVERDICT: HOLD\nCONFIDENCE: medium\n")
+
+	var calls []string
+	a.Researcher = &ideas.Researcher{Completer: stubCompleter{reply: research.String()}, Verifier: verified}
+	a.Judge = &ideas.Judge{Completer: askedFor{reply: verdicts.String(), mu: &sync.Mutex{}, calls: &calls}}
+	a.Screener = &ideas.Screener{Completer: stubCompleter{reply: "MU|Forecasts up while the share fell.\nNVDA|Big run."}}
+
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+
+	owner := strings.Join(messagesTo(*sent, 4242), "\n")
+	shown := strings.Count(owner, "<code>Q") + strings.Count(owner, "<code>MU</code>")
+	if shown != ideas.LookSize {
+		t.Errorf("%d companies shown, want %d:\n%s", shown, ideas.LookSize, owner)
+	}
+	// Two followed and eighteen new are judged first; Nvidia's HOLD leaves a
+	// place, which the nineteenth takes. The twentieth is never judged.
+	stand, last := names[18], names[19]
+	if !strings.Contains(owner, "<code>"+stand+"</code>") || strings.Contains(owner, "Nvidia") {
+		t.Errorf("the stand-in %s did not take the followed HOLD's place:\n%s", stand, owner)
+	}
+	if len(calls) == 0 {
+		t.Fatal("no verdicts were asked for")
+	}
+	if calls[len(calls)-1] != stand {
+		t.Errorf("the last verdict call was for %q, want the stand-in alone; calls: %q", calls[len(calls)-1], calls)
+	}
+	for _, c := range calls {
+		if strings.Contains(c, last) {
+			t.Errorf("%s was judged though no place was left for it; calls: %q", last, calls)
+		}
 	}
 }

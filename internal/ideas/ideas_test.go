@@ -69,7 +69,7 @@ func TestResearchKeepsOnlyCompaniesWhoseTickerChecksOut(t *testing.T) {
 	if len(got[1].Articles) != 2 || got[1].Articles[1].ID != "a2" {
 		t.Errorf("SK Hynix articles = %+v, want both cited stories", got[1].Articles)
 	}
-	if !strings.Contains(c.system, "up to 14 listed companies") {
+	if !strings.Contains(c.system, "up to 20 listed companies") {
 		t.Errorf("the system prompt did not carry the limit: %q", c.system[:200])
 	}
 	if !strings.Contains(c.prompt, "[1] Micron raises HBM outlook (CNBC)") {

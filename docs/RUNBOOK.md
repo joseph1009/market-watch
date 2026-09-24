@@ -188,9 +188,11 @@ subscription.
 
 ## Worth a closer look
 
-An hour after the daily brief, a second message follows it: about twenty listed
-companies, each with a verdict. About fourteen are new names, and up to six are
-companies you follow.
+An hour after the daily brief, a second message follows it: twenty listed
+companies, each with a verdict. Up to six are companies you follow, shown only
+as BUY or SELL, and new names fill the rest. A followed HOLD is left out, and
+the next new name the research found takes its place, so there are twenty
+wherever the research found enough.
 
 1. **New names** (`ideas`, Opus with web search) start from the brief, its new
    names, and the day's fifteen largest moves among US companies nobody

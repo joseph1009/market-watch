@@ -97,7 +97,7 @@ func RenderWith(rep model.Report, opts Options) []string {
 
 	if rep.Overview != "" {
 		segs = append(segs, segment{blocks: append(
-			[]string{divider + "\n<b>Overview</b>"}, cite(paragraphs(rep.Overview), rep.Cited)...)})
+			[]string{divider + "\n<b>OVERVIEW</b>"}, cite(paragraphs(rep.Overview), rep.Cited)...)})
 	}
 
 	// Every category's prose runs uninterrupted, and the links follow at the
@@ -105,7 +105,8 @@ func RenderWith(rep model.Report, opts Options) []string {
 	// prose, links, prose, links -- the reader had to skip past a list of
 	// headlines to reach the next piece of analysis.
 	for _, s := range rep.Sections {
-		heading := fmt.Sprintf("%s\n<b>%s</b>", divider, escape(s.GroupName))
+		// In capitals, to stand above the bold sub-headings inside it.
+		heading := fmt.Sprintf("%s\n<b>%s</b>", divider, escape(strings.ToUpper(s.GroupName)))
 		// The biggest moves sit under the heading, in the same block so a
 		// message break never parts them: what the exchange did, before what
 		// was written about it.
@@ -167,7 +168,7 @@ func renderQuiet(groups []string) string {
 	if len(groups) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("<b>Quiet today</b>\n%s — nothing that warranted a section.",
+	return fmt.Sprintf("<b>QUIET TODAY</b>\n%s — nothing that warranted a section.",
 		escape(strings.Join(groups, ", ")))
 }
 
@@ -234,13 +235,29 @@ func usageLine(label string, u model.Usage) string {
 // than trusted as markup.
 func paragraphs(body string) []string {
 	var out []string
+	pending := "" // a sub-heading written with a blank line under it
 	for _, p := range strings.Split(body, "\n\n") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, emphasizeLabel(bullets(escape(p))))
+		if p = strings.TrimSpace(p); p == "" {
+			continue
 		}
+		// A sub-heading belongs to the bullets under it, so a message break
+		// can never fall between them.
+		if strings.HasPrefix(p, subheadingMarker) && !strings.Contains(p, "\n") {
+			pending += p + "\n"
+			continue
+		}
+		out = append(out, emphasizeLabel(bullets(escape(pending+p))))
+		pending = ""
+	}
+	if pending != "" {
+		out = append(out, bullets(escape(strings.TrimSpace(pending))))
 	}
 	return out
 }
+
+// subheadingMarker opens a sub-heading in the brief and the analysis: a topic
+// of a few words over the bullets that belong to it.
+const subheadingMarker = "### "
 
 // labelSeparators are what the model may put between a block's topic label and
 // its first sentence. It is asked for " - "; a hyphen is routinely typeset as a
@@ -260,8 +277,8 @@ func emphasizeLabel(block string) string {
 	if rest != "" {
 		rest = "\n" + rest
 	}
-	if strings.HasPrefix(first, "• ") {
-		return block // list items carry their own structure
+	if strings.HasPrefix(first, "• ") || strings.HasPrefix(first, "<b>") {
+		return block // list items and sub-headings carry their own structure
 	}
 
 	for _, sep := range labelSeparators {
@@ -330,6 +347,11 @@ func bullets(paragraph string) string {
 		switch group := strings.TrimSpace(line); {
 		case isBullet:
 			out = append(out, "• "+emphasizeBulletLabel(strings.TrimSpace(trimmed[2:])))
+		case strings.HasPrefix(group, subheadingMarker):
+			if previousWasBullet {
+				out = append(out, "")
+			}
+			out = append(out, "<b>"+strings.TrimSpace(group[len(subheadingMarker):])+"</b>")
 		case groupLabels[group]:
 			if previousWasBullet {
 				out = append(out, "")
@@ -344,9 +366,10 @@ func bullets(paragraph string) string {
 }
 
 // groupLabels divide the analysis's case for and case against into the
-// business and the figures. They are bolded by name rather than by shape: a
-// short line ending in a colon is also how the brief introduces a list, and
-// that line is not a heading.
+// business and the figures, as the analysis wrote them before it had
+// sub-headings; a reply written that way still reads. They are bolded by name
+// rather than by shape: a short line ending in a colon is also how the brief
+// introduces a list, and that line is not a heading.
 var groupLabels = map[string]bool{
 	"In the business:": true,
 	"In the numbers:":  true,
@@ -371,9 +394,14 @@ func pack(segs []segment) []string {
 		}
 	}
 	// A message boundary already separates what is above from what is below, so
-	// a divider opening a message would be a rule drawn under nothing.
+	// a rule opening a message -- the divider, or the closer look's shorter one
+	// between companies -- would be drawn under nothing.
 	opening := func(piece string) string {
-		return strings.TrimPrefix(piece, divider+"\n")
+		first, rest, ok := strings.Cut(piece, "\n")
+		if ok && first != "" && strings.Trim(first, "─") == "" {
+			return rest
+		}
+		return piece
 	}
 	fits := func(piece string) bool {
 		if current.Len() == 0 {
@@ -513,11 +541,19 @@ func RenderPlain(heading, body string) []string {
 	// analysis had been cut off.
 	var current *segment
 	for _, p := range paragraphs(body) {
-		if isSectionHeading(p) {
+		// A heading written straight onto its first sub-heading or bullet,
+		// with no blank line between, is still a heading.
+		heading, rest, _ := strings.Cut(p, "\n")
+		if isSectionHeading(heading) {
 			if current != nil {
 				segs = append(segs, *current)
 			}
-			current = &segment{blocks: []string{"<b>" + p + "</b>"}}
+			// Ruled off like the brief's sections, so each stands apart from
+			// the bold sub-headings inside the one before.
+			current = &segment{blocks: []string{divider + "\n<b>" + heading + "</b>"}}
+			if rest = strings.TrimSpace(rest); rest != "" {
+				current.blocks = append(current.blocks, rest)
+			}
 			continue
 		}
 		if current == nil {
@@ -606,7 +642,7 @@ func renderCandidates(candidates []model.Candidate, cited []model.Article) []str
 		return nil
 	}
 
-	blocks := []string{divider + "\n<b>New names in the news</b>\n" +
+	blocks := []string{divider + "\n<b>NEW NAMES IN THE NEWS</b>\n" +
 		"<i>Companies today's stories were about that none of your watchlists track. Not recommendations.</i>"}
 
 	for _, c := range candidates {

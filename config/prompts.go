@@ -94,14 +94,14 @@ func RenderPrompt(id string, data any) (string, error) {
 // parsers depend on, not the ones that read best: this is a check against
 // breaking the machinery, not against writing badly.
 var required = map[string][]string{
-	"brief.system":     {"## OVERVIEW", "## SECTION:"},
+	"brief.system":     {"## OVERVIEW", "## SECTION:", "### "},
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
 	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
 	"screen.system":    {"{{.Max}}", "ticker|what does not fit"},
 	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
-	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "In the business:", "In the numbers:"},
+	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }
 

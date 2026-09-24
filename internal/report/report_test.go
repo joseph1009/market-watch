@@ -618,12 +618,15 @@ func TestSectionSourcesAreOnlyWhatTheModelWasShown(t *testing.T) {
 }
 
 // The reader asked not to be handed trade shorthand: the brief has to explain
-// its terms rather than assume them.
+// its terms rather than assume them. And later for it sharp: sub-headings and
+// one-sentence bullets, keeping what carries each point.
 func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
 	for _, want := range []string{
 		"not a market professional",
 		"25bp",
-		"Keep every number, attribution and caveat",
+		"the numbers, attributions and caveats that carry each point",
+		`a line starting "### "`,
+		"at most about twenty-five words",
 	} {
 		if !strings.Contains(systemPrompt, want) {
 			t.Errorf("the system prompt no longer carries %q", want)

@@ -20,7 +20,7 @@ file it in the sectors it bears on, has a second pass check where each one
 landed, has a large model write a brief from what survived, renders that into
 Telegram messages and sends them to one chat. Then it posts
 the same brief to a channel for other readers, and an hour later sends both a
-closer look at about twenty companies — new names from the news and from the
+closer look at twenty companies — new names from the news and from the
 market's largest moves, and followed companies whose move and news do not fit —
 each with a buy, hold or sell verdict. In between it answers commands in the
 chat, the largest of which reads a company's SEC filings, results and
@@ -237,13 +237,18 @@ else from the chart source.
 
 [`telegram.RenderWith`](../internal/telegram/render.go#L87) turns the report into
 Telegram HTML: the overview, each section under its line of biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L604)), the quiet watchlists,
+([`renderCandidates`](../internal/telegram/render.go#L640)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](../internal/telegram/render.go#L571). Paragraphs become bullets
-([`bullets`](../internal/telegram/render.go#L314)) and labels get emphasised
-([`emphasizeLabel`](../internal/telegram/render.go#L258)).
+[`linkCitations`](../internal/telegram/render.go#L607). The brief is written as
+sub-headings, each a `### ` line, over one-sentence bullets;
+[`paragraphs`](../internal/telegram/render.go#L236) keeps each sub-heading with
+its bullets, [`bullets`](../internal/telegram/render.go#L331) bolds the
+sub-heading and turns `- ` into a bullet with a blank line between each, and
+the section headings are set in capitals to stand above them. A block written
+the older way, as a label and a dash, still has its label bolded
+([`emphasizeLabel`](../internal/telegram/render.go#L275)).
 
-[`pack`](../internal/telegram/render.go#L362) then lays the pieces out across
+[`pack`](../internal/telegram/render.go#L385) then lays the pieces out across
 messages under Telegram's 4096-character cap, breaking between sections rather
 than mid-thought, and never leaving a heading alone at the end of a message.
 
@@ -280,19 +285,21 @@ bot, sends it when it falls due: a restart in that hour delays it rather than
 losing it, and one more than six hours late is dropped. A brief asked for with
 `/now`, or sent with `--once`, is followed at once.
 
-[`sendIdeas`](../internal/app/ideas.go#L107), under a 30-minute budget, finds about
-twenty companies in two halves at once:
+[`sendIdeas`](../internal/app/ideas.go#L107), under a 30-minute budget, shows
+twenty companies (`ideas.LookSize`), found in two halves at once:
 
-1. **New names**, up to fourteen. [`marketMovers`](../internal/app/ideas.go#L217)
+1. **New names**, as many as the followed companies leave room for — fourteen
+   beside six. [`marketMovers`](../internal/app/ideas.go#L245)
    reads the last two sessions of every US listing from Massive
    ([`prices.Massive.Movers`](../internal/prices/massive.go#L163)) and keeps the
    fifteen largest moves among companies nobody follows: at least US$5 a share,
    US$25m traded and US$2bn in market value, named from the SEC's index, with
    funds and the notes a bank issues left out. Then
-   [`ideas.Researcher.Propose`](../internal/ideas/ideas.go#L86) — Opus **with web
-   search and web fetch** — reads the brief and those moves and names the
-   companies today's news bears on, never a followed one. Their tickers are
-   verified against OpenFIGI.
+   [`ideas.Researcher.Propose`](../internal/ideas/ideas.go#L91) — Opus **with web
+   search and web fetch** — reads the brief and those moves and names up to
+   twenty companies today's news bears on, best first, never a followed one.
+   Their tickers are verified against OpenFIGI. The names past those needed
+   stand by for step 4.
 2. **Followed companies**, up to six. [`screenRows`](../internal/app/screen.go#L22)
    writes a line for each of the ninety-odd followed companies — the day's move
    against the week, month, six months, year and year to date, the price
@@ -301,7 +308,7 @@ twenty companies in two halves at once:
    the price target, and the day's articles that name it — reading the charts
    and Nasdaq four at a time. [`ideas.Screener.Pick`](../internal/ideas/screen.go#L41)
    — Sonnet, no tools — chooses the ones where the move and the news do not fit.
-3. For each of the twenty, [`ideaFacts`](../internal/app/ideas.go#L342), four at a
+3. For each of the twenty, [`ideaFacts`](../internal/app/ideas.go#L370), four at a
    time, assembles what a verdict should rest on: for a US SEC filer, the
    accounts table `/analyse` uses, with what analysts expect and the latest
    results release; for anything else, the price and trading history alone,
@@ -309,12 +316,19 @@ twenty companies in two halves at once:
 4. [`ideas.Judge.Judge`](../internal/ideas/judge.go#L47) — Opus, five companies a
    call, two calls at a time, with the market backdrop above them — gives each
    a BUY, HOLD or SELL with what changed, how the share moved, whether the move
-   was justified, the case, two to four numbers and the biggest risk. A HOLD
-   on a followed company is left out (`Idea.Shown`).
+   was justified, the case, two to four numbers and the biggest risk, each
+   field under a word limit, since twenty of them are read on a phone after
+   the brief. A HOLD on a followed company is left out (`Idea.Shown`), and so
+   is a verdict that failed; each place left goes to the next new name
+   standing by, judged in one more round
+   ([`judgeIdeas`](../internal/app/ideas.go#L197)), so twenty are shown
+   wherever the research found enough.
 5. [`telegram.RenderIdeas`](../internal/telegram/ideas.go#L45) renders them,
    followed companies first, to the owner and — when the brief went there — to
-   the channel under its warning note.
-6. [`recordVerdicts`](../internal/app/ideas.go#L381) writes each verdict shown to
+   the channel under its warning note. Each part of a verdict is a paragraph
+   of its own, the numbers are listed one to a line, a coloured mark leads
+   each company, and a short rule separates one from the next.
+6. [`recordVerdicts`](../internal/app/ideas.go#L409) writes each verdict shown to
    the scorecard with the price at the time, so `/scorecard` can grade it
    against the S&P 500 once it is a week old.
 
@@ -365,7 +379,7 @@ checks the sender is the owner and routes on the command:
 | `/now` | [`handleNow`](../internal/app/commands.go#L154) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L150) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L456) | Reads a company's filings — below |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L429) | How the verdicts have done against the index |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L457) | How the verdicts have done against the index |
 | `/stats` | [`handleStats`](../internal/app/commands.go#L570) | What recent runs found and did |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L237) | Follow or stop following a company; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L320) | Turn a feed on or off |
@@ -412,7 +426,7 @@ does not inherit whatever the caller's context has left:
    read next to it" table out of the prose, and
    [`VerifyRelated`](../internal/fundamentals/related.go#L90) checks those tickers
    against OpenFIGI before any of them is shown.
-7. [`RenderPlain`](../internal/telegram/render.go#L504) and
+7. [`RenderPlain`](../internal/telegram/render.go#L532), which rules off each capitalised section and bolds its sub-headings, and
    [`RenderRelated`](../internal/telegram/related.go#L22) render it.
 
 ### Every model call
@@ -747,8 +761,9 @@ name has been running; `Save`; sixty days of retention.
 
 **[ideas.go](../internal/ideas/ideas.go)** — `Researcher.Propose` runs the web
 search stage, shown the market's `Movers` and never returning a `Followed`
-ticker (`unfollowed`); `researchPrompt`, `parseIdeas`, `verify`. `DefaultMax`
-is fourteen.
+ticker (`unfollowed`); `researchPrompt`, `parseIdeas`, `verify`. `LookSize`
+is the twenty shown, and `DefaultMax`, the most the research proposes, is the
+same, so the new names can fill every place a followed HOLD leaves.
 **[screen.go](../internal/ideas/screen.go)** — `Screener.Pick` reads the followed
 companies as `Row`s and chooses up to `DefaultPicks` (six); `screenPrompt`.
 **[judge.go](../internal/ideas/judge.go)** — `Judge.Judge` turns facts into
@@ -845,8 +860,10 @@ out of errors.
 `SetMyCommands` publishes the menu; `DrainUpdates` discards commands sent while
 the process was down.
 **[render.go](../internal/telegram/render.go)** — the brief as messages. `RenderWith`
-assembles the segments, `pack` lays them across messages, `bullets` and
-`emphasizeLabel` shape the prose, `linkCitations` turns `[3]` into a link, each
+assembles the segments, `pack` lays them across messages, `paragraphs` and
+`bullets` turn the `### ` sub-headings and `- ` points into bold lines and
+bullets (`emphasizeLabel` for the older label-and-dash blocks),
+`linkCitations` turns `[3]` into a link, each
 section's heading carries its line of biggest moves,
 `renderCandidates` draws the new-names block, `renderSources` the links,
 `renderFooter` the token counts. `RenderPlain` does the same for an analysis.

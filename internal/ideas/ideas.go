@@ -33,11 +33,16 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// DefaultMax is how many new companies the research may propose: fourteen of
-// the day's twenty, the rest being followed companies the screen chose
-// (Screener). Each costs a fetch of its accounts and a verdict, and the
-// section runs an hour after the brief, when neither holds anything up.
-const DefaultMax = 14
+// LookSize is how many companies the closer look shows: the followed ones the
+// screen chose (Screener) and shown as BUY or SELL, and new names for the rest.
+const LookSize = 20
+
+// DefaultMax is how many new companies the research may propose: enough to
+// fill the whole look. On most days fourteen or so are used, beside the
+// followed companies; the rest stand by, best first, to take the place of a
+// followed HOLD, which is not shown. Only those used cost a fetch of their
+// accounts and a verdict.
+const DefaultMax = LookSize
 
 // Completer is the model call both stages make.
 type Completer interface {

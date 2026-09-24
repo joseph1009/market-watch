@@ -14,11 +14,11 @@ import (
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
-// "Worth a closer look" follows the brief: about twenty companies a day, each
-// with a buy, hold or sell verdict. Most are new names -- found by research on
-// the web from the day's news and the market's largest moves -- and the rest
-// are companies the watchlists follow, where a screen of all of them found the
-// move and the news not fitting each other. See the ideas package for how,
+// "Worth a closer look" follows the brief: twenty companies a day, each with a
+// buy, hold or sell verdict. Up to six are companies the watchlists follow,
+// where a screen of all of them found the move and the news not fitting each
+// other, and new names -- found by research on the web from the day's news and
+// the market's largest moves -- fill the rest. See the ideas package for how,
 // and docs/RUNBOOK.md for the stages.
 //
 // The daily run's closer look arrives an hour after the brief (look.go), so
@@ -127,26 +127,36 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	go func() { defer wg.Done(); picked = a.screenFollowed(ctx, lk, prefs.Groups) }()
 	wg.Wait()
 
-	all := append(picked, found...)
+	// LookSize are shown: the followed companies, and new names for the
+	// rest, best first. The rest of the research stands by.
+	want := min(ideas.LookSize-len(picked), len(found))
+	all, spare := append(picked, found[:want]...), found[want:]
 	if len(all) == 0 {
 		return
 	}
 
-	facts, charts := a.factsFor(ctx, all)
-	judged, usage, err := a.Judge.Judge(ctx, all, facts, lk.Cited, a.backdrop(ctx))
-	if err != nil {
-		a.Log.Warn("some verdicts are missing", "error", err)
-	}
-	var shown []model.Idea
-	for _, idea := range judged {
-		if idea.Shown() {
-			shown = append(shown, idea)
-		}
+	backdrop := a.backdrop(ctx)
+	shown, charts, judged, usage := a.judgeIdeas(ctx, all, lk.Cited, backdrop)
+
+	// A followed HOLD is not shown, and a verdict can fail. Each place left
+	// goes to the next new name, whose verdict is always shown, in one more
+	// round: judging the spares up front would spend a verdict on each of
+	// them every day, for the one or two a day that are needed.
+	var standIns []model.Idea
+	if short := min(ideas.LookSize-len(shown), len(spare)); short > 0 {
+		standIns = spare[:short]
+		more, moreCharts, moreJudged, moreUsage := a.judgeIdeas(ctx, standIns, lk.Cited, backdrop)
+		shown = append(shown, more...)
+		all, charts = append(all, standIns...), append(charts, moreCharts...)
+		judged += moreJudged
+		usage.InputTokens += moreUsage.InputTokens
+		usage.OutputTokens += moreUsage.OutputTokens
 	}
 	a.Log.Info("ideas judged",
-		"judged", len(judged),
+		"judged", judged,
 		"of", len(all),
 		"shown", len(shown),
+		"stand_ins", len(standIns),
 		"input_tokens", usage.InputTokens,
 		"output_tokens", usage.OutputTokens)
 	if len(shown) == 0 {
@@ -179,6 +189,24 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	a.Log.Info("ideas delivered",
 		"messages", len(messages),
 		"took", time.Since(started).Round(time.Second))
+}
+
+// judgeIdeas reads the facts for some companies and judges them. It returns
+// the verdicts to show, the chart symbol of each company it was given, in
+// order, how many verdicts came back, and what they cost.
+func (a *App) judgeIdeas(ctx context.Context, list []model.Idea, cited []model.Article, backdrop []string) ([]model.Idea, []string, int, model.Usage) {
+	facts, charts := a.factsFor(ctx, list)
+	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop)
+	if err != nil {
+		a.Log.Warn("some verdicts are missing", "error", err)
+	}
+	var shown []model.Idea
+	for _, idea := range judged {
+		if idea.Shown() {
+			shown = append(shown, idea)
+		}
+	}
+	return shown, charts, len(judged), usage
 }
 
 // researchNewNames finds the companies nobody follows that today's news, or

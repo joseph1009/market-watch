@@ -150,11 +150,11 @@ you, and why it is worth doing.
   subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
-- Worth a closer look: an hour after the brief, about twenty companies, each
-  with a buy, hold or sell verdict. Up to fourteen new names found with web
-  search from the news and the market's largest moves (Massive); up to six
-  followed companies, chosen by a screen of all of them where the move and the
-  news do not fit, and shown only as BUY or SELL. Each verdict says what
+- Worth a closer look: an hour after the brief, twenty companies, each with a
+  buy, hold or sell verdict. Up to six followed companies, chosen by a screen
+  of all of them where the move and the news do not fit, and shown only as BUY
+  or SELL; new names found with web search from the news and the market's
+  largest moves (Massive) fill the rest, taking the place of any followed HOLD. Each verdict says what
   changed, how the share moved and whether the move was justified, with two to
   four numbers and the biggest risk, from its trading, SEC accounts, latest
   results release and what analysts expect. It goes to the channel with the
