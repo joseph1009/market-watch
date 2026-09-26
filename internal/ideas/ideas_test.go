@@ -254,3 +254,45 @@ func TestTheFactSheetNamesTheCurrencyOfEachPrice(t *testing.T) {
 		}
 	}
 }
+
+// An event is kept with a full date inside the window, and a line without one
+// still reads as it always did.
+func TestResearchReadsTheEventAhead(t *testing.T) {
+	today := time.Date(2026, 9, 26, 8, 0, 0, 0, time.UTC)
+	c := &fakeCompleter{reply: strings.Join([]string{
+		"Rambus|RMBS|US|connected|1|Its chips go into every HBM stack.|Q3 results|2026-10-27|high|Bullish.",
+		"SK Hynix|000660|KS|connected|1|The largest HBM maker.|Investor day|2027-03-01|medium|neutral",
+		"Samsung|005930|KS|connected|2|A rival.|Results|October 2026|high|bearish",
+		"Kioxia|285A|JP|connected|2|Memory.|none|||",
+		"Lam Research|LRCX|US|connected|1|Sells the machines.",
+		"Applied Materials|AMAT|US|connected|1|Also machines.|Earnings|2026-09-26|LOUD|up",
+	}, "\n")}
+	r := &Researcher{Completer: c, Verifier: fakeVerifier{
+		"RMBS.US": "RAMBUS INC", "000660.KS": "SK HYNIX INC", "005930.KS": "SAMSUNG ELECTRONICS",
+		"285A.JP": "KIOXIA HOLDINGS", "LRCX.US": "LAM RESEARCH CORP", "AMAT.US": "APPLIED MATERIALS INC",
+	}}
+	got, _, err := r.Propose(context.Background(), Input{Cited: cited, Today: today})
+	if err != nil || len(got) != 6 {
+		t.Fatalf("got %d, err %v", len(got), err)
+	}
+	if !strings.Contains(c.prompt, "Today is Saturday 26 September 2026.") {
+		t.Errorf("the prompt does not say what day it is:\n%s", c.prompt)
+	}
+
+	e := got[0].Event
+	if e == nil || e.Name != "Q3 results" || e.Date.Format(time.DateOnly) != "2026-10-27" || e.Impact != "HIGH" || e.Bias != "BULLISH" {
+		t.Errorf("Rambus event = %+v", e)
+	}
+	if got[0].Link != "Its chips go into every HBM stack." {
+		t.Errorf("the reason ran into the event: %q", got[0].Link)
+	}
+	for i, why := range []string{"", "past the window", "a month is not a date", "none", "no event given"} {
+		if i > 0 && got[i].Event != nil {
+			t.Errorf("%s: %s kept %+v", why, got[i].Name, got[i].Event)
+		}
+	}
+	// Today counts; words outside the lists are left blank rather than kept.
+	if e := got[5].Event; e == nil || e.Impact != "" || e.Bias != "" {
+		t.Errorf("Applied Materials event = %+v", e)
+	}
+}

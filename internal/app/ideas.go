@@ -258,6 +258,7 @@ func (a *App) researchNewNames(ctx context.Context, lk look, groups []model.Grou
 		Tracked:    trackedNames(groups),
 		Followed:   followed,
 		Movers:     movers,
+		Today:      a.now(),
 	})
 	if err != nil {
 		a.Log.Warn("could not research new names for a closer look", "error", err)
@@ -425,7 +426,7 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 				a.addExpectations(ctx, &snap)
 				a.addRelease(ctx, &snap, ideaReleaseRunes)
 				idea.Accounts = true
-				return idea, chart, snap.Table()
+				return idea, chart, snap.Table() + snap.SensitivityFacts()
 			}
 			a.Log.Info("no accounts for an idea", "ticker", idea.Ticker, "error", err)
 		}

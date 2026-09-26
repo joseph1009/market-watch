@@ -81,6 +81,18 @@ var incomeConcepts = []concept{
 	both("capitalExpenditure",
 		usGAAP("PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"),
 		ifrs("PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities")),
+
+	// Read for the sensitivity (sensitivity.go) rather than the table: the
+	// tax rate a change in profit is taxed at, and the shares it is spread
+	// over.
+	both("pretaxIncome",
+		usGAAP("IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+			"IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"),
+		ifrs("ProfitLossBeforeTax")),
+	both("incomeTax", usGAAP("IncomeTaxExpenseBenefit"), ifrs("IncomeTaxExpenseContinuingOperations")),
+	both("dilutedShares",
+		usGAAP("WeightedAverageNumberOfDilutedSharesOutstanding"),
+		ifrs("AdjustedWeightedAverageShares")),
 }
 
 var balanceConcepts = []concept{
@@ -169,6 +181,12 @@ type Snapshot struct {
 	// (consensus.Report.Facts). The accounts say what happened; this says
 	// what the price was measured against.
 	Expectations string
+
+	// ExpectedEPS is the analysts' consensus for the nearest fiscal year, and
+	// ExpectedFor that year's end as Nasdaq writes it ("Aug 2026"). Zero where
+	// none was read. The sensitivity is measured against it.
+	ExpectedEPS float64
+	ExpectedFor string
 
 	// Release is the company's latest results announcement in its own words,
 	// and ReleaseFrom which one. It carries what the XBRL does not: the

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,6 +91,15 @@ type Report struct {
 
 	Surprises []Surprise
 
+	// NextResults is the day the company is next due to report, and
+	// ResultsWhen whether before the open or after the close where that is
+	// known. ResultsEstimated means nobody has announced the date: it is
+	// Zacks' guess from the company's past reporting days, which can be a week
+	// or more out.
+	NextResults      time.Time
+	ResultsWhen      string
+	ResultsEstimated bool
+
 	// Insider trades over the last three and twelve months: open-market buys,
 	// sales, and the net shares bought (negative where they sold more).
 	InsiderBuys3, InsiderSells3   int
@@ -130,6 +140,7 @@ func (c *Client) Fetch(ctx context.Context, symbol string) (Report, error) {
 		{"estimates", c.estimates},
 		{"price target", c.target},
 		{"earnings surprises", c.surprises},
+		{"next results date", c.resultsDate},
 		{"insider trades", c.insiders},
 		{"short interest", c.short},
 		{"fund holdings", c.holdings},
@@ -290,6 +301,31 @@ func (c *Client) surprises(ctx context.Context, symbol string, r *Report) error 
 			EPS: row.EPS.v, Expected: row.Expected.v, Percent: row.Percent.v,
 		})
 	}
+	return nil
+}
+
+// resultsDay finds the date in the page's sentence, which is the only place
+// the reply states it with its year and whether it is only an estimate:
+// "... is expected* to report earnings on  09/30/2026 after market close."
+var resultsDay = regexp.MustCompile(`report earnings on\s+(\d{2}/\d{2}/\d{4})\s*(before market open|after market close)?`)
+
+func (c *Client) resultsDate(ctx context.Context, symbol string, r *Report) error {
+	var doc struct {
+		Text string `json:"reportText"`
+	}
+	if err := c.get(ctx, "analyst/"+symbol+"/earnings-date", &doc); err != nil {
+		return err
+	}
+	m := resultsDay.FindStringSubmatch(doc.Text)
+	if m == nil {
+		return ErrNotCovered
+	}
+	day, err := time.Parse("01/02/2006", m[1])
+	if err != nil {
+		return err
+	}
+	r.NextResults, r.ResultsWhen = day, m[2]
+	r.ResultsEstimated = strings.Contains(doc.Text, "estimated to report")
 	return nil
 }
 

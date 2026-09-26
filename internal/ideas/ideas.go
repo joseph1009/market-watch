@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
@@ -43,6 +44,10 @@ const LookSize = 20
 // followed HOLD, which is not shown. Only those used cost a fetch of their
 // accounts and a verdict.
 const DefaultMax = LookSize
+
+// EventWindow is how far ahead a dated event counts: near enough to matter to
+// a verdict made today, and not so far that nothing will have been announced.
+const EventWindow = 90 * 24 * time.Hour
 
 // Completer is the model call both stages make.
 type Completer interface {
@@ -71,6 +76,10 @@ type Input struct {
 	// where a new name is most likely to be found: a share that moved a
 	// fifth has a reason, and the research can go and find it.
 	Movers []Mover
+
+	// Today is the day of the brief, which the dated events are counted
+	// from. Zero means now.
+	Today time.Time
 }
 
 // Mover is one of the day's largest moves across the market.
@@ -104,7 +113,11 @@ func (r *Researcher) Propose(ctx context.Context, in Input) ([]model.Idea, model
 		return nil, usage, err
 	}
 
-	found := parseIdeas(text, in.Cited)
+	today := in.Today
+	if today.IsZero() {
+		today = time.Now()
+	}
+	found := parseIdeas(text, in.Cited, today)
 	found = unfollowed(found, in.Followed)
 	found, err = verify(ctx, r.Verifier, found)
 	if err != nil {
@@ -127,6 +140,9 @@ func (r *Researcher) max() int {
 
 func researchPrompt(in Input) string {
 	var b strings.Builder
+	if !in.Today.IsZero() {
+		fmt.Fprintf(&b, "Today is %s.\n\n", in.Today.Format("Monday 2 January 2006"))
+	}
 	b.WriteString("Today's brief:\n\n")
 	b.WriteString(strings.TrimSpace(in.Brief))
 
@@ -176,11 +192,14 @@ func unfollowed(ideas []model.Idea, followed map[string]bool) []model.Idea {
 	return out
 }
 
-var ideaLine = regexp.MustCompile(`^\s*-?\s*([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]*)\|(.+?)\s*$`)
+// ideaLine is one company: name, ticker, exchange, news or connected, article
+// numbers, how the news bears on it, and then, where the research found one,
+// the event ahead: what, when, how much it matters and which way.
+var ideaLine = regexp.MustCompile(`^\s*-?\s*([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]*)\|([^|]+?)\s*(?:\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*?))?\s*$`)
 
 // parseIdeas reads the research's lines back, keeping a company once and only
 // with a ticker to check.
-func parseIdeas(text string, cited []model.Article) []model.Idea {
+func parseIdeas(text string, cited []model.Article, today time.Time) []model.Idea {
 	var out []model.Idea
 	seen := map[string]bool{}
 
@@ -218,9 +237,47 @@ func parseIdeas(text string, cited []model.Article) []model.Idea {
 				idea.Articles = append(idea.Articles, cited[n-1])
 			}
 		}
+		idea.Event = parseEvent(m[7], m[8], m[9], m[10], today)
 		out = append(out, idea)
 	}
 	return out
+}
+
+// parseEvent reads the event fields, and keeps an event only with a date in
+// the window: an event without one cannot be timed, and one already past or
+// months away is not what a verdict today turns on. A date that has been
+// announced is written in full, so one given as a month alone is dropped too.
+func parseEvent(name, date, impact, bias string, today time.Time) *model.Event {
+	name = strings.TrimSpace(name)
+	switch strings.ToLower(name) {
+	case "", "none", "-", "?":
+		return nil
+	}
+	day, err := time.Parse(time.DateOnly, strings.TrimSpace(date))
+	if err != nil {
+		return nil
+	}
+	start := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	if day.Before(start) || day.After(start.Add(EventWindow)) {
+		return nil
+	}
+	return &model.Event{
+		Name:   name,
+		Date:   day,
+		Impact: oneOf(impact, "HIGH", "MEDIUM", "LOW"),
+		Bias:   oneOf(bias, "BULLISH", "BEARISH", "NEUTRAL"),
+	}
+}
+
+// oneOf is s in capitals where it is one of allowed, and empty otherwise.
+func oneOf(s string, allowed ...string) string {
+	s = strings.ToUpper(strings.Trim(strings.TrimSpace(s), ".*"))
+	for _, a := range allowed {
+		if s == a {
+			return s
+		}
+	}
+	return ""
 }
 
 // verify keeps the ideas whose ticker belongs to the company named, and drops

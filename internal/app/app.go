@@ -265,7 +265,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
 		}
 		a.Screener = &ideas.Screener{Completer: rel.Plain(relay.Screen)}
-		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts)}
+		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts), Now: a.now}
 	}
 	// Loaded whether or not new verdicts are being made, so /scorecard still
 	// reads the old ones with the section turned off.

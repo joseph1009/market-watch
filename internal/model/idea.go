@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // Idea is a company put in front of the owner with a verdict: one today's
 // stories are about, or one they bear on without naming it -- a supplier, a
 // customer, a rival.
@@ -34,6 +36,12 @@ type Idea struct {
 	Link     string
 	Articles []Article
 
+	// Event is the dated event ahead that the research found on the web --
+	// results, a ruling, a launch -- or nil where it found none in the next
+	// ninety days. Found rather than checked, unlike the results date in the
+	// facts, which Nasdaq publishes.
+	Event *Event
+
 	// Quote is today's move, for a US listing. Trading is a year of daily
 	// prices, wherever the chart source has the listing.
 	Quote   *Quote
@@ -61,6 +69,25 @@ type Idea struct {
 	Changed  string
 	Moved    string
 	Reaction string
+
+	// Catalyst is the dated event ahead the verdict turns on, and Sensitivity
+	// the lever in the accounts that decides how much the news is worth: how
+	// far a point of margin or of revenue moves the earnings.
+	Catalyst    string
+	Sensitivity string
+}
+
+// Event is something dated ahead that could move a share: results, a ruling,
+// a contract, a launch.
+type Event struct {
+	Name string
+	Date time.Time
+
+	// Impact is how much it could move the share, HIGH, MEDIUM or LOW, and
+	// Bias which way the research expects it to, BULLISH, BEARISH or NEUTRAL.
+	// Either may be empty.
+	Impact string
+	Bias   string
 }
 
 // Shown reports whether the verdict belongs in the section: every verdict on

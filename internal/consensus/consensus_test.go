@@ -19,6 +19,7 @@ func stub(t *testing.T, broken string) *Client {
 		"/analyst/MU/earnings-forecast":      "forecast",
 		"/analyst/MU/targetprice":            "target",
 		"/company/MU/earnings-surprise":      "surprise",
+		"/analyst/MU/earnings-date":          "earnings-date",
 		"/company/MU/insider-trades":         "insider",
 		"/quote/MU/short-interest":           "short",
 		"/company/MU/institutional-holdings": "holdings",
@@ -76,6 +77,9 @@ func TestEveryPartIsRead(t *testing.T) {
 	if r.Institutional != 87.97 || r.FundsAdded != 2363 || r.FundsSoldOut != 121 {
 		t.Errorf("funds: %v%%, added %d, sold out %d", r.Institutional, r.FundsAdded, r.FundsSoldOut)
 	}
+	if r.NextResults.Format("2006-01-02") != "2026-09-30" || r.ResultsWhen != "after market close" || r.ResultsEstimated {
+		t.Errorf("next results %v, %q, estimated %v", r.NextResults, r.ResultsWhen, r.ResultsEstimated)
+	}
 	if len(r.Missing) != 0 {
 		t.Errorf("missing %v", r.Missing)
 	}
@@ -95,6 +99,7 @@ func TestTheFactsSetTheForecastsAgainstThePrice(t *testing.T) {
 		"net 178,789 shares sold",
 		"29.7m shares on 31 Aug 2026",
 		"2,363 added",
+		"Next results: Wednesday 30 Sep 2026, after market close, as the company has announced it.",
 	} {
 		if !strings.Contains(facts, want) {
 			t.Errorf("facts lack %q:\n%s", want, facts)
@@ -123,6 +128,27 @@ func TestAFailedPartIsNamedAndAnUnknownSymbolIsNotCovered(t *testing.T) {
 	got := c.FetchAll(context.Background(), []string{"MU", "SPY"}, 2)
 	if mu, ok := got["MU"]; !ok || len(got) != 1 || mu.Target != 1563.04 || len(mu.Surprises) != 0 {
 		t.Errorf("FetchAll = %+v, want MU alone, with its forecasts and target and nothing more", got)
+	}
+}
+
+// A date nobody has announced is Zacks' guess, and the facts say so.
+func TestAnEstimatedResultsDateIsCalledOne(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":{"reportText":"Apple Inc. Common Stock is estimated to report earnings on  10/29/2026. The upcoming earnings date is derived from an algorithm based on a company's historical reporting dates."}}`))
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), BaseURL: srv.URL}
+
+	var r Report
+	if err := c.resultsDate(context.Background(), "AAPL", &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.NextResults.Format("2006-01-02") != "2026-10-29" || r.ResultsWhen != "" || !r.ResultsEstimated {
+		t.Errorf("next results %v, %q, estimated %v", r.NextResults, r.ResultsWhen, r.ResultsEstimated)
+	}
+	r.Target = 1 // covered
+	if facts := r.Facts(0); !strings.Contains(facts, "Thursday 29 Oct 2026. Not yet announced") {
+		t.Errorf("facts:\n%s", facts)
 	}
 }
 

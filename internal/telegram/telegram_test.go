@@ -1395,8 +1395,14 @@ func TestTheCloserLookIsSpacedOut(t *testing.T) {
 			Numbers:  "56 times revenue; free cash flow -$273m;  ; cash $2.1bn",
 			Risk:     "A real contract."}
 	}
+	withAhead := func(name string) model.Idea {
+		i := idea(name)
+		i.Catalyst = "Results on 5 Nov, the first with the order in them."
+		i.Sensitivity = "1% of revenue is 2% of expected earnings."
+		return i
+	}
 	// Enough of them to run over one message.
-	ideas := []model.Idea{idea("IONQ"), idea("QBTS")}
+	ideas := []model.Idea{withAhead("IONQ"), idea("QBTS")}
 	for _, name := range []string{"RGTI", "QUBT", "ARQQ", "LAES", "QMCO", "HON", "IBM", "GOOGL", "MSFT", "NVDA"} {
 		ideas = append(ideas, idea(name))
 	}
@@ -1410,6 +1416,7 @@ func TestTheCloserLookIsSpacedOut(t *testing.T) {
 		"<b>SELL</b> · medium confidence · overreacted\n\n<i>What changed:</i> An order",
 		"value attached.\n\n<i>The move:</i> +4.4% today, +15.5% in a week\n<i>Justified?</i> Overreacted",
 		"no revenue.\n\n<i>The case:</i> Priced for",
+		"has not won.\n\n<i>Catalyst:</i> Results on 5 Nov, the first with the order in them.\n<i>Sensitivity:</i> 1% of revenue is 2% of expected earnings.\n\n<i>Numbers</i>",
 		"<i>Numbers</i>\n• 56 times revenue\n• free cash flow -$273m\n• cash $2.1bn\n\n<i>Risk:</i> A real contract.",
 		"A real contract.\n\n" + companyRule + "\n🔴 <b>QBTS</b>",
 	} {

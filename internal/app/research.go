@@ -60,6 +60,9 @@ func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) 
 		price = snap.Price.Price
 	}
 	snap.Expectations = r.Facts(price)
+	if len(r.Years) > 0 {
+		snap.ExpectedEPS, snap.ExpectedFor = r.Years[0].EPS, r.Years[0].Period
+	}
 	a.Log.Info("expectations", "ticker", snap.Ticker, "missing", len(r.Missing))
 }
 

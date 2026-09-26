@@ -154,6 +154,19 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	if idea.Case != "" {
 		parts = append(parts, "<i>The case:</i> "+linkCitations(escape(idea.Case), cited))
 	}
+
+	// What could prove the case soon, and how much a change is worth: two
+	// short lines that read as one paragraph.
+	var ahead []string
+	if idea.Catalyst != "" {
+		ahead = append(ahead, "<i>Catalyst:</i> "+linkCitations(escape(idea.Catalyst), cited))
+	}
+	if idea.Sensitivity != "" {
+		ahead = append(ahead, "<i>Sensitivity:</i> "+escape(idea.Sensitivity))
+	}
+	if len(ahead) > 0 {
+		parts = append(parts, strings.Join(ahead, "\n"))
+	}
 	if n := renderNumbers(idea.Numbers); n != "" {
 		parts = append(parts, n)
 	}

@@ -56,6 +56,17 @@ func (r Report) Facts(price float64) string {
 		b.WriteString(strings.Join(parts, "; "))
 		b.WriteString("\n")
 	}
+	if !r.NextResults.IsZero() {
+		fmt.Fprintf(&b, "- Next results: %s", r.NextResults.Format("Monday 2 Jan 2006"))
+		if r.ResultsWhen != "" {
+			b.WriteString(", " + r.ResultsWhen)
+		}
+		if r.ResultsEstimated {
+			b.WriteString(". Not yet announced: Zacks' estimate from the company's past reporting days, which can be out by a week or more.\n")
+		} else {
+			b.WriteString(", as the company has announced it.\n")
+		}
+	}
 	if r.InsiderBuys12+r.InsiderSells12 > 0 {
 		fmt.Fprintf(&b, "- Insiders, last 3 months: open-market buys %d, sales %d, %s. Last 12 months: buys %d, sales %d, %s.\n",
 			r.InsiderBuys3, r.InsiderSells3, net(r.InsiderNet3),

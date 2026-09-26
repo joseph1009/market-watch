@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/joseph1009/market-watch/internal/model"
 )
@@ -95,7 +96,11 @@ func (b *batchCompleter) Complete(_ context.Context, _, prompt string) (string, 
 		}
 		reply.WriteString("=== " + symbol + "\nVERDICT: " + verdict + "\nCONFIDENCE: medium\n" +
 			"CHANGED: Revenue guidance up 12%.\nMOVE: Down 4% today, up 30% this year.\nREACTION: underreacted, the guide beat and the share fell.\n" +
-			"CASE: Cheap for the growth [1].\nNUMBERS: 14x next year\nRISK: Memory prices turn.\n")
+			"CASE: Cheap for the growth [1].\nCATALYST: Results on 30 Sep, first quarter at the new prices.\n" +
+			"SENSITIVITY: None.\nNUMBERS: 14x next year\nRISK: Memory prices turn.\n")
+		if symbol == "AAA" {
+			reply.WriteString("SENSITIVITY: 100bp of gross margin is 3% of expected earnings.\n")
+		}
 	}
 	return reply.String(), model.Usage{InputTokens: 100, OutputTokens: 10}, nil
 }
@@ -110,8 +115,9 @@ func TestVerdictsAreJudgedInBatchesAndSayWhetherTheMoveWasJustified(t *testing.T
 		all = append(all, model.Idea{Name: s + " Corp", Ticker: s, Exchange: "US", Link: "news"})
 	}
 	all[0].Followed = true
+	all[1].Event = &model.Event{Name: "Q3 results", Date: time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC), Bias: "BULLISH"}
 	c := &batchCompleter{fail: "FFF"}
-	j := &Judge{Completer: c, Batch: 3}
+	j := &Judge{Completer: c, Batch: 3, Now: func() time.Time { return time.Date(2026, 9, 26, 9, 30, 0, 0, time.UTC) }}
 
 	got, usage, err := j.Judge(context.Background(), all, make([]string, len(all)), cited, []string{"Brent crude oil, US$ a barrel: 114.89"})
 	if err == nil || !strings.Contains(err.Error(), "1 of 3 verdict batches failed") {
@@ -127,6 +133,19 @@ func TestVerdictsAreJudgedInBatchesAndSayWhetherTheMoveWasJustified(t *testing.T
 	if first.Changed != "Revenue guidance up 12%." || first.Moved != "Down 4% today, up 30% this year." ||
 		!strings.HasPrefix(first.Reaction, "underreacted") {
 		t.Errorf("first = %+v", first)
+	}
+	// A field given twice keeps the later copy; "none" is no sensitivity.
+	if first.Catalyst != "Results on 30 Sep, first quarter at the new prices." ||
+		first.Sensitivity != "100bp of gross margin is 3% of expected earnings." || got[1].Sensitivity != "" {
+		t.Errorf("catalyst %q, sensitivity %q, then %q", first.Catalyst, first.Sensitivity, got[1].Sensitivity)
+	}
+	for _, p := range c.prompts {
+		if !strings.HasPrefix(p, "Today is Saturday 26 September 2026.") {
+			t.Errorf("a batch does not say what day it is:\n%s", p)
+		}
+	}
+	if !strings.Contains(strings.Join(c.prompts, ""), "Ahead, as the research found it on the web and unchecked: Q3 results on Tuesday 27 Oct 2026 (the research rates it bullish).") {
+		t.Error("BBB's event is missing from its batch")
 	}
 	for _, p := range c.prompts {
 		if !strings.Contains(p, "- Brent crude oil, US$ a barrel: 114.89") {

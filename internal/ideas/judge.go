@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -18,6 +19,10 @@ type Judge struct {
 	// calls run at once.
 	Batch       int
 	Concurrency int
+
+	// Now is the clock the dated events ahead are counted from. Nil means
+	// time.Now.
+	Now func() time.Time
 }
 
 const (
@@ -61,6 +66,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 	}
 	outcomes := make([]outcome, len(bounds))
 	sem := make(chan struct{}, j.concurrency())
+	today := j.now()
 	var wg sync.WaitGroup
 	for i, b := range bounds {
 		wg.Add(1)
@@ -74,7 +80,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 				return
 			}
 			text, usage, err := j.Completer.Complete(ctx, verdictsPrompt,
-				judgePrompt(ideas[b[0]:b[1]], facts[min(b[0], len(facts)):min(b[1], len(facts))], cited, backdrop))
+				judgePrompt(ideas[b[0]:b[1]], facts[min(b[0], len(facts)):min(b[1], len(facts))], cited, backdrop, today))
 			outcomes[i] = outcome{blocks: parseVerdicts(text), usage: usage, err: err}
 		}()
 	}
@@ -113,6 +119,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		idea.Verdict, idea.Confidence = v.verdict, v.confidence
 		idea.Case, idea.Numbers, idea.Risk = v.theCase, v.numbers, v.risk
 		idea.Changed, idea.Moved, idea.Reaction = v.changed, v.moved, v.reaction
+		idea.Catalyst, idea.Sensitivity = v.catalyst, v.sensitivity
 		out = append(out, idea)
 	}
 	if failed > 0 {
@@ -135,8 +142,16 @@ func (j *Judge) concurrency() int {
 	return DefaultJudgeConcurrency
 }
 
-func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string) string {
+func (j *Judge) now() time.Time {
+	if j.Now != nil {
+		return j.Now()
+	}
+	return time.Now()
+}
+
+func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string, today time.Time) string {
 	var b strings.Builder
+	fmt.Fprintf(&b, "Today is %s.\n\n", today.Format("Monday 2 January 2006"))
 	b.WriteString("The articles, numbered as in today's brief:\n")
 	for i, a := range cited {
 		fmt.Fprintf(&b, "[%d] %s (%s)\n", i+1, oneLine(a.Title), a.SourceName)
@@ -171,6 +186,20 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 		if idea.Followed {
 			b.WriteString("Only BUY or SELL will be shown for it: a HOLD is left out.\n")
 		}
+		if e := idea.Event; e != nil {
+			fmt.Fprintf(&b, "Ahead, as the research found it on the web and unchecked: %s on %s", e.Name, e.Date.Format("Monday 2 Jan 2006"))
+			var rated []string
+			if e.Impact != "" {
+				rated = append(rated, strings.ToLower(e.Impact)+" impact")
+			}
+			if e.Bias != "" {
+				rated = append(rated, strings.ToLower(e.Bias))
+			}
+			if len(rated) > 0 {
+				fmt.Fprintf(&b, " (the research rates it %s)", strings.Join(rated, ", "))
+			}
+			b.WriteString(".\n")
+		}
 
 		if q := idea.Quote; q != nil {
 			// With the unit, always. A Hong Kong listing is quoted in Hong Kong
@@ -189,6 +218,7 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 type verdict struct {
 	verdict, confidence, theCase, numbers, risk string
 	changed, moved, reaction                    string
+	catalyst, sensitivity                       string
 }
 
 // parseVerdicts reads the reply's blocks, keyed by the symbol each opens with.
@@ -219,6 +249,8 @@ func parseVerdicts(text string) map[string]verdict {
 		{"CHANGED:", func(v *verdict) *string { return &v.changed }},
 		{"MOVE:", func(v *verdict) *string { return &v.moved }},
 		{"REACTION:", func(v *verdict) *string { return &v.reaction }},
+		{"CATALYST:", func(v *verdict) *string { return &v.catalyst }},
+		{"SENSITIVITY:", func(v *verdict) *string { return &v.sensitivity }},
 	}
 
 	for _, raw := range strings.Split(text, "\n") {
@@ -250,6 +282,11 @@ func parseVerdicts(text string) map[string]verdict {
 	for k, v := range out {
 		v.verdict = normaliseVerdict(v.verdict)
 		v.confidence = normaliseConfidence(v.confidence)
+		// Asked for "none" where the facts have no sensitivity figures,
+		// which is every company without SEC accounts: not worth a line each.
+		if strings.EqualFold(strings.Trim(v.sensitivity, ". "), "none") {
+			v.sensitivity = ""
+		}
 		if v.verdict == "" {
 			delete(out, k)
 			continue
