@@ -24,7 +24,7 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
 [env]
   DATA_DIR = "/data"
   SCHEDULE_TZ = "America/New_York"
-  REPORT_AT = "20:30"
+  REPORT_AT = "07:30"
   DISPLAY_TZ = "Asia/Singapore"
   SKIP_WEEKENDS = "true"
   SOURCE_LINKS = "off"

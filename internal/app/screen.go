@@ -86,6 +86,9 @@ queue:
 			Line:     screenLine(markets[i].quote, markets[i].trading, r),
 			Articles: fundamentals.Relevant(cited, c.ticker, c.name, 3),
 		}
+		if q := markets[i].quote; q != nil {
+			rows[i].PricedAt = q.AsOf
+		}
 	}
 	return rows
 }
@@ -99,7 +102,7 @@ var shortWindows = map[string]string{
 func screenLine(q *model.Quote, t *model.Trading, r *consensus.Report) string {
 	var parts []string
 	if q != nil {
-		parts = append(parts, "today "+q.Move())
+		parts = append(parts, "last session "+q.Move())
 	}
 	if t == nil {
 		parts = append(parts, "no price history")

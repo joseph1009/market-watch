@@ -130,7 +130,7 @@ func TestABriefPricesTheWatchlistAndSearchesForTheMover(t *testing.T) {
 			movers = append(movers, q)
 		}
 	}
-	if len(movers) != 1 || movers[0] != "Why did McDonald's (MCD) shares fall today?" {
+	if len(movers) != 1 || movers[0] != "Why did McDonald's (MCD) shares fall?" {
 		t.Errorf("mover searches = %q, want one, for McDonald's", movers)
 	}
 	if got, want := len(a.Generator.Quotes), len(priced); got != want {

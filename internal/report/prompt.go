@@ -360,7 +360,7 @@ func renderPrices(quotes []model.Quote, trends map[string]model.Trading, display
 	var b strings.Builder
 	b.WriteString("\nPrices, as measured on the exchange rather than reported by any article. Use them to say how the market answered the news, and do not attribute them to a source:\n")
 	for _, q := range quotes {
-		fmt.Fprintf(&b, "- %s: %.2f, %s on the day", prices.LabelFor(q.Symbol), q.Price, q.Move())
+		fmt.Fprintf(&b, "- %s: %.2f, %s on its last session", prices.LabelFor(q.Symbol), q.Price, q.Move())
 		if q.Previous > 0 {
 			fmt.Fprintf(&b, " (previous close %.2f)", q.Previous)
 		}

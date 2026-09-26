@@ -7,10 +7,10 @@ import (
 )
 
 // The report is scheduled in US Eastern time so it stays fixed relative to the
-// US close. This asserts the consequence the schedule actually exists for: a
-// Singapore reader gets it at 09:30 while New York is on EST and 08:30 while it
+// US open. This asserts the consequence the schedule actually exists for: a
+// Singapore reader gets it at 20:30 while New York is on EST and 19:30 while it
 // is on EDT, with the shift coming from the US transition alone.
-func TestReportArrivesAt0930SGTUnderESTAnd0830UnderEDT(t *testing.T) {
+func TestReportArrivesAt2030SGTUnderESTAnd1930UnderEDT(t *testing.T) {
 	schedule, err := time.LoadLocation(DefaultScheduleTZ)
 	if err != nil {
 		t.Fatalf("load schedule timezone: %v", err)
@@ -34,25 +34,25 @@ func TestReportArrivesAt0930SGTUnderESTAnd0830UnderEDT(t *testing.T) {
 		{
 			name: "New York on EST",
 			from: time.Date(2027, time.January, 15, 12, 0, 0, 0, schedule),
-			want: "2027-01-16 09:30 +0800",
+			want: "2027-01-16 20:30 +0800",
 		},
 		{
 			name: "New York on EDT",
 			from: time.Date(2027, time.July, 15, 12, 0, 0, 0, schedule),
-			want: "2027-07-16 08:30 +0800",
+			want: "2027-07-16 19:30 +0800",
 		},
 		{
 			// The Sunday the US springs forward; the following report is the
 			// first to land an hour earlier in Singapore.
 			name: "day US DST begins",
 			from: time.Date(2027, time.March, 14, 12, 0, 0, 0, schedule),
-			want: "2027-03-15 08:30 +0800",
+			want: "2027-03-15 19:30 +0800",
 		},
 		{
 			// The Sunday the US falls back, shifting Singapore delivery later.
 			name: "day US DST ends",
 			from: time.Date(2027, time.November, 7, 12, 0, 0, 0, schedule),
-			want: "2027-11-08 09:30 +0800",
+			want: "2027-11-08 20:30 +0800",
 		},
 	}
 

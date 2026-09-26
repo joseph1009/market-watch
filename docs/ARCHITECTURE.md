@@ -19,8 +19,8 @@ It throws away what is stale or duplicated, has a model rate every article and
 file it in the sectors it bears on, has a second pass check where each one
 landed, has a large model write a brief from what survived, renders that into
 Telegram messages and sends them to one chat. Then it posts
-the same brief to a channel for other readers, and an hour later sends both a
-closer look at twenty companies — new names from the news and from the
+the same brief to a channel for other readers, and twenty minutes later
+starts a closer look for both at twenty companies — new names from the news and from the
 market's largest moves, and followed companies whose move and news do not fit —
 each with a buy, hold or sell verdict. In between it answers commands in the
 chat, the largest of which reads a company's SEC filings, results and
@@ -67,8 +67,8 @@ poller — and this is what the scheduler fires.
 ### 1. Waking up
 
 [`RunScheduler`](../internal/app/app.go#L687) recomputes the next run every time
-rather than ticking on an interval, so the schedule stays pinned to 20:30 US
-Eastern across a daylight-saving change. When the timer fires it calls
+rather than ticking on an interval, so the schedule stays pinned to 07:30 US
+Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
 [`Publish`](../internal/app/app.go#L314) → [`brief(ctx, share: true)`](../internal/app/app.go#L315).
 
 `brief` does three things before any work starts:
@@ -280,9 +280,9 @@ commands from the owner's chat alone.
 
 The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L315)
 queues it ([`queueLook`](../internal/app/look.go#L37)) in `pending-look.json` on the
-data volume, due `LookDelay` (an hour) later, and
+data volume, due `LookDelay` (twenty minutes) later, and
 [`RunLooks`](../internal/app/look.go#L70), which runs beside the scheduler and the
-bot, sends it when it falls due: a restart in that hour delays it rather than
+bot, sends it when it falls due: a restart in that time delays it rather than
 losing it, and one more than six hours late is dropped. A brief asked for with
 `/now`, or sent with `--once`, is followed at once.
 
@@ -330,8 +330,9 @@ twenty companies (`ideas.LookSize`), found in two halves at once:
    of its own, the numbers are listed one to a line, a coloured mark leads
    each company, and a short rule separates one from the next.
 6. [`recordVerdicts`](../internal/app/ideas.go#L447) writes each verdict shown to
-   the scorecard with the price at the time, so `/scorecard` can grade it
-   against the S&P 500 once it is a week old.
+   the scorecard with the price at the time, and the dollar's rate where it
+   trades abroad, so `/scorecard` can grade it against the S&P 500 in US
+   dollars once it is a week old.
 
 ---
 
@@ -484,7 +485,7 @@ which model answers which stage.
 one feature rather than the run. `New` builds it. `Prefs`/`UpdatePrefs` guard
 the preferences behind a mutex. `SendReport`, `Publish`, `publishScheduled`
 and `brief` are the entry points to a run; the scheduled one queues its closer
-look for an hour later. `sendReport` is the pipeline itself. `RunScheduler`
+look for `LookDelay` later. `sendReport` is the pipeline itself. `RunScheduler`
 fires the daily brief; `Serve` runs it alongside `RunLooks` and the bot poller
 and returns when any of them fails. `reportFailure` tells the owner when a brief failed. Helpers:
 `sourceMode`, `watchedNames`, `companyNames`, `newRelay`, `placedExamples`,
@@ -524,7 +525,7 @@ a time. `recordVerdicts` writes the verdicts to the scorecard; `lastClose`
 reads the benchmark's price at the time; `handleScorecard` answers
 `/scorecard`; `briefText` and `trackedNames` prepare the researcher's input.
 
-**[look.go](../internal/app/look.go)** — the hour between the brief and its
+**[look.go](../internal/app/look.go)** — the wait between the brief and its
 closer look. `queueLook` and `pendingLook` keep the waiting look on the data
 volume; `RunLooks` and `sendDueLook` send it when due, and drop one more than
 `lookStale` (six hours) late; `runLook` holds the run lock and opens its relay
@@ -792,8 +793,10 @@ companies as `Row`s and chooses up to `DefaultPicks` (six); `screenPrompt`.
 verdicts, `DefaultBatch` (five) companies a call and two calls at a time;
 `judgePrompt`, `parseVerdicts`, `normaliseVerdict`.
 **[scorecard.go](../internal/ideas/scorecard.go)** — `Record`, `Scorecard.Add`,
-`Due` (which verdicts are old enough to grade), and `Summary`, which measures
-each against the S&P 500. `MinAge` is a week.
+`Due` (which verdicts are old enough to grade), `Currencies` (whose exchange
+rates they need), and `Summary`, which measures each against the S&P 500 in US
+dollars. `MinAge` is a week; `Clearly`, five points a year, is the margin a
+BUY or SELL is held to, pro rata.
 
 ### internal/fundamentals
 
@@ -950,7 +953,7 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 | `runs.json` | [history/runs.go](../internal/history/runs.go) | The last thirty runs, for `/stats` |
 | `candidates.json` | [discover/store.go](../internal/discover/store.go) | New names and how many days each has been running |
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict and the price at the time |
-| `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its hour after the brief, when there is one |
+| `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its twenty minutes after the brief, when there is one |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, a ledger each |
 
 Locally, [scripts/sync-from-fly.sh](../scripts/sync-from-fly.sh) copies these

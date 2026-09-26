@@ -660,7 +660,7 @@ func renderCandidates(candidates []model.Candidate, cited []model.Article) []str
 		// which a Hong Kong price does, and the move is the part the news
 		// explains. A name with no price simply goes without one.
 		if c.Quote != nil {
-			b.WriteString(" · " + escape(c.Quote.Move()) + " today")
+			b.WriteString(" · " + escape(c.Quote.Move()) + " last session")
 		}
 		b.WriteString("\n" + escape(c.Why))
 

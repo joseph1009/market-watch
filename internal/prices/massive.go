@@ -7,9 +7,10 @@
 // request returns every US listing's open, close and volume for a session, so
 // two requests compare the last two sessions across the market.
 //
-// The free plan allows five requests a minute and serves each session once it
-// has closed. That is enough: this runs an hour after the brief, and needs two
-// sessions, or a few more attempts across a weekend or a holiday.
+// The free plan allows five requests a minute and serves each session some
+// hours after it has closed: in the New York evening the day's session is not
+// served yet. That is enough: this runs the next morning, before the open, and
+// needs two sessions, or a few more attempts across a weekend or a holiday.
 package prices
 
 import (
@@ -266,8 +267,9 @@ func (m *Massive) client() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
 }
 
-// newYork is where a session's date is decided: the brief runs in the New York
-// evening, which is already the next day in UTC.
+// newYork is where a session's date is decided. The scheduled brief runs in the
+// New York morning, when UTC agrees on the day, but a /now in the New York
+// evening is already the next day in UTC.
 func newYork() *time.Location {
 	if loc, err := time.LoadLocation("America/New_York"); err == nil {
 		return loc

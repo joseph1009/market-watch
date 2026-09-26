@@ -141,9 +141,12 @@ func MoverQuery(name, ticker string, percent float64) Query {
 	if n := PlainName(name); n != "" && !strings.EqualFold(n, ticker) {
 		subject = n + " (" + ticker + ")"
 	}
+	// Not "today": the brief runs before the US open, and the move was the
+	// last session's. The search is bounded to the days since the last brief,
+	// so the question needs no date.
 	return Query{
 		Label: "mover:" + ticker,
-		Text:  fmt.Sprintf("Why did %s shares %s today?", subject, verb),
+		Text:  fmt.Sprintf("Why did %s shares %s?", subject, verb),
 		Max:   moverResults,
 	}
 }

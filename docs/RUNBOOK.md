@@ -246,7 +246,7 @@ subscription.
 
 ## Worth a closer look
 
-An hour after the daily brief, a second message follows it: twenty listed
+About half an hour after the daily brief, a second message follows it: twenty listed
 companies, each with a verdict. Up to six are companies you follow, shown only
 as BUY or SELL, and new names fill the rest. A followed HOLD is left out, and
 the next new name the research found takes its place, so there are twenty
@@ -279,13 +279,15 @@ wherever the research found enough.
    news changed and by how much; how far the share moved; whether that move
    overreacted, underreacted or matched the change; the case; the two to four
    numbers that decide it; and the biggest risk. The oil price, the dollar and
-   the cost of money are set above them all. BUY and SELL mean better or worse
-   than the S&P 500. **A followed company is shown only as BUY or SELL**: its
+   the cost of money are set above them all. BUY and SELL mean at least five
+   percentage points better or worse than the S&P 500 over the twelve months,
+   in US dollars. **A followed company is shown only as BUY or SELL**: its
    HOLD is left out.
 
-It takes ten to fifteen minutes, most of it the research and the verdicts. The
-research and the screen run side by side. The hour's wait is kept on the data
-volume (`pending-look.json`), so a restart or a deploy in that hour delays it
+It starts twenty minutes after the brief and takes ten to fifteen, most of it
+the research and the verdicts, so it arrives about an hour before the US open.
+The research and the screen run side by side. The wait is kept on the data
+volume (`pending-look.json`), so a restart or a deploy in that time delays it
 rather than losing it; one more than six hours late is dropped. After `/now`,
 or `--once`, it follows at once. `IDEAS=false` turns it off.
 
@@ -326,9 +328,13 @@ closer look, so nothing reaches readers until you have read it.
 
 **`/scorecard`** says how past verdicts have done. Every verdict is written to
 `scorecard.json` on the data volume with the price it was given at and the S&P
-500 fund's beside it. Once a verdict is a week old it is scored: how the share
-moved against the index since. BUY counts as right when it is ahead of the
-index, SELL when it is behind. The verdicts are twelve-month calls, so read the
+500 fund's beside it, and for a share priced abroad the dollar's exchange rate.
+Once a verdict is a week old it is scored: how the share moved against the
+index since, in US dollars, so a Tokyo share that rose while the yen fell is
+counted as a dollar investor would have seen it. A BUY promises to beat the
+index by five points over the year, and counts as on course while it is ahead
+by at least that pace -- five points a year, pro rata, so about 0.4 points
+after a month. A SELL, likewise behind. The verdicts are twelve-month calls, so read the
 scorecard for a pattern over months, not for any one name.
 
 ## Changing the watchlist
@@ -394,7 +400,7 @@ start with `web:`, as in `web:reuters.com`.
 
 Each brief also searches for why a share moved, when one on a watchlist moved
 at least three percentage points further than the S&P 500 fund — "Why did
-McDonald's (MCD) shares fall today?" — at most five a brief, furthest first.
+McDonald's (MCD) shares fall?" — at most five a brief, furthest first.
 Every watchlist share is priced at the start of the run to find them, which
 takes about two minutes at Finnhub's free pace and runs beside the feeds. The
 log line `searched movers` names them. The same prices give each section its

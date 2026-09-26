@@ -23,10 +23,10 @@ import (
 // the market's largest moves -- fill the rest. See the ideas package for how,
 // and docs/RUNBOOK.md for the stages.
 //
-// The daily run's closer look arrives an hour after the brief (look.go), so
-// the brief is never held up by it and the plan's allowance is not asked for
-// both at once. A brief asked for with /now, or sent with -once, is followed
-// at once.
+// The daily run's closer look starts twenty minutes after the brief (look.go),
+// so the brief is never held up by it and the plan's allowance is not asked
+// for both at once. A brief asked for with /now, or sent with -once, is
+// followed at once.
 //
 // It follows the brief to the same places: the owner always, and the channel
 // on the days the brief goes there, which is the scheduled run and -once
@@ -461,10 +461,18 @@ func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, ch
 	}
 
 	var records []ideas.Record
+	var currencies []string
 	for _, idea := range judged {
 		if r, ok := ideas.NewRecord(idea, chartOf[idea.Symbol()], bench, a.now()); ok {
 			records = append(records, r)
+			currencies = append(currencies, r.Currency)
 		}
+	}
+	// A share priced abroad is scored in dollars, from the rate it was given
+	// at. One that cannot be read now is looked up from its history later.
+	rates := a.dollarRates(ctx, currencies)
+	for i := range records {
+		records[i].FX = rates.Latest(records[i].Currency)
 	}
 	if err := a.Scorecard.Add(records...); err != nil {
 		a.Log.Warn("could not record the verdicts", "error", err)
@@ -515,12 +523,44 @@ func (a *App) handleScorecard(ctx context.Context, msg telegram.Message) error {
 		}
 	}
 	bench := 0.0
+	var rates ideas.Rates
 	if len(due) > 0 {
 		bench = a.lastClose(ctx, ideas.Benchmark)
+		rates = a.dollarRates(ctx, a.Scorecard.Currencies(a.now()))
 	}
 
-	text := a.Scorecard.Summary(a.now(), now, bench, a.Cfg.DisplayLocation)
+	text := a.Scorecard.Summary(a.now(), now, bench, rates, a.Cfg.DisplayLocation)
 	return a.Bot.SendMessage(ctx, msg.Chat.ID, text)
+}
+
+// dollarRates reads what each currency is worth in US dollars, day by day over
+// the chart source's two years. A currency that cannot be read is left out,
+// and the verdicts priced in it go unscored rather than scored in the wrong
+// money.
+func (a *App) dollarRates(ctx context.Context, currencies []string) ideas.Rates {
+	rates := ideas.Rates{}
+	if a.Market == nil {
+		return rates
+	}
+	for _, cur := range currencies {
+		chart := prices.DollarRateChart(cur)
+		if _, done := rates[cur]; done || chart == "" {
+			continue
+		}
+		fetch, cancel := context.WithTimeout(ctx, historyBudget)
+		series, err := a.Market.Fetch(fetch, chart)
+		cancel()
+		if err != nil {
+			a.Log.Warn("exchange rate not read", "currency", cur, "error", err)
+			continue
+		}
+		var hist []ideas.Rate
+		for _, bar := range series.Bars {
+			hist = append(hist, ideas.Rate{Date: bar.Date, USD: bar.Close})
+		}
+		rates[cur] = hist
+	}
+	return rates
 }
 
 // briefText is the brief's prose as the research reads it: the overview, then

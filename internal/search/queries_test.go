@@ -90,13 +90,13 @@ func TestClipCutsOnAWordBoundary(t *testing.T) {
 // fewer results than a sector search: one company's day does not fill twenty.
 func TestMoverQueryAsksWhyInPlainWords(t *testing.T) {
 	q := MoverQuery("MCDONALDS CORP", "MCD", -4.8)
-	if q.Text != "Why did MCDONALDS (MCD) shares fall today?" {
+	if q.Text != "Why did MCDONALDS (MCD) shares fall?" {
 		t.Errorf("Text = %q", q.Text)
 	}
 	if q.Label != "mover:MCD" || q.Max != moverResults {
 		t.Errorf("Label = %q, Max = %d", q.Label, q.Max)
 	}
-	if got := MoverQuery("", "RIOT", 6.1).Text; got != "Why did RIOT shares rise today?" {
+	if got := MoverQuery("", "RIOT", 6.1).Text; got != "Why did RIOT shares rise?" {
 		t.Errorf("without a name, Text = %q", got)
 	}
 }

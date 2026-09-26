@@ -351,7 +351,7 @@ func TestValuationUsesThePriceWhenTheCurrenciesMatch(t *testing.T) {
 
 	table := snap.Table()
 	for _, want := range []string{
-		"100.00 USD, +1.2% on the day",
+		"100.00 USD, +1.2% on its last session",
 		"20.00x", // price 100 over earnings of 5
 		"5.00x",  // price 100 over book value of 20 a share
 		"Market value of the equity",

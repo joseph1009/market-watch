@@ -319,7 +319,7 @@ func TestAMoverSearchAsksForFewerResults(t *testing.T) {
 	for _, r := range s.requests {
 		got[r.Query] = r.MaxResults
 	}
-	if got["Why did MCDONALDS (MCD) shares fall today?"] != moverResults || got["markets"] != maxResults {
+	if got["Why did MCDONALDS (MCD) shares fall?"] != moverResults || got["markets"] != maxResults {
 		t.Errorf("max_results = %v, want %d for the mover and %d for the rest", got, moverResults, maxResults)
 	}
 }

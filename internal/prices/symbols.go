@@ -52,3 +52,23 @@ func ChartSymbol(ticker, exchange string) string {
 	}
 	return ticker + suffix
 }
+
+// minorUnits are the currencies the chart source prices some listings in
+// hundredths of: London in pence (GBp), Johannesburg in cents (ZAc), Tel Aviv
+// in agorot (ILA). The history reads the currency in capitals, so GBp arrives
+// as GBP. A rate is only ever used as a ratio of two days, which a hundredth
+// leaves unchanged, so each maps to its whole currency.
+var minorUnits = map[string]string{"GBX": "GBP", "ZAC": "ZAR", "ILA": "ILS"}
+
+// DollarRateChart is the chart symbol for what one unit of currency is worth
+// in US dollars: "JPYUSD=X" for the yen. Empty for the dollar itself.
+func DollarRateChart(currency string) string {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if whole, ok := minorUnits[currency]; ok {
+		currency = whole
+	}
+	if currency == "" || currency == "USD" {
+		return ""
+	}
+	return currency + "USD=X"
+}

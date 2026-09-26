@@ -25,10 +25,10 @@ type IdeasOptions struct {
 // only place a channel reader will see them. See docs/RUNBOOK.md.
 const (
 	ownerNote = "<i>Claude's verdicts on companies today's news bears on. " +
-		"BUY and SELL mean better or worse than the S&amp;P 500 over twelve months. /scorecard shows how past verdicts have done.</i>"
+		"BUY and SELL mean at least 5 points better or worse than the S&amp;P 500 over twelve months, in US dollars. /scorecard shows how past verdicts have done.</i>"
 
 	channelNote = "<i>Companies today's news bears on, researched and judged by Claude — an AI model, writing from public filings and share prices with nobody checking its work. " +
-		"BUY and SELL mean it expects better or worse than the S&amp;P 500 over twelve months. " +
+		"BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over twelve months. " +
 		"This is not financial advice and not a recommendation to buy or sell anything. It is often wrong. " +
 		"Do your own research, and talk to someone licensed before you act on any of it.</i>"
 )
@@ -105,9 +105,11 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	if s := idea.Symbol(); s != "" {
 		head.WriteString(" <code>" + escape(s) + "</code>")
 	}
-	// Today's move, unless the verdict gives it below with the longer ones.
+	// The last session's move, unless the verdict gives it below with the
+	// longer ones. Not "today": the look is read before the US open, when a
+	// US share's last session was yesterday's.
 	if idea.Quote != nil && idea.Moved == "" {
-		head.WriteString(" · " + escape(idea.Quote.Move()) + " today")
+		head.WriteString(" · " + escape(idea.Quote.Move()) + " last session")
 	}
 
 	head.WriteString("\n<b>" + escape(idea.Verdict) + "</b>")
@@ -196,12 +198,17 @@ func renderNumbers(numbers string) string {
 }
 
 // reactionWord is the judgment at the head of the REACTION field, for the
-// verdict line: "underreacted", "overreacted" or "matched", or nothing when
-// the field opens some other way.
+// verdict line: "underreacted", "overreacted", "matched", or "not yet traded"
+// for news that came after the last price, or nothing when the field opens
+// some other way.
 func reactionWord(reaction string) string {
 	words := strings.Fields(reaction)
 	if len(words) == 0 {
 		return ""
+	}
+	if len(words) >= 3 && strings.EqualFold(words[0], "not") && strings.EqualFold(words[1], "yet") &&
+		strings.EqualFold(strings.Trim(words[2], ".,:;-–—"), "traded") {
+		return "not yet traded"
 	}
 	first := strings.ToLower(strings.Trim(words[0], ".,:;-–—"))
 	switch first {

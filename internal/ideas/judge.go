@@ -205,7 +205,10 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 			// With the unit, always. A Hong Kong listing is quoted in Hong Kong
 			// dollars, and a bare 512.40 set beside a US company's 512.40
 			// invites a comparison that means nothing.
-			fmt.Fprintf(&b, "Today: %s, at %s %.2f.\n", q.Move(), q.Unit(), q.Price)
+			fmt.Fprintf(&b, "Last session: %s, at %s %.2f.\n", q.Move(), q.Unit(), q.Price)
+			if late := untraded(idea.Articles, q.AsOf, cited); late != "" {
+				fmt.Fprintf(&b, "Articles %s came out after that price: the market has not traded on them yet.\n", late)
+			}
 		}
 		if i < len(facts) && strings.TrimSpace(facts[i]) != "" {
 			b.WriteString(strings.TrimSpace(facts[i]))
@@ -314,6 +317,25 @@ func normaliseConfidence(s string) string {
 		}
 	}
 	return ""
+}
+
+// untraded lists, as "[3][7]", the articles published after a price was
+// struck: news the market has not traded on yet. The look is read before the
+// US open, so for a US share that is everything since the last close --
+// results after it, the night's news, a release before the open -- and a
+// share that has not moved on it has not shrugged it off, only not had the
+// chance. An article with no time, or a price with none, says nothing.
+func untraded(articles []model.Article, pricedAt time.Time, cited []model.Article) string {
+	if pricedAt.IsZero() {
+		return ""
+	}
+	var out strings.Builder
+	for _, a := range articles {
+		if n := number(a, cited); n > 0 && a.Published.After(pricedAt) {
+			fmt.Fprintf(&out, "[%d]", n)
+		}
+	}
+	return out.String()
 }
 
 func number(a model.Article, cited []model.Article) int {

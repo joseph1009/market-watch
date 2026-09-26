@@ -150,7 +150,7 @@ you, and why it is worth doing.
   subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
-- Worth a closer look: an hour after the brief, twenty companies, each with a
+- Worth a closer look: about half an hour after the brief, twenty companies, each with a
   buy, hold or sell verdict. Up to six followed companies, chosen by a screen
   of all of them where the move and the news do not fit, and shown only as BUY
   or SELL; new names found with web search from the news and the market's

@@ -1109,10 +1109,10 @@ func TestANewNameCarriesItsMoveOnTheDay(t *testing.T) {
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
 
-	if !strings.Contains(out, "<code>GRAB</code> · +9.1% today") {
+	if !strings.Contains(out, "<code>GRAB</code> · +9.1% last session") {
 		t.Errorf("a US name does not carry its move:\n%s", out)
 	}
-	if !strings.Contains(out, "<code>700.HK</code> · -0.8% today") {
+	if !strings.Contains(out, "<code>700.HK</code> · -0.8% last session") {
 		t.Errorf("a Hong Kong name does not carry its move:\n%s", out)
 	}
 	if strings.Contains(out, "512.40") || strings.Contains(out, "5.42") {
@@ -1282,7 +1282,7 @@ func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
 		"Worth a closer look",
 		"/scorecard",
 		"<b>In the news</b>",
-		"⚪ <b>Micron</b> <code>MU</code> · +4.1% today",
+		"⚪ <b>Micron</b> <code>MU</code> · +4.1% last session",
 		"<b>HOLD</b> · medium confidence",
 		`Priced for it already <a href="https://example.com/1">[1]</a>.`,
 		"<i>Numbers:</i> 25x earnings",
@@ -1476,6 +1476,22 @@ func TestTheAnalysisIsSubheadingsAndBullets(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("analysis is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// News that came after the last price has not been traded on, and the verdict
+// line says so rather than calling the share's stillness a judgment.
+func TestTheReactionWordReadsNotYetTraded(t *testing.T) {
+	for reaction, want := range map[string]string{
+		"Overreacted: a headline, no revenue.":          "overreacted",
+		"Not yet traded: results came after the close.": "not yet traded",
+		"not yet traded -- out after the close":         "not yet traded",
+		"Not enough news to judge.":                     "",
+		"":                                              "",
+	} {
+		if got := reactionWord(reaction); got != want {
+			t.Errorf("reactionWord(%q) = %q, want %q", reaction, got, want)
 		}
 	}
 }

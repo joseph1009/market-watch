@@ -12,18 +12,21 @@ import (
 	"github.com/joseph1009/market-watch/internal/relay"
 )
 
-// The daily run's closer look waits an hour after the brief. It is written to
-// the data volume while it waits, so a restart or a deploy in that hour
-// delays it rather than losing it, and RunLooks sends it when it falls due.
+// The daily run's closer look waits twenty minutes after the brief. It is
+// written to the data volume while it waits, so a restart or a deploy in that
+// time delays it rather than losing it, and RunLooks sends it when it falls
+// due.
 
 const (
-	// LookDelay is how long after the daily brief its closer look is sent.
-	// The brief is read first and on its own; the verdicts follow once it has
-	// been, and the plan's allowance is not asked for both at once.
-	LookDelay = time.Hour
+	// LookDelay is how long after the daily brief its closer look starts.
+	// The brief is read first and on its own, and the plan's allowance is not
+	// asked for both at once. The look then takes ten to fifteen minutes, so
+	// it arrives about half an hour after the brief: with the brief at 07:30
+	// in New York, an hour before the open.
+	LookDelay = 20 * time.Minute
 
-	// lookPoll is how often a waiting look is checked for. A look is due on
-	// the hour, so a minute late is on time.
+	// lookPoll is how often a waiting look is checked for. A minute late is
+	// on time.
 	lookPoll = 30 * time.Second
 
 	// lookStale is how late a look may be and still be sent: a process down

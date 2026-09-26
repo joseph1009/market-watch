@@ -17,12 +17,13 @@ import (
 const (
 	// The report is scheduled in US Eastern time, not the reader's timezone,
 	// so it stays pinned to the same point in the US trading day year-round:
-	// 20:30 ET is ~4.5h after the close. Read in Singapore that lands at
-	// 09:30 SGT while New York is on EST and 08:30 SGT while it is on EDT --
-	// Singapore itself has no DST, so the hour shift comes entirely from the
-	// US transition and needs no special handling here.
+	// 07:30 ET is two hours before the open, with the closer look following
+	// in time to be read before it. Read in Singapore that lands at 20:30 SGT
+	// while New York is on EST and 19:30 SGT while it is on EDT -- Singapore
+	// itself has no DST, so the hour shift comes entirely from the US
+	// transition and needs no special handling here.
 	DefaultScheduleTZ = "America/New_York"
-	DefaultReportAt   = "20:30"
+	DefaultReportAt   = "07:30"
 	DefaultDisplayTZ  = "Asia/Singapore"
 
 	// RELAY_ANSWER values. Claude is the service as deployed: each model call
@@ -341,11 +342,11 @@ func (c *Config) DatabasePath() string { return filepath.Join(c.DataDir, "market
 // NextRun returns the next scheduled report time after from, skipping the days
 // the brief would have nothing to report on.
 //
-// The report fires after the US close, so a Saturday run covers a Saturday: the
-// market was shut, and the news is Friday's, which Friday's brief already
-// carried. Skipping both weekend days means the reader gets a brief on the
-// morning after each trading day, and none on a morning that would only repeat
-// the last one.
+// The report fires before the US open, so a Saturday or Sunday run comes
+// before a day the market is shut: nothing it says can be traded on until
+// Monday, when Monday's brief says it again with the weekend's news added.
+// Skipping both weekend days means the reader gets a brief before each
+// trading day, Monday's carrying Friday's session and the weekend.
 func (c *Config) NextRun(from time.Time) time.Time {
 	next := c.ReportAt.Next(from, c.ScheduleLocation)
 	if !c.SkipWeekends {
@@ -358,7 +359,8 @@ func (c *Config) NextRun(from time.Time) time.Time {
 	return next
 }
 
-// isWeekend reports whether the brief would cover a day the US market was shut.
+// isWeekend reports whether the brief would come before a day the US market is
+// shut.
 // Holidays are not handled: they move every year and a quiet brief on Christmas
 // Day costs one brief's worth of the plan's allowance, where a wrong holiday
 // table would silently skip a trading day.

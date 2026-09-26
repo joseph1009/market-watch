@@ -341,7 +341,7 @@ func (s Snapshot) valuation() string {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nMarket price, as traded rather than as filed: %.2f USD, %s on the day",
+	fmt.Fprintf(&b, "\nMarket price, as traded rather than as filed: %.2f USD, %s on its last session",
 		s.Price.Price, s.Price.Move())
 	if !s.Price.AsOf.IsZero() {
 		fmt.Fprintf(&b, ", as at %s", s.Price.AsOf.Format("2 Jan 2006"))

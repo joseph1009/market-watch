@@ -1,13 +1,14 @@
 # Market Watch
 
 A daily brief on the US stock market, written by Claude and delivered on
-Telegram the next morning, Singapore time, with a link behind every claim.
+Telegram two hours before the US open -- the evening in Singapore -- with a
+link behind every claim.
 
-Each evening, US time, it reads about forty news feeds and runs about fifteen
+Each morning, US time, it reads about forty news feeds and runs about fifteen
 news searches. It also reads the SEC's recent filings and prices every company
 it follows. A model sorts the day's articles into the reader's sectors, and a
 second pass checks where each one landed. Opus then writes the brief, section
-by section, from what survived. An hour later it sends a closer look at
+by section, from what survived. Half an hour later it sends a closer look at
 twenty companies -- new names from the day's news and the market's largest
 moves, and followed companies whose move and news do not fit -- each with a
 buy, hold or sell verdict. Between briefs the bot answers commands, the largest

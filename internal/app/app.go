@@ -308,8 +308,8 @@ func (a *App) SendReport(ctx context.Context) error {
 
 // Publish sends the brief to the owner, then the same brief to the channel if
 // there is one, then the closer look to both, straight after. It is what
-// -once -share does; the schedule does the same with the closer look an hour
-// later (publishScheduled). A channel that refuses either is reported to the
+// -once -share does; the schedule does the same with the closer look
+// LookDelay later (publishScheduled). A channel that refuses either is reported to the
 // owner rather than returned, since the owner's copy arrived.
 func (a *App) Publish(ctx context.Context) error {
 	return a.brief(ctx, true, false)
@@ -323,8 +323,8 @@ func (a *App) publishScheduled(ctx context.Context) error {
 
 // brief is one whole run. The channel gets the brief before the research
 // starts, so readers are not kept waiting on minutes of web searches whose
-// result they will never see. With later, the closer look is queued for an
-// hour's time instead of run now.
+// result they will never see. With later, the closer look is queued for
+// LookDelay's time instead of run now.
 func (a *App) brief(ctx context.Context, share, later bool) (err error) {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()

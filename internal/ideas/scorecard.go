@@ -18,8 +18,9 @@ import (
 
 // The scorecard is what makes the verdicts more than opinions. Each one is
 // written down with the price the share stood at and the S&P 500 beside it,
-// and /scorecard later asks how both have moved since. BUY means "better than
-// the index over twelve months", so that is what it is measured against.
+// and /scorecard later asks how both have moved since. BUY means "at least
+// Clearly better than the index over twelve months, in US dollars", so that
+// is what it is measured against.
 //
 // It is kept on the data volume and never trimmed: a year of verdicts is a
 // few thousand small records, and the old ones are the ones that say most.
@@ -31,6 +32,16 @@ const Benchmark = "SPY"
 // MinAge is how old a verdict must be before it is scored. Younger than a
 // week, the result is the day's noise and says nothing about the call.
 const MinAge = 7 * 24 * time.Hour
+
+// Clearly is how far a BUY promises to beat the index over twelve months, and
+// a SELL to trail it: five percentage points. Without a number, a share a
+// tenth of a point ahead counted as a BUY proved right, and "clearly better"
+// was a word the model could read as it liked. The verdicts' prompt and the
+// note above every closer look say the same; change them together.
+const Clearly = 0.05
+
+// year is the stretch a verdict is a call on.
+const year = 365 * 24 * time.Hour
 
 // Record is one verdict as it was given.
 type Record struct {
@@ -48,6 +59,67 @@ type Record struct {
 	Price     float64 `json:"price"`
 	Currency  string  `json:"currency,omitempty"`
 	Benchmark float64 `json:"benchmark"`
+
+	// FX is what one unit of Currency was worth in US dollars when the
+	// verdict was given. Zero for a dollar share, and for one given before the
+	// rate was kept or when it could not be read: the scoring then looks the
+	// rate up from its history, to the day.
+	FX float64 `json:"fx,omitempty"`
+}
+
+// dollar reports whether the share is priced in US dollars. The first
+// records carry no currency, and all of them were.
+func (r Record) dollar() bool { return r.Currency == "" || r.Currency == "USD" }
+
+// gain is how far the share has moved since the verdict, in US dollars, given
+// its price now in its own currency. The index is a dollar fund, and a Tokyo
+// share that rose 10% while the yen fell 10% made a dollar investor nothing.
+// False where the exchange rate then or now cannot be read.
+func (r Record) gain(now float64, rates Rates) (float64, bool) {
+	moved := now / r.Price
+	if r.dollar() {
+		return moved - 1, true
+	}
+	then := r.FX
+	if then <= 0 {
+		then = rates.on(r.Currency, r.At)
+	}
+	current := rates.Latest(r.Currency)
+	if then <= 0 || current <= 0 {
+		return 0, false
+	}
+	return moved*current/then - 1, true
+}
+
+// Rates are exchange-rate histories by currency: what one unit was worth in
+// US dollars at each day's close, oldest first.
+type Rates map[string][]Rate
+
+// Rate is one day's close.
+type Rate struct {
+	Date time.Time
+	USD  float64
+}
+
+// Latest is the currency's most recent rate, or zero.
+func (r Rates) Latest(currency string) float64 {
+	if h := r[currency]; len(h) > 0 {
+		return h[len(h)-1].USD
+	}
+	return 0
+}
+
+// on is the currency's rate on the day of t, or the last day before it the
+// history has, or zero where the history starts later.
+func (r Rates) on(currency string, t time.Time) float64 {
+	day := t.UTC().Truncate(24 * time.Hour)
+	h := r[currency]
+	for i := len(h) - 1; i >= 0; i-- {
+		if !h[i].Date.After(day) {
+			return h[i].USD
+		}
+	}
+	return 0
 }
 
 // NewRecord writes an idea down, or says it cannot be: without a price to
@@ -126,6 +198,21 @@ func (s *Scorecard) Due(now time.Time, limit int) []string {
 	return out
 }
 
+// Currencies returns the currencies other than the dollar that the verdicts
+// old enough to score are priced in, for their exchange rates to be read.
+func (s *Scorecard) Currencies(now time.Time) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, r := range s.records {
+		if now.Sub(r.At) < MinAge || r.dollar() || seen[r.Currency] {
+			continue
+		}
+		seen[r.Currency] = true
+		out = append(out, r.Currency)
+	}
+	return out
+}
+
 func (s *Scorecard) save() error {
 	data, err := json.MarshalIndent(s.records, "", "  ")
 	if err != nil {
@@ -144,26 +231,32 @@ func (s *Scorecard) save() error {
 // scored is one verdict set against what happened.
 type scored struct {
 	Record
-	gain, index float64 // fractional moves since, of the share and of the index
+	gain, index float64 // fractional moves since, of the share in dollars and of the index
+	age         time.Duration
 }
 
 func (s scored) ahead() float64 { return s.gain - s.index }
 
-// right says whether the call has so far gone the way it said. A HOLD has no
-// direction to be right about.
+// right says whether the call is on course: a BUY leading the index, or a
+// SELL trailing it, by at least Clearly a year, pro rata. A verdict is scored
+// long before its twelve months are up, and a month in, holding it to the
+// full five points would call most good calls wrong. A HOLD has no direction
+// to be right about.
 func (s scored) right() (bool, bool) {
+	need := Clearly * math.Min(float64(s.age)/float64(year), 1)
 	switch s.Verdict {
 	case model.Buy:
-		return s.ahead() > 0, true
+		return s.ahead() >= need, true
 	case model.Sell:
-		return s.ahead() < 0, true
+		return s.ahead() <= -need, true
 	}
 	return false, false
 }
 
-// Summary reads the record back for /scorecard. now is the price of each chart
-// today, and benchmark the index fund's.
-func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark float64, where *time.Location) string {
+// Summary reads the record back for /scorecard. prices are each chart's price
+// now, benchmark the index fund's, and rates the exchange rates of the
+// currencies Currencies names.
+func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark float64, rates Rates, where *time.Location) string {
 	var b strings.Builder
 	b.WriteString("<b>📊 Scorecard</b>\n\n")
 
@@ -184,7 +277,12 @@ func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark 
 			unpriced++
 			continue
 		}
-		judged = append(judged, scored{Record: r, gain: p/r.Price - 1, index: benchmark/r.Benchmark - 1})
+		gain, ok := r.gain(p, rates)
+		if !ok {
+			unpriced++
+			continue
+		}
+		judged = append(judged, scored{Record: r, gain: gain, index: benchmark/r.Benchmark - 1, age: now.Sub(r.At)})
 	}
 
 	fmt.Fprintf(&b, "%d verdicts since %s. ", len(s.records), s.records[0].At.In(where).Format("2 Jan"))
@@ -198,7 +296,7 @@ func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark 
 			fmt.Fprintf(&b, "; %d %s newer", young, plural(young, "is", "are"))
 		}
 		if unpriced > 0 {
-			fmt.Fprintf(&b, "; %d could not be priced today", unpriced)
+			fmt.Fprintf(&b, "; %d could not be priced in dollars today", unpriced)
 		}
 		b.WriteString(".\n")
 	}
@@ -225,9 +323,9 @@ func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark 
 		fmt.Fprintf(&b, "\n<b>%s</b>, %d scored: ", v, len(group))
 		switch v {
 		case model.Buy:
-			fmt.Fprintf(&b, "%d ahead of the S&amp;P 500 (%d%%), ", rights, percentOf(rights, len(group)))
+			fmt.Fprintf(&b, "%d on course to beat the S&amp;P 500 by %s (%d%%), ", rights, clearly(), percentOf(rights, len(group)))
 		case model.Sell:
-			fmt.Fprintf(&b, "%d behind the S&amp;P 500 (%d%%), ", rights, percentOf(rights, len(group)))
+			fmt.Fprintf(&b, "%d on course to trail it by %s (%d%%), ", rights, clearly(), percentOf(rights, len(group)))
 		}
 		fmt.Fprintf(&b, "on average %s", points(avg))
 	}
@@ -242,15 +340,23 @@ func (s *Scorecard) Summary(now time.Time, prices map[string]float64, benchmark 
 			}
 			shown[i] = true
 			j := judged[i]
-			fmt.Fprintf(&b, "\n• %s <code>%s</code>, %s on %s: %s, against %s for the index",
+			inDollars := ""
+			if !j.dollar() {
+				inDollars = " in US dollars"
+			}
+			fmt.Fprintf(&b, "\n• %s <code>%s</code>, %s on %s: %s%s, against %s for the index",
 				telegram.Escape(j.Name), telegram.Escape(j.Symbol), j.Verdict,
-				j.At.In(where).Format("2 Jan"), signed(j.gain), signed(j.index))
+				j.At.In(where).Format("2 Jan"), signed(j.gain), inDollars, signed(j.index))
 		}
 	}
 
-	b.WriteString("\n\n<i>Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>")
+	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
+		clearly(), Clearly*100/12)
 	return b.String()
 }
+
+// clearly is Clearly, said as a margin: "5 points".
+func clearly() string { return fmt.Sprintf("%g points", Clearly*100) }
 
 func percentOf(n, of int) int {
 	if of == 0 {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -20,6 +21,10 @@ type Row struct {
 	Ticker, Name, Sector string
 	Line                 string
 	Articles             []model.Article
+
+	// PricedAt is when the price in Line was struck, so the articles that
+	// came out after it can be marked as not yet traded on.
+	PricedAt time.Time
 }
 
 // Screener chooses which followed companies are worth a verdict today.
@@ -100,6 +105,9 @@ func screenPrompt(brief string, cited []model.Article, rows []Row) string {
 		}
 		if len(nums) > 0 {
 			b.WriteString(" | today's articles " + strings.Join(nums, ""))
+			if late := untraded(r.Articles, r.PricedAt, cited); late != "" {
+				b.WriteString(", not yet traded on: " + late)
+			}
 		}
 		b.WriteString("\n")
 	}

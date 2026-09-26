@@ -246,10 +246,10 @@ func TestAUSListingKeepsItsLiveQuote(t *testing.T) {
 	}
 }
 
-// The daily brief is sent at once and its closer look an hour later: queued on
-// the data volume, where a restart in that hour does not lose it, and sent to
+// The daily brief is sent at once and its closer look LookDelay later: queued on
+// the data volume, where a restart in the wait does not lose it, and sent to
 // the owner and the channel once it falls due.
-func TestTheDailyCloserLookFollowsTheBriefByAnHour(t *testing.T) {
+func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
@@ -277,11 +277,11 @@ func TestTheDailyCloserLookFollowsTheBriefByAnHour(t *testing.T) {
 	}
 	lk, err := a.pendingLook()
 	if err != nil || lk == nil || !lk.Due.Equal(now.Add(LookDelay)) || !lk.Share || len(lk.Cited) != 1 {
-		t.Fatalf("queued %+v (err %v), want the brief's look due in an hour, for the channel too", lk, err)
+		t.Fatalf("queued %+v (err %v), want the brief's look due after LookDelay, for the channel too", lk, err)
 	}
 
 	// Not yet due: nothing is sent, and the wait is until it is, or the poll.
-	a.Now = func() time.Time { return now.Add(59 * time.Minute) }
+	a.Now = func() time.Time { return now.Add(LookDelay - time.Minute) }
 	if wait := a.sendDueLook(context.Background()); wait != lookPoll {
 		t.Errorf("a minute early, wait %v", wait)
 	}
