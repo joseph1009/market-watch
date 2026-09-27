@@ -537,7 +537,7 @@ func TestAnalyseWithoutATickerExplainsItself(t *testing.T) {
 	if len(*sent) != 1 {
 		t.Fatalf("got %d replies, want 1", len(*sent))
 	}
-	for _, want := range []string{"/analyse NVDA", "SEC", "never advice"} {
+	for _, want := range []string{"/analyse NVDA", "SEC", "verdict", "/scorecard"} {
 		if !strings.Contains((*sent)[0].Text, want) {
 			t.Errorf("reply is missing %q: %s", want, (*sent)[0].Text)
 		}

@@ -530,10 +530,24 @@ func runeLen(s string) int { return len([]rune(s)) }
 // -- which still need the same escaping, paragraph handling and message
 // splitting, and would otherwise be truncated by Telegram at 4096 characters.
 func RenderPlain(heading, body string) []string {
-	segs := []segment{}
-	if heading != "" {
-		segs = append(segs, segment{blocks: []string{"<b>" + escape(heading) + "</b>"}})
+	segs := headingSegments(heading)
+	segs = append(segs, plainSegments(body)...)
+	if len(segs) == 0 {
+		return nil
 	}
+	return pack(segs)
+}
+
+func headingSegments(heading string) []segment {
+	if heading == "" {
+		return nil
+	}
+	return []segment{{blocks: []string{"<b>" + escape(heading) + "</b>"}}}
+}
+
+// plainSegments are the prose's sections, each with the paragraphs under it.
+func plainSegments(body string) []segment {
+	var segs []segment
 
 	// A section's heading and the bullets under it are one unit. Treating every
 	// paragraph as its own segment let a message end on "THE CASE AGAINST IT"
@@ -564,12 +578,61 @@ func RenderPlain(heading, body string) []string {
 	if current != nil {
 		segs = append(segs, *current)
 	}
+	return segs
+}
 
+// AnalysisVerdict is the view on the stock an analysis ends with: BUY, HOLD
+// or SELL, a confidence, and the bullets saying why.
+type AnalysisVerdict struct {
+	Verdict, Confidence, Body string
+}
+
+// The notes under an analysis's verdict. As with the closer look, the
+// channel's is not decoration: a verdict posted to other people must say that
+// a model wrote it, that nobody checked it, and that it is not advice to act
+// on. /share is the only way an analysis reaches the channel, and it posts
+// the channel's copy.
+const (
+	analysisOwnerNote = "<i>Claude's view of the share, from the accounts below. " +
+		"BUY and SELL mean at least 5 points better or worse than the S&amp;P 500 over twelve months, in US dollars. /scorecard shows how past verdicts have done.</i>"
+
+	analysisChannelNote = "<i>This verdict was written by Claude — an AI model, working from public filings and share prices with nobody checking its work. " +
+		"BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over twelve months. " +
+		"This is not financial advice and not a recommendation to buy or sell anything. It is often wrong. " +
+		"Do your own research, and talk to someone licensed before you act on any of it.</i>"
+)
+
+// RenderAnalysis lays out /analyse: the heading, then the verdict, then the
+// accounts that support it. The verdict is written last and shown first:
+// last, so the reading of the accounts is not bent to fit a conclusion
+// reached before it; first, because it is what a reader looks for.
+func RenderAnalysis(heading string, v AnalysisVerdict, prose string, opts IdeasOptions) []string {
+	segs := headingSegments(heading)
+	if v.Verdict != "" {
+		note := analysisOwnerNote
+		if opts.ForChannel {
+			note = analysisChannelNote
+		}
+		line := "<b>" + escape(v.Verdict) + "</b>"
+		if mark := verdictMarks[v.Verdict]; mark != "" {
+			line = mark + " " + line
+		}
+		if v.Confidence != "" {
+			line += " · " + escape(v.Confidence) + " confidence"
+		}
+		blocks := []string{divider + "\n<b>" + VerdictHeading + "</b>\n" + line + "\n" + note}
+		blocks = append(blocks, paragraphs(v.Body)...)
+		segs = append(segs, segment{blocks: blocks})
+	}
+	segs = append(segs, plainSegments(prose)...)
 	if len(segs) == 0 {
 		return nil
 	}
 	return pack(segs)
 }
+
+// VerdictHeading is what the analysis's verdict is shown under.
+const VerdictHeading = "THE VERDICT"
 
 // isSectionHeading recognizes the capitalised lines the analysis divides itself
 // with -- "THE CASE AGAINST IT", "WHAT IT OWNS AND OWES".

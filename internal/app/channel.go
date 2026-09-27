@@ -31,8 +31,14 @@ import (
 type delivery struct {
 	what     string // how the replies name it: "the NVDA analysis"
 	messages []string
-	shared   bool
-	sharing  bool // a post to the channel is under way
+
+	// channel is the copy for the channel where it differs from the owner's:
+	// an analysis, whose verdict goes out under the warning a channel reader
+	// needs. Nil posts the owner's.
+	channel []string
+
+	shared  bool
+	sharing bool // a post to the channel is under way
 }
 
 var (
@@ -44,7 +50,12 @@ var (
 // it. Kept in memory: a restart forgets it, and the next brief or analysis
 // would replace it anyway.
 func (a *App) remember(what string, messages []string) *delivery {
-	d := &delivery{what: what, messages: messages}
+	return a.rememberFor(what, messages, nil)
+}
+
+// rememberFor is remember with a different copy for the channel.
+func (a *App) rememberFor(what string, messages, channel []string) *delivery {
+	d := &delivery{what: what, messages: messages, channel: channel}
 	a.lastMu.Lock()
 	a.last = d
 	a.lastMu.Unlock()
@@ -75,7 +86,11 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	d.sharing = true
 	a.lastMu.Unlock()
 
-	_, err := a.Bot.Broadcast(ctx, channel, d.messages)
+	messages := d.messages
+	if d.channel != nil {
+		messages = d.channel
+	}
+	_, err := a.Bot.Broadcast(ctx, channel, messages)
 
 	a.lastMu.Lock()
 	d.sharing = false
@@ -85,7 +100,7 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	if err != nil {
 		return fmt.Errorf("post %s to the channel: %w", d.what, err)
 	}
-	a.Log.Info("posted to the channel", "what", d.what, "messages", len(d.messages), "channel", channel)
+	a.Log.Info("posted to the channel", "what", d.what, "messages", len(messages), "channel", channel)
 	return nil
 }
 

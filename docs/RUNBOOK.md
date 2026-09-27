@@ -480,7 +480,9 @@ What goes to the channel:
 - **`/share`**, whichever of your brief or analysis arrived last. A brief from
   `/now` or `--once`, and every `/analyse`, stays in your chat until you share
   it, so you can read it first. The bot remembers only the latest one, and
-  forgets it on a restart.
+  forgets it on a restart. An analysis ends with a verdict, which it shows
+  first; the channel's copy carries the same warning under it as the closer
+  look does -- a model wrote it, nobody checked it, it is not advice.
 
 In the channel, only the first message of each post makes a sound; the rest
 arrive silently. Nothing is deleted there: `REPLACE_PREVIOUS` clears your chat

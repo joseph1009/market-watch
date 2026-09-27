@@ -249,6 +249,22 @@ func (s *Scorecard) Add(records ...Record) error {
 	return s.save()
 }
 
+// Repeats reports whether the same verdict on the same share, from the same
+// source, was recorded within window before r: the same call made twice,
+// which should count once.
+func (s *Scorecard) Repeats(r Record, window time.Duration) bool {
+	for i := len(s.records) - 1; i >= 0; i-- {
+		old := s.records[i]
+		if r.At.Sub(old.At) > window {
+			break
+		}
+		if old.Symbol == r.Symbol && old.Verdict == r.Verdict && old.source() == r.source() {
+			return true
+		}
+	}
+	return false
+}
+
 // All returns every record, oldest first.
 func (s *Scorecard) All() []Record { return s.records }
 

@@ -1,0 +1,66 @@
+package fundamentals
+
+import (
+	"strings"
+	"testing"
+)
+
+const analysedWithVerdict = `THE BUSINESS
+- Makes memory.
+
+WHAT WOULD SETTLE IT
+- The next quarter's pricing.
+
+THE VERDICT
+VERDICT: BUY
+CONFIDENCE: Medium
+
+### Why
+- 8.7 times next year's expected earnings, with revenue up 175%.
+
+### What would change it
+- Memory prices falling in the October quarter.`
+
+func TestTheVerdictIsTakenOutOfTheProse(t *testing.T) {
+	prose, v := SplitVerdict(analysedWithVerdict)
+	if v.Verdict != "BUY" || v.Confidence != "medium" {
+		t.Fatalf("verdict = %+v", v)
+	}
+	if !strings.HasPrefix(v.Body, "### Why") || !strings.Contains(v.Body, "Memory prices falling") {
+		t.Errorf("body = %q", v.Body)
+	}
+	if strings.Contains(prose, "THE VERDICT") || strings.Contains(prose, "8.7 times") {
+		t.Errorf("the verdict was left in the prose:\n%s", prose)
+	}
+	if !strings.HasSuffix(prose, "- The next quarter's pricing.") {
+		t.Errorf("the prose lost its ending:\n%s", prose)
+	}
+}
+
+// A section written in some other place, or with the heading dressed up,
+// still comes out, and the prose around it stays in order.
+func TestAVerdictBeforeAnotherSectionIsTakenOutAlone(t *testing.T) {
+	text := "THE BUSINESS\n- Makes memory.\n\n**THE VERDICT**\n**VERDICT:** Sell.\nCONFIDENCE: low\n- Priced for perfection.\n\nCASH\n- Plenty."
+	prose, v := SplitVerdict(text)
+	if v.Verdict != "SELL" || v.Confidence != "low" || v.Body != "- Priced for perfection." {
+		t.Fatalf("verdict = %+v", v)
+	}
+	if prose != "THE BUSINESS\n- Makes memory.\n\nCASH\n- Plenty." {
+		t.Errorf("prose = %q", prose)
+	}
+}
+
+// Without a verdict that reads as one, nothing is taken: a section headed
+// THE VERDICT that argues without saying BUY, HOLD or SELL stays where the
+// reader can see it.
+func TestProseWithoutAVerdictIsLeftWhole(t *testing.T) {
+	for _, text := range []string{
+		"THE BUSINESS\n- Makes memory.",
+		"THE VERDICT\nVERDICT: accumulate\n- Nice.",
+	} {
+		prose, v := SplitVerdict(text)
+		if prose != text || v.Verdict != "" {
+			t.Errorf("SplitVerdict(%q) = %q, %+v", text, prose, v)
+		}
+	}
+}

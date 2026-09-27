@@ -310,11 +310,13 @@ twenty companies (`ideas.LookSize`), found in two halves at once:
    and Nasdaq four at a time. [`ideas.Screener.Pick`](../internal/ideas/screen.go#L41)
    — Sonnet, no tools — chooses the ones where the move and the news do not fit.
 3. For each of the twenty, [`ideaFacts`](../internal/app/ideas.go#L408), four at a
-   time, assembles what a verdict should rest on: for a US SEC filer, the
-   accounts table `/analyse` uses, with what analysts expect and the latest
-   results release; for anything else, the price and trading history alone,
-   and it says so.
-4. [`ideas.Judge.Judge`](../internal/ideas/judge.go#L47) — Opus, five companies a
+   time, assembles what a verdict should rest on: for a US SEC filer, what
+   `/analyse` reads -- five years of accounts, the business description and
+   recent filings, what analysts expect, the results release at the same
+   length, and the news feed's stories about it, without `/analyse`'s two
+   searches; for anything else, the price and trading history alone, and it
+   says so.
+4. [`ideas.Judge.Judge`](../internal/ideas/judge.go#L47) — Opus, three companies a
    call, two calls at a time, with the market backdrop above them — gives each
    a BUY, HOLD or SELL with what changed, how the share moved, whether the move
    was justified, the case, two to four numbers and the biggest risk, each
@@ -436,8 +438,18 @@ does not inherit whatever the caller's context has left:
    read next to it" table out of the prose, and
    [`VerifyRelated`](../internal/fundamentals/related.go#L90) checks those tickers
    against OpenFIGI before any of them is shown.
-7. [`RenderPlain`](../internal/telegram/render.go#L532), which rules off each capitalised section and bolds its sub-headings, and
-   [`RenderRelated`](../internal/telegram/related.go#L22) render it.
+   [`SplitVerdict`](../internal/fundamentals/verdict.go) takes out THE VERDICT,
+   the last section the analysis writes: BUY, HOLD or SELL against the S&P 500
+   over twelve months, the same call the closer look makes, with a confidence
+   and the reasons.
+7. [`RenderAnalysis`](../internal/telegram/render.go), which shows the verdict
+   first and then rules off each capitalised section and bolds its
+   sub-headings, and [`RenderRelated`](../internal/telegram/related.go#L22)
+   render it, once for the owner and once for the channel, whose copy carries
+   the warning under the verdict and is what `/share` posts.
+   [`recordAnalysis`](../internal/app/commands.go) writes the verdict to the
+   scorecard, marked as an analysis's; the same verdict on the same share
+   within a day counts once.
 
 ### Every model call
 

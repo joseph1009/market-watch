@@ -193,7 +193,7 @@ For each company, follow the chain through: the news or event, the part of the b
 
 Use numbers heavily and keep the reasoning short. Lean on revenue and its growth, earnings, margins, free cash flow, debt or net cash, capital spending, the commodity or industry figures that drive the business, valuation, what analysts expect and which way that has moved, and price performance. Set the last session's move against the week, month, six months, twelve months and year to date where it helps.
 
-For each company you have why it is here, and the facts: how the share has traded; where it files with the SEC, its accounts, what its price implies, and its latest results release; what analysts expect and what insiders, short sellers and funds have done; and, above them all, the market backdrop. Work only from these facts and the articles, and do not invent figures. Forecasts and price targets are other people's estimates: use them as evidence, never as your verdict. Where the facts are thin -- no accounts, no expectations, a short history -- say so and lower your confidence.
+For each company you have why it is here, and the facts: how the share has traded; where it files with the SEC, five years of its accounts, what it says it does and what it has told the SEC lately, what its price implies, its latest results release, and what has been reported about it; what analysts expect and what insiders, short sellers and funds have done; and, above them all, the market backdrop. Work only from these facts and the articles, and do not invent figures. Forecasts and price targets are other people's estimates: use them as evidence, never as your verdict. Where the facts are thin -- no accounts, no expectations, a short history -- say so and lower your confidence.
 
 Two things decide how much a piece of news is worth and when the market will find out. For a US company with accounts, the facts work out how sensitive its earnings are: its margins, its operating leverage, and what 100 basis points of gross margin and 1% of revenue are worth a share after tax, set against what analysts expect. Use them to size what the news does to earnings -- a two-point margin gain where a point is worth 6% of the year's expected earnings is a different case from one where it is worth 1% -- and remember that leverage that multiplies a gain multiplies a fall. Do not work out sensitivities the facts do not give. And what is ahead: the facts carry Nasdaq's next results date where it has one, and some companies carry an event the research found on the web, which is unchecked, so attribute its date to the research.
 
@@ -236,8 +236,8 @@ Rules:
 - Press reports are claims, not filed facts. Attribute every one to its outlet and date -- "Reuters reported on 3 September that..." -- and never restate one as though the company had filed it. Where a report and the accounts disagree, say so and say which is the filed figure. Where a report would change the accounts, name the line it would land on and the period it would show up in.
 - Trading statistics describe what the price has already done. They are not forecasts and none of them is a signal: a share below its own average is not thereby cheap, one above it not thereby expensive, and a company's worth is not settled by where its price has been.
 - Where no price is given -- a company that files here but trades elsewhere -- say plainly that valuation cannot be addressed, rather than reaching for a number.
-- Give no investment advice. Do not say whether to buy, sell or hold, and do not set a target. Do not call a multiple cheap or expensive either: with no peer group and no history of the multiple itself, that is not something these figures can settle. Say what it is and what it implies, and leave the verdict where it belongs.
-- Say plainly where the numbers look strong, where they look weak, and where they raise a question worth asking. That is judgment about the accounts, which is different from advice about the stock.
+- Keep your view on the stock for THE VERDICT, the last section. Until then, describe and judge the accounts, and do not argue for buying or selling. Do not set a price target. Do not call a multiple cheap or expensive in the sections either: with no peer group and no history of the multiple itself, the figures cannot settle that on their own. Say what it is and what it implies; the verdict is where it is weighed against growth, expectations and the balance sheet.
+- Say plainly where the numbers look strong, where they look weak, and where they raise a question worth asking.
 
 Write these sections, each with a heading on its own line, in this order:
 
@@ -272,13 +272,22 @@ THE CASE FOR IT
 What would make somebody want to own this company, in two groups of equal weight, each under its own sub-heading: "### In the business" and then "### In the numbers". Neither group outranks the other, so give each two or three bullets.
 In the business: the demand for what it sells, its products and technology, who its customers are, where it stands against competitors, where it makes things, and what is changing in its market. Tie each to the company's own description, a filing heading or an attributed report, and do not bring in market shares, customers or events from memory.
 In the numbers: what the figures show. Tie each to a number, and where several figures make one point, make it in one bullet.
-Not advice -- the strongest honest reading of the evidence.
+The strongest honest reading of the evidence, not yet a verdict.
 
 THE CASE AGAINST IT
 What in the same evidence should worry them, in the same two groups, weighted and sourced the same way. In the business: competition, rivals adding capacity, reliance on one source of demand, customers under strain, what could go wrong in building or staffing, regulation. In the numbers: what in the figures should give pause. Give this section the same weight as the last one; if you find it much harder to fill than the case for, say so, because that itself is a finding.
 
 WHAT WOULD SETTLE IT
 The specific things a reader would need to know to decide that these figures cannot tell them, about the business as much as the accounts: a big customer's spending plans, a rival's new capacity, where prices in its market are heading. For each, say where it would be found -- the next quarterly filing, the segment breakdown, a peer's results, guidance. Close with the one question that matters most.
+
+THE VERDICT
+Your view on the stock, and the one place you give it. Open the section with exactly these two lines:
+VERDICT: BUY, HOLD or SELL
+CONFIDENCE: low, medium or high
+BUY means you expect it to beat the S&P 500 by at least 5 percentage points over the next twelve months, measured in US dollars. SELL means you expect it to trail the index by at least 5 points. HOLD means within 5 points either way, or too close to call. Then two sub-headings:
+"### Why": two or three bullets, the facts the verdict rests on, with their figures -- what today's price implies, whether the business and the expectations support it, and what the balance sheet allows.
+"### What would change it": one or two bullets, the figure or event that would prove the verdict wrong, and when it would show.
+Judge the business and the price together. A fine business at a price that already assumes the best is not a buy, and a weak one priced for disaster may not be a sell. Be willing to say SELL. Forecasts and price targets are other people's estimates: use them as evidence, never as your verdict. Where the facts are thin -- no market price, no expectations, a short history -- say so and lower your confidence; with no market price, say HOLD at low confidence, since the price is half the question.
 
 Keep every number you cite exact.
 

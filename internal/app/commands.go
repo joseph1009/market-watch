@@ -8,8 +8,10 @@ import (
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
+	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/search"
@@ -464,7 +466,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 			"Which company? Send a ticker, for example /analyse NVDA.\n\n"+
 				"I read what the company filed with the SEC — revenue, margins, cash and the balance sheet — then what the share has been doing and what has been written about it lately. "+
 				"Any SEC filer works, including foreign companies with a US listing such as TSM or BABA. "+
-				"It is a reading of the accounts, never advice on the stock.")
+				"It ends with a verdict — BUY, HOLD or SELL against the S&amp;P 500 over twelve months — which /scorecard keeps score of.")
 	}
 
 	ticker := strings.ToUpper(strings.TrimSpace(args[0]))
@@ -541,27 +543,69 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	} else {
 		related = nil
 	}
+	prose, verdict := fundamentals.SplitVerdict(prose)
+	cached.Save("verdict", verdict)
 
-	heading := fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
-	messages := telegram.RenderPlain(heading, prose)
-	shown := telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
-		return r.Name, r.Symbol(), r.Listed, r.Why
-	})
-	if block := telegram.RenderRelated(shown); block != "" {
-		messages = append(messages, block)
-	}
-	messages = append(messages, fmt.Sprintf(
-		"<i>%s, from filings up to %s</i>",
-		escape(snapshot.Company),
-		escape(snapshot.Balance.AsOf.Format("2 Jan 2006"))))
+	messages := analysisMessages(snapshot, prose, verdict, related, telegram.IdeasOptions{})
 	cached.Save("related", related)
 	cached.Text("messages.html", joinMessages(messages))
 
 	if _, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages); err != nil {
 		return err
 	}
-	a.remember("the "+snapshot.Ticker+" analysis", messages)
+	// /share posts the channel's copy, whose verdict carries the warning a
+	// reader there needs.
+	a.rememberFor("the "+snapshot.Ticker+" analysis", messages,
+		analysisMessages(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true}))
+	a.recordAnalysis(snapshot, verdict)
 	return nil
+}
+
+// analysisMessages lays an analysis out for the owner or the channel: the
+// verdict first, then the accounts, the related companies, and where the
+// figures came from.
+func analysisMessages(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) []string {
+	heading := fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
+	messages := telegram.RenderAnalysis(heading,
+		telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body},
+		prose, opts)
+	shown := telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
+		return r.Name, r.Symbol(), r.Listed, r.Why
+	})
+	if block := telegram.RenderRelated(shown); block != "" {
+		messages = append(messages, block)
+	}
+	return append(messages, fmt.Sprintf(
+		"<i>%s, from filings up to %s</i>",
+		escape(snapshot.Company),
+		escape(snapshot.Balance.AsOf.Format("2 Jan 2006"))))
+}
+
+// recordAnalysis writes an analysis's verdict to the scorecard, as the closer
+// look's are, so /scorecard keeps score of both. The same verdict on the same
+// share asked for twice within a day is one call, not two.
+func (a *App) recordAnalysis(snapshot fundamentals.Snapshot, verdict fundamentals.Verdict) {
+	if a.Scorecard == nil || verdict.Verdict == "" {
+		return
+	}
+	idea := model.Idea{
+		Name: snapshot.Company, Ticker: snapshot.Ticker, Exchange: "US",
+		Verdict: verdict.Verdict, Confidence: verdict.Confidence, Trading: snapshot.Trading,
+	}
+	r, ok := ideas.NewRecord(idea, prices.ChartSymbol(snapshot.Ticker, "US"), a.now())
+	if !ok {
+		return
+	}
+	r.Source = ideas.SourceAnalysis
+	if a.Scorecard.Repeats(r, 24*time.Hour) {
+		a.Log.Info("analysis verdict already recorded", "ticker", snapshot.Ticker, "verdict", verdict.Verdict)
+		return
+	}
+	if err := a.Scorecard.Add(r); err != nil {
+		a.Log.Warn("could not record the analysis verdict", "error", err)
+		return
+	}
+	a.Log.Info("analysis verdict recorded", "ticker", snapshot.Ticker, "verdict", verdict.Verdict, "confidence", verdict.Confidence)
 }
 
 // accountYears is how much history the analysis gets. Five years covers a cycle

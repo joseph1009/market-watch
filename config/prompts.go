@@ -101,7 +101,7 @@ var required = map[string][]string{
 	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
 	"screen.system":    {"{{.Max}}", "ticker|what does not fit"},
 	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
-	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers"},
+	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers", "THE VERDICT", "VERDICT:", "CONFIDENCE:"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }
 

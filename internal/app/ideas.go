@@ -51,15 +51,6 @@ const (
 	// sent meanwhile waits; this is what keeps that wait finite.
 	ideasBudget = 30 * time.Minute
 
-	// ideaYears is how much of each company's accounts the verdict sees. Three
-	// years shows a direction without a batch of five outgrowing one request.
-	ideaYears = 3
-
-	// ideaReleaseRunes is how much of each results release a verdict reads:
-	// the headline figures and the quarter's table, which is where the
-	// numbers a verdict turns on are. /analyse reads twice as much.
-	ideaReleaseRunes = 3500
-
 	// factWorkers is how many companies' facts are read at once. Each is SEC
 	// reads, paced across all of them by the accounts client, and six Nasdaq
 	// reads of a second or two each.
@@ -401,9 +392,13 @@ queue:
 // prices attached, the symbol the chart source knows it by, and the fact sheet
 // written for the model.
 //
-// For a US listing that files with the SEC, the sheet is the same table the
-// analysis reads: accounts, valuation and trading, what analysts expect, and
-// the latest results release. For anything else it is the price and the
+// For a US listing that files with the SEC, the sheet is what /analyse reads:
+// five years of accounts, what the company says it does and has told the SEC
+// lately, valuation and trading, what analysts expect, the latest results
+// release at the same length, and what has been reported about it. The one
+// thing left out is the analysis's two web searches for news, which would
+// spend the search allowance on every company every day; the news feed's
+// stories stand in for them. For anything else it is the price and the
 // trading alone, and it says so, so the verdict cannot quietly pretend to a
 // knowledge of the accounts it does not have.
 func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, string, string) {
@@ -420,11 +415,15 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 			idea.Quote = live
 		}
 		if a.Accounts != nil {
-			snap, err := a.Accounts.Fetch(ctx, idea.Ticker, ideaYears)
+			snap, err := a.Accounts.Fetch(ctx, idea.Ticker, accountYears)
 			if err == nil {
 				snap.Price, snap.Trading = idea.Quote, idea.Trading
+				for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snap, a.now()) {
+					a.Log.Info("idea context", "ticker", idea.Ticker, "error", problem)
+				}
+				a.addPressNews(ctx, &snap)
 				a.addExpectations(ctx, &snap)
-				a.addRelease(ctx, &snap, ideaReleaseRunes)
+				a.addRelease(ctx, &snap, analysisReleaseRunes)
 				idea.Accounts = true
 				return idea, chart, snap.Table() + snap.SensitivityFacts()
 			}

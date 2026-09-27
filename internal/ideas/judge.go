@@ -26,13 +26,14 @@ type Judge struct {
 }
 
 const (
-	// DefaultBatch keeps one request to five fact sheets, a little under a
-	// hundred kilobytes: twenty companies in one would be a request of four
-	// hundred, most of which the model would skim.
-	DefaultBatch = 5
+	// DefaultBatch keeps one request to three fact sheets. Each carries what
+	// /analyse reads -- five years of accounts, the business, the results
+	// release, the news -- at twenty to thirty kilobytes, and five of them in
+	// one request is more than the model reads with care.
+	DefaultBatch = 3
 
-	// DefaultJudgeConcurrency runs two batches at a time, which judges twenty
-	// in two rounds without asking the plan for four Opus calls at once.
+	// DefaultJudgeConcurrency runs two batches at a time, without asking the
+	// plan for four Opus calls at once.
 	DefaultJudgeConcurrency = 2
 )
 

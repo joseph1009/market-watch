@@ -257,6 +257,23 @@ func (a *App) addNews(ctx context.Context, snapshot *fundamentals.Snapshot) erro
 	return nil
 }
 
+// addPressNews attaches what the news feed has on a company lately, without
+// the web searches addNews adds: the closer look reads it for every company
+// it judges, every day, and the search allowance would not last.
+func (a *App) addPressNews(ctx context.Context, snapshot *fundamentals.Snapshot) {
+	if !a.Press.Enabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, newsBudget)
+	defer cancel()
+	fromFeed, err := a.Press.Company(ctx, snapshot.Ticker, a.now())
+	if err != nil {
+		a.Log.Info("company news", "ticker", snapshot.Ticker, "error", err)
+		return
+	}
+	fundamentals.SetNews(snapshot, nil, fromFeed)
+}
+
 // priceCandidates attaches each new name's move on the day, wherever it is
 // listed, which the new-names block then shows beside the ticker.
 //

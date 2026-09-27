@@ -24,10 +24,9 @@ const (
 	// word: a quarter, and a few weeks for a late filer.
 	releaseSince = 120 * 24 * time.Hour
 
-	// analysisReleaseRunes is how much of the release /analyse reads: the
-	// headline figures, the quarter's table and, at most companies, the
-	// outlook. The closer look reads less (ideaReleaseRunes), being twenty
-	// companies at a time.
+	// analysisReleaseRunes is how much of the release /analyse and the
+	// closer look's verdicts read: the headline figures, the quarter's table
+	// and, at most companies, the outlook.
 	analysisReleaseRunes = 7000
 
 	// companySearchWindow is how far back /analyse searches for news: a

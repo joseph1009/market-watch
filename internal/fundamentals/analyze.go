@@ -16,9 +16,11 @@ import (
 // Two constraints do the heavy lifting. The first is that every figure must
 // come from the table: the model has no database, and a plausible revenue
 // number it recalls from training would be indistinguishable from a real one.
-// The second is the refusal to advise. Asked whether to buy, a model will
-// answer; it cannot know the reader's holdings, horizon or tax position, and a
-// confident answer built on a balance sheet alone is worse than none.
+// The second is that the view on the stock is kept to one section at the end,
+// THE VERDICT, after the accounts have been read through: argued from the
+// first line, every section would become a case for it. The verdict is the
+// same call the closer look makes -- against the S&P 500 over twelve months --
+// so /scorecard can keep score of both.
 //
 // The method follows it: how to read the accounts in order and which traps to
 // look for by sector. It was written as a playbook for the agent that could
