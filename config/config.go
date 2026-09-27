@@ -123,10 +123,9 @@ type Config struct {
 	// month and a brief uses about fifteen.
 	TavilyAPIKey string
 
-	// MassiveAPIKey reads the whole US market's last two sessions, which is
-	// where the closer look's new names start: the biggest moves among the
-	// companies nobody follows. The free plan is enough. Empty leaves the
-	// research to the day's news alone.
+	// MassiveAPIKey reads the whole US market's day, two years of which are
+	// kept on the data volume: where the closer look finds its companies. The
+	// free plan is enough. Empty means no closer look.
 	MassiveAPIKey string
 
 	// Consensus reads what analysts expect of a company, and what its
@@ -149,10 +148,10 @@ type Config struct {
 	// against the exchange before it is shown.
 	Discover bool
 
-	// Ideas adds "worth a closer look": after the brief, a message to the owner
-	// alone naming companies today's news bears on, researched on the web,
-	// each with a buy, hold or sell verdict and the facts behind it. It is the
-	// slowest and costliest part of a run, which is why it can be turned off.
+	// Ideas adds "worth a closer look": after the brief, the week's themes on
+	// Mondays and the day's reactions to news, each company with a buy, hold
+	// or sell verdict and the facts behind it. It is the slowest and costliest
+	// part of a run, which is why it can be turned off.
 	Ideas bool
 
 	// SkipWeekends suppresses the Saturday and Sunday briefs, which would cover
@@ -297,8 +296,9 @@ var stageModelVars = map[string]string{
 	"review":   "MODEL_REVIEW",
 	"brief":    "MODEL_BRIEF",
 	"names":    "MODEL_NAMES",
-	"ideas":    "MODEL_IDEAS",
-	"screen":   "MODEL_SCREEN",
+	"themes":   "MODEL_THEMES",
+	"scout":    "MODEL_SCOUT",
+	"research": "MODEL_RESEARCH",
 	"verdicts": "MODEL_VERDICTS",
 	"analysis": "MODEL_ANALYSIS",
 }

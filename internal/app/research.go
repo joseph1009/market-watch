@@ -39,10 +39,10 @@ const (
 )
 
 // addExpectations attaches the analysts' consensus, and the insider, short and
-// fund figures, to a US listing.
-func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) {
+// fund figures, to a US listing, and returns them, or nil.
+func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) *consensus.Report {
 	if a.Consensus == nil {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, expectationsBudget)
 	defer cancel()
@@ -52,7 +52,7 @@ func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) 
 		if !errors.Is(err, consensus.ErrNotCovered) {
 			a.Log.Warn("expectations", "ticker", snap.Ticker, "error", err)
 		}
-		return
+		return nil
 	}
 	price := 0.0
 	if snap.Price != nil {
@@ -63,6 +63,7 @@ func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) 
 		snap.ExpectedEPS, snap.ExpectedFor = r.Years[0].EPS, r.Years[0].Period
 	}
 	a.Log.Info("expectations", "ticker", snap.Ticker, "missing", len(r.Missing))
+	return &r
 }
 
 // addRelease attaches the company's latest results release.

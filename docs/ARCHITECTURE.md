@@ -20,9 +20,12 @@ file it in the sectors it bears on, has a second pass check where each one
 landed, has a large model write a brief from what survived, renders that into
 Telegram messages and sends them to one chat. Then it posts
 the same brief to a channel for other readers, and twenty minutes later
-starts a closer look for both at twenty companies — new names from the news and from the
-market's largest moves, and followed companies whose move and news do not fit —
-each with a buy, hold or sell verdict. In between it answers commands in the
+starts a closer look for both: on Mondays up to ten companies found from two
+years of the whole market's prices -- under the themes the market has been
+paying for, and the industries growing before their shares have followed --
+and every day up to three shares that moved far beyond their usual on the
+news, each with a buy, hold or sell verdict. In the background it keeps those
+two years of the market's daily bars on its disk. In between it answers commands in the
 chat, the largest of which reads a company's SEC filings, results and
 analysts' expectations and writes them up. Every call
 to a model goes through the **relay**: a file written to disk, answered by a
@@ -44,10 +47,11 @@ headless Claude Code process, and the answer written beside it.
 | [internal/triage](../internal/triage/) | Sonnet rating and filing every article, then reviewing where each one landed |
 | [internal/report](../internal/report/) | Building the brief's prompt and parsing the brief back out |
 | [internal/discover](../internal/discover/) | "New names in the news", and checking every ticker against an exchange |
-| [internal/ideas](../internal/ideas/) | "Worth a closer look": research, the screen of followed companies, verdicts, and the scorecard that grades them |
+| [internal/ideas](../internal/ideas/) | "Worth a closer look": the week's themes and their research, the valuation checks, verdicts, and the scorecard that grades them |
+| [internal/market](../internal/market/) | Two years of the whole US market's daily bars on disk, and what they show: the leaders, the popular and early industries, and the day's outsized moves |
 | [internal/consensus](../internal/consensus/) | What analysts expect of a company, and what its insiders, short sellers and funds have done, from the data behind Nasdaq's website |
 | [internal/fundamentals](../internal/fundamentals/) | Reading XBRL accounts out of EDGAR and turning them into a table |
-| [internal/prices](../internal/prices/) | What markets measured: a live quote feed, a daily-history chart source, the whole US market's day from Massive, company news, and FRED's yields, rates, inflation and commodities |
+| [internal/prices](../internal/prices/) | What markets measured: a live quote feed, a daily-history chart source, the whole US market's day and its splits from Massive, company news, and FRED's yields, rates, inflation and commodities |
 | [internal/telegram](../internal/telegram/) | The Telegram API client, and all rendering into messages |
 | [internal/relay](../internal/relay/) | Every model call. Writes the request, runs Claude Code, keeps the reply |
 | [internal/runcache](../internal/runcache/) | What the latest brief, analysis and closer look were made from and sent, one folder each |
@@ -286,56 +290,81 @@ bot, sends it when it falls due: a restart in that time delays it rather than
 losing it, and one more than six hours late is dropped. A brief asked for with
 `/now`, or sent with `--once`, is followed at once.
 
-[`sendIdeas`](../internal/app/ideas.go#L109), under a 30-minute budget, shows
-twenty companies (`ideas.LookSize`), found in two halves at once:
+[`sendIdeas`](../internal/app/ideas.go) brings the market's history up to date
+([`topUpMarket`](../internal/app/marketdata.go)), reads Nasdaq's list of every
+US listing ([`listings`](../internal/app/marketdata.go), kept a day), and then:
 
-1. **New names**, as many as the followed companies leave room for — fourteen
-   beside six. [`marketMovers`](../internal/app/ideas.go#L280)
-   reads the last two sessions of every US listing from Massive
-   ([`prices.Massive.Movers`](../internal/prices/massive.go#L163)) and keeps the
-   fifteen largest moves among companies nobody follows: at least US$5 a share,
-   US$25m traded and US$2bn in market value, named from the SEC's index, with
-   funds and the notes a bank issues left out. Then
-   [`ideas.Researcher.Propose`](../internal/ideas/ideas.go#L91) — Opus **with web
-   search and web fetch** — reads the brief and those moves and names up to
-   twenty companies today's news bears on, best first, never a followed one.
-   Their tickers are verified against OpenFIGI. The names past those needed
-   stand by for step 4.
-2. **Followed companies**, up to six. [`screenRows`](../internal/app/screen.go#L22)
-   writes a line for each of the ninety-odd followed companies — the day's move
-   against the week, month, six months, year and year to date, the price
-   against its averages and its range, the multiple of today's price on the
-   next two years' forecasts, which way the forecasts moved, the distance to
-   the price target, and the day's articles that name it — reading the charts
-   and Nasdaq four at a time. [`ideas.Screener.Pick`](../internal/ideas/screen.go#L41)
-   — Sonnet, no tools — chooses the ones where the move and the news do not fit.
-3. For each of the twenty, [`ideaFacts`](../internal/app/ideas.go#L408), four at a
-   time, assembles what a verdict should rest on: for a US SEC filer, what
+1. **On the scheduled run's first look of the week**, under a 75-minute budget,
+   the themes ([`runThemes`](../internal/app/themes.go)):
+   [`market.Measure`](../internal/market/screen.go) reads every listing's
+   returns, averages, swing and trading from the two years in
+   [`market.Store`](../internal/market/store.go), and
+   [`singaporeStocks`](../internal/app/marketdata.go) adds the Straits Times
+   Index's thirty from the chart source, in dollars.
+   [`market.Leaders`](../internal/market/screen.go) keeps the 150 best by their
+   mean rank on four measures against the S&P 500, of those eligible, above
+   their 200-day average and not risen in one day or pinned to an offer;
+   [`market.Industries`](../internal/market/screen.go) scores every industry
+   popular and early, with the headlines' mentions from
+   [`market.Mentions`](../internal/market/names.go).
+   [`ideas.Sorter.Sort`](../internal/ideas/themes.go) — Sonnet — sorts the
+   leaders into up to three themes, and
+   [`ideas.Scout.Find`](../internal/ideas/themes.go) — Opus **with the web** —
+   finds up to two industries growing before their shares.
+   [`ideas.Researcher.Research`](../internal/ideas/themes.go) — Opus **with the
+   web**, two themes at a time — finds each theme's unpriced part and up to
+   four companies in it, verified against OpenFIGI. Up to sixteen are judged,
+   round the themes; [`value`](../internal/app/themes.go) sets each one's
+   multiples against its theme's medians, over the best members' accounts
+   read for the purpose, and its own five year ends
+   ([`fundamentals.Snapshot.Multiples`](../internal/fundamentals/multiples.go)),
+   with its warning signs, and says where a BUY is closed
+   ([`ideas.Valuation.BuyClosed`](../internal/ideas/valuation.go)). Up to ten
+   BUYs and SELLs are shown, the most confident first where there are more,
+   and the earlier picks of the last eight weeks listed with how each has
+   done ([`earlierPicks`](../internal/app/themes.go)). The week is written to
+   [`ideas.ThemeLog`](../internal/ideas/themelog.go), so it runs once, and
+   next week's research is given this week's.
+2. **Every day**, the reactions ([`runReactions`](../internal/app/reactions.go)):
+   [`market.Moves`](../internal/market/screen.go) finds the shares that moved
+   at least three times their usual daily move on at least twice their usual
+   trading; [`fundamentals.Relevant`](../internal/fundamentals/news.go) keeps
+   those the brief's articles explain, results first; up to six are judged,
+   and up to three BUYs or SELLs shown.
+3. For each company, [`ideaFacts`](../internal/app/ideas.go), four at a time,
+   assembles what a verdict should rest on: for a US SEC filer, what
    `/analyse` reads -- five years of accounts, the business description and
    recent filings, what analysts expect, the results release at the same
    length, and the news feed's stories about it, without `/analyse`'s two
    searches; for anything else, the price and trading history alone, and it
    says so.
-4. [`ideas.Judge.Judge`](../internal/ideas/judge.go#L47) — Opus, three companies a
+4. [`ideas.Judge.Judge`](../internal/ideas/judge.go) — Opus, three companies a
    call, two calls at a time, with the market backdrop above them — gives each
-   a BUY, HOLD or SELL with what changed, how the share moved, whether the move
-   was justified, the case, two to four numbers and the biggest risk, each
-   field under a word limit, since twenty of them are read on a phone after
-   the brief. A HOLD on a followed company is left out (`Idea.Shown`), and so
-   is a verdict that failed; each place left goes to the next new name
-   standing by, judged in one more round
-   ([`judgeIdeas`](../internal/app/ideas.go#L209)), so twenty are shown
-   wherever the research found enough.
-5. [`telegram.RenderIdeas`](../internal/telegram/ideas.go#L45) renders them,
-   followed companies first, to the owner and — when the brief went there — to
-   the channel under its warning note. Each part of a verdict is a paragraph
-   of its own, the numbers are listed one to a line, a coloured mark leads
-   each company, and a short rule separates one from the next.
-6. [`recordVerdicts`](../internal/app/ideas.go#L447) writes each verdict shown to
-   the scorecard, with the dollar's rate where it trades abroad. `/scorecard`
-   grades it against the S&P 500 in US dollars once it is a week old, measuring
-   both from the first price after the verdict -- the next session's open --
-   and writes that entry down once the session has happened.
+   a BUY, HOLD or SELL with its case, what is ahead, the lever it turns on, two
+   to four numbers and the biggest risk; a theme pick its price against its
+   theme and history, a reaction what changed, how the share moved and
+   whether the move was justified. `hold` then applies the two rules that are
+   the code's: a BUY the valuation has closed becomes a HOLD, and a verdict
+   without accounts is low confidence at most. HOLDs are not shown
+   (`Idea.Shown`).
+5. [`telegram.RenderPicks`](../internal/telegram/ideas.go) renders them — the
+   themes, each with its numbers and what the research found and labelled
+   popular or early, then the reactions, then the earlier picks — to the
+   owner and, when the brief went there, to the channel under its warning
+   note. Each part of a verdict is a paragraph of its own, the numbers are
+   listed one to a line, a coloured mark leads each company, and a short rule
+   separates one from the next. A day with nothing to show sends nothing.
+6. [`recordVerdicts`](../internal/app/ideas.go) writes each verdict shown to
+   the scorecard with its source and theme, and the dollar's rate where it
+   trades abroad. `/scorecard` grades it against the S&P 500 in US dollars
+   once it is a week old, measuring both from the first price after the
+   verdict -- the next session's open -- and writes that entry down once the
+   session has happened.
+
+Beside the scheduler, the bot and the looks, [`RunMarket`](../internal/app/marketdata.go)
+keeps the store filled: ten days at a time, newest first, at Massive's five
+requests a minute, so the first fill takes two hours and a new session is
+fetched within minutes of being served.
 
 ---
 
@@ -532,20 +561,29 @@ has no name there; `trendsFor` reads their price histories side by side.
 
 **[ideas.go](../internal/app/ideas.go)** — "worth a closer look". `look` is what
 it starts from, and `lookFrom` makes one from a brief. `sendIdeas` runs the
-whole sequence: `researchNewNames` (with `marketMovers` and `isFund`) and
-`screenFollowed` side by side, then `factsFor`, which runs `ideaFacts` four at
-a time. `recordVerdicts` writes the verdicts to the scorecard; `pathFor`
-reads a chart's sessions for scoring; `handleScorecard` answers `/scorecard`;
-`briefText` and `trackedNames` prepare the researcher's input.
+whole sequence and delivers it; `following` is what the watchlists follow,
+which it leaves out; `factsFor` runs `ideaFacts` four at a time into a
+`sheet` each; `judge` asks for the verdicts; `best` cuts to a limit, the most
+confident first. `recordVerdicts` writes the verdicts to the scorecard;
+`pathFor` reads a chart's sessions for scoring; `handleScorecard` answers
+`/scorecard`.
+**[themes.go](../internal/app/themes.go)** — the week's themes. `runThemes`,
+`loadPanel` (two years, for companies worth at least US$1bn), `researchThemes`
+two at a time, `themeFigures`, `value` and `readAccounts` for the valuation,
+`pastMultiples` from five years of month-end prices, and `earlierPicks`.
+**[reactions.go](../internal/app/reactions.go)** — `runReactions`, the day's
+outsized moves the news explains; `resultsWords` puts results first.
+**[marketdata.go](../internal/app/marketdata.go)** — `RunMarket` keeps the
+market's history filled in the background, `topUpMarket` brings it up to date
+before a look, `listings` reads Nasdaq's list at most once a day,
+`singaporeStocks` measures the Straits Times Index in dollars, and `panelPath`
+turns a stored series into a scorecard path.
 
 **[look.go](../internal/app/look.go)** — the wait between the brief and its
 closer look. `queueLook` and `pendingLook` keep the waiting look on the data
 volume; `RunLooks` and `sendDueLook` send it when due, and drop one more than
 `lookStale` (six hours) late; `runLook` holds the run lock and opens its relay
 run.
-
-**[screen.go](../internal/app/screen.go)** — `screenRows` writes the screen's
-table of followed companies, and `screenLine` one company's figures in it.
 
 **[research.go](../internal/app/research.go)** — what `/analyse` and the closer
 look read beside the accounts: `addExpectations`, `addRelease`, `backdrop`, and
@@ -795,16 +833,24 @@ name has been running; `Save`; sixty days of retention.
 
 ### internal/ideas
 
-**[ideas.go](../internal/ideas/ideas.go)** — `Researcher.Propose` runs the web
-search stage, shown the market's `Movers` and never returning a `Followed`
-ticker (`unfollowed`); `researchPrompt`, `parseIdeas`, `verify`. `LookSize`
-is the twenty shown, and `DefaultMax`, the most the research proposes, is the
-same, so the new names can fill every place a followed HOLD leaves.
-**[screen.go](../internal/ideas/screen.go)** — `Screener.Pick` reads the followed
-companies as `Row`s and chooses up to `DefaultPicks` (six); `screenPrompt`.
+**[ideas.go](../internal/ideas/ideas.go)** — the limits: `PicksShown` (ten),
+`ReactionsShown` (three) and `ReactionsJudged` (six), `PopularThemes` (three)
+and `EarlyThemes` (two), `PerTheme` (four), `PicksJudged` (sixteen),
+`RepeatWindow` (eight weeks); `PickExchanges`; `verify`.
+**[themes.go](../internal/ideas/themes.go)** — `Sorter.Sort`, `Scout.Find` and
+`Researcher.Research`, the three stages of the week's themes, with their
+prompts and `parseThemes` and `parseResearch`; `IndustryLine` writes an
+industry's figures.
+**[themelog.go](../internal/ideas/themelog.go)** — `ThemeLog`: `DoneThisWeek`,
+`Names` of last week's themes, and `Previous` research on a theme of the same
+name.
+**[valuation.go](../internal/ideas/valuation.go)** — `Valuation`: a company's
+`Multiples` against its theme's `Medians` and its own; `BuyClosed`, the two
+rules; `Facts`, written out for the verdict; `WarningSigns`.
 **[judge.go](../internal/ideas/judge.go)** — `Judge.Judge` turns facts into
-verdicts, `DefaultBatch` (five) companies a call and two calls at a time;
-`judgePrompt`, `parseVerdicts`, `normaliseVerdict`.
+verdicts, `DefaultBatch` (three) companies a call and two calls at a time;
+`judgePrompt` lists only the articles the batch hangs on; `parseVerdicts`,
+`normaliseVerdict`; `hold` applies the code's rules.
 **[scorecard.go](../internal/ideas/scorecard.go)** — `Record`, `Scorecard.Add`,
 `Due` (which verdicts are old enough to grade), `Currencies` (whose exchange
 rates they need), `Settle` (which writes down each verdict's entry, the first
@@ -865,8 +911,28 @@ prices.
 **[news.go](../internal/prices/news.go)** — `News.Company` reads company news.
 **[massive.go](../internal/prices/massive.go)** — the whole US market's day.
 `Massive.Session` reads every listing's bar for one date, spaced to the free
-plan's five requests a minute; `Movers` finds the last two sessions and returns
-the largest moves that pass its `MoverRules`, common shares only (`common`).
+plan's five requests a minute; `Splits` reads the splits over a stretch of
+days; `CommonShare` tells a common share's symbol from a warrant's, a unit's,
+a right's or a preferred share's.
+
+### internal/market
+
+**[store.go](../internal/market/store.go)** — `Store`: one gzipped file a
+session in `data/market/`, a marker for a weekday with none, and
+`splits.json`; `Load` reads a stretch of sessions into a `Panel`, applying the
+splits the source had not when it served a day.
+**[sync.go](../internal/market/sync.go)** — `Store.Sync` fetches what is missing,
+newest first, within `Reach` (two years), keeping common shares that traded
+at least a dollar and a million dollars; `Missing` counts what is left.
+**[panel.go](../internal/market/panel.go)** — `Panel` and `Series`: `Return`,
+`Average`, `Volatility`, `Usual` (the mean daily move), `BiggestDay`,
+`DollarVolume`.
+**[screen.go](../internal/market/screen.go)** — `Listing`, `Rules`
+(`DefaultRules`: US$2bn, US$5, US$20m a day, thirteen months), `Stock`
+and `Measure`; `Leaders`; `Industry`, `Industries`, `Popular` and `Early`;
+`Move` and `Moves`.
+**[names.go](../internal/market/names.go)** — `PlainName` and `Mentions`, which
+count the headlines naming each company.
 **[fred.go](../internal/prices/fred.go)** — `FRED.Fetch` reads the
 `Indicators` — ten-year and two-year yields, the curve, fed funds, the S&P,
 the VIX, and inflation — and returns a `Reading` for each with its latest,
@@ -884,13 +950,13 @@ in words.
 six of Nasdaq's endpoints for one company, one after another: earnings
 forecasts by quarter and year with the revisions of the last four weeks, the
 price target and ratings, results against forecast, insider trades, short
-interest and fund holdings. `Screen` reads the forecasts and the price target
-alone, and `FetchAll` does that for many companies at once, for the screen;
-`Estimates`, the forecasts alone, is what `--check` asks. `num` reads a
-figure however the site writes it.
+interest and fund holdings. `Estimates`, the forecasts alone, is what
+`--check` asks. `num` reads a figure however the site writes it.
+**[listings.go](../internal/consensus/listings.go)** — `Client.Listings` reads
+Nasdaq's screener: every US listing, its market value, sector and industry.
 **[facts.go](../internal/consensus/facts.go)** — `Report.Facts` writes it out for
 a verdict or an analysis, turning the forecasts into multiples of today's
-price; `Report.Line` is the same in one line, for the screen.
+price.
 
 ### internal/telegram
 
@@ -909,8 +975,8 @@ bullets (`emphasizeLabel` for the older label-and-dash blocks),
 section's heading carries its line of biggest moves,
 `renderCandidates` draws the new-names block, `renderSources` the links,
 `renderFooter` the token counts. `RenderPlain` does the same for an analysis.
-**[ideas.go](../internal/telegram/ideas.go)** — `RenderIdeas` and `renderIdea`, the
-closer look's layout.
+**[ideas.go](../internal/telegram/ideas.go)** — `RenderPicks` and `renderIdea`, the
+closer look's layout: `Picks` of `ThemeView`s, reactions and `EarlierPick`s.
 **[related.go](../internal/telegram/related.go)** — `RenderRelated` and
 `RelatedList`, shared by the analysis and anything else with a list of companies.
 
@@ -970,6 +1036,8 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 | `candidates.json` | [discover/store.go](../internal/discover/store.go) | New names and how many days each has been running |
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, and once its next session has opened, the prices it is measured from |
 | `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its twenty minutes after the brief, when there is one |
+| `themes.json` | [ideas/themelog.go](../internal/ideas/themelog.go) | The last half-year of weekly themes, with what each one's research said and what was picked |
+| `market/` | [market/store.go](../internal/market/store.go) | Two years of the US market's daily bars, a file a session, forty megabytes; the splits since; and Nasdaq's list, a day old at most |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, a ledger each |
 
 Locally, [scripts/sync-from-fly.sh](../scripts/sync-from-fly.sh) copies these
@@ -992,8 +1060,7 @@ failing the run. No `FRED_API_KEY` means no market-levels block. No
 `FINNHUB_API_KEY` means no US quotes, so no lines of biggest moves and no
 searches for shares that moved, and no company news — but listings outside the
 US are still priced for the analysis, because the chart source needs no key. No
-`MASSIVE_API_KEY` means the closer look's research works from the day's news
-without the market's largest moves. `CONSENSUS=false` stops asking Nasdaq,
+`MASSIVE_API_KEY` means no market history, and so no closer look at all. `CONSENSUS=false` stops asking Nasdaq,
 and the verdicts and analyses go without what analysts expect. No `USER_AGENT`
 means no SEC filings, because EDGAR answers an anonymous request with 403.
 

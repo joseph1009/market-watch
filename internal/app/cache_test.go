@@ -71,26 +71,25 @@ func TestABriefKeepsItsDataInTheRunCache(t *testing.T) {
 	}
 }
 
-// The closer look keeps its research, the facts each verdict was given, the
-// verdicts and what was shown, in cache/recommendations.
+// The closer look keeps the moves it read, the facts each verdict was given,
+// the verdicts and what was shown, in cache/recommendations.
 func TestACloserLookKeepsItsDataInTheRunCache(t *testing.T) {
 	a, _ := newTestApp(t)
 	a.prefs.ChatID = 4242
 	root := t.TempDir()
 	a.Cache = &runcache.Cache{Root: root}
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
+	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
 
 	for name, want := range map[string]string{
-		"look.json":     "Micron raises HBM outlook",
-		"research.json": "RMBS",
-		"facts.json":    `"ticker": "RMBS"`,
-		"verdicts.json": "HBM demand runs through it",
-		"shown.json":    "RMBS",
-		"messages.html": "Worth a closer look",
+		"look.json":      "Rambus soars on HBM win",
+		"moves.json":     "RMBS",
+		"reactions.json": "RMBS",
+		"facts.json":     `"ticker": "RMBS"`,
+		"verdicts.json":  "HBM demand runs through it",
+		"shown.json":     "RMBS",
+		"messages.html":  "Reacting to the news",
 	} {
 		if got := cached(t, root, runcache.Recommendations, name); !strings.Contains(got, want) {
 			t.Errorf("%s is missing %q:\n%s", name, want, got)

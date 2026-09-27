@@ -179,7 +179,7 @@ func stageModels(cfg *config.Config) string {
 	}
 	stages = append(stages, relay.Brief, relay.Names, relay.Analysis)
 	if cfg.Ideas {
-		stages = append(stages, relay.Ideas, relay.Screen, relay.Verdicts)
+		stages = append(stages, relay.Themes, relay.Scout, relay.Research, relay.Verdicts)
 	}
 	var parts []string
 	for _, stage := range stages {
@@ -245,9 +245,11 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		}
 	}
 
-	// The market's movers and the analysts' consensus are optional too. One
-	// session's bars prove the Massive key, one of the five requests a minute
-	// the free plan allows; one company's forecasts prove Nasdaq still answers.
+	// The market's history and the analysts' consensus. One session's bars
+	// prove the Massive key, one of the five requests a minute the free plan
+	// allows, and the store says how much of the two years it holds; one
+	// company's forecasts prove Nasdaq still answers, and its list of
+	// listings that the closer look reads.
 	if service.Movers.Enabled() {
 		day := time.Now().AddDate(0, 0, -1)
 		for day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
@@ -255,10 +257,13 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		}
 		bars, err := service.Movers.Session(ctx, day)
 		if err != nil {
-			log.Warn("market movers unavailable; the closer look's research will go without them", "error", err)
+			log.Warn("the market's day unavailable; there will be no closer look", "error", err)
 		} else {
-			log.Info("market movers ok", "session", day.Format(time.DateOnly), "listings", len(bars))
+			log.Info("market day ok", "session", day.Format(time.DateOnly), "listings", len(bars),
+				"history_missing_days", service.MarketStore.Missing(time.Now()))
 		}
+	} else {
+		log.Warn("no MASSIVE_API_KEY: there will be no closer look")
 	}
 	if service.Consensus != nil {
 		r, err := service.Consensus.Estimates(ctx, "MSFT")
@@ -266,6 +271,12 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 			log.Warn("analysts' consensus unavailable; verdicts and analyses will go without it (CONSENSUS=false stops asking)", "error", err)
 		} else {
 			log.Info("consensus ok", "years_of_forecasts", len(r.Years))
+		}
+		listings, err := service.Consensus.Listings(ctx)
+		if err != nil {
+			log.Warn("Nasdaq's listings unavailable; the closer look will use the last kept, if any", "error", err)
+		} else {
+			log.Info("listings ok", "companies", len(listings))
 		}
 	}
 

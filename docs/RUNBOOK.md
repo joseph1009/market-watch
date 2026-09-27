@@ -19,8 +19,8 @@ and waits for nothing. It exists to check formatting and delivery.
 
 ## The stages
 
-A brief makes four kinds of call, its closer look three more, and an analysis
-one:
+A brief makes four kinds of call, its closer look up to four more, and an
+analysis one:
 
 | Stage | What it does | Prompt | Default model | Override | Reply format |
 |---|---|---|---|---|---|
@@ -28,9 +28,10 @@ one:
 | `review` | Checks where the sorting put everything that could reach the brief, and moves what belongs elsewhere, **with web search** | `review.system` | Sonnet | `MODEL_REVIEW` | `number\|section ids`, one line per move |
 | `brief` | Writes the brief | `brief.system` | Opus | `MODEL_BRIEF` | `## OVERVIEW` then `## SECTION: <id>` blocks |
 | `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Haiku | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
-| `ideas` | Researches new names worth a closer look, from the brief and the market's largest moves, **with web search** | `ideas.system` | Opus | `MODEL_IDEAS` | `name\|ticker\|exchange\|news or connected\|article numbers\|how the news bears on it` |
-| `screen` | Chooses the followed companies whose move and news do not fit, from a table of all of them | `screen.system` | Sonnet | `MODEL_SCREEN` | `ticker\|what does not fit` |
-| `verdicts` | Gives each of them BUY, HOLD or SELL from the facts fetched for it, five a call | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `CHANGED:`, `MOVE:`, `REACTION:`, `CASE:`, `NUMBERS:`, `RISK:` |
+| `themes` | Once a week, sorts the market's 150 leaders into the themes driving them | `themes.system` | Sonnet | `MODEL_THEMES` | `THEME:`, `DRIVER:`, `MEMBERS:` blocks |
+| `scout` | Once a week, finds industries whose business is growing before their shares have followed, **with web search** | `scout.system` | Opus | `MODEL_SCOUT` | `THEME:`, `DRIVER:`, `EVIDENCE:`, `MEMBERS:` blocks |
+| `research` | Once a week for each theme, finds the part the market has not paid for and the companies in it, **with web search** | `research.system` | Opus | `MODEL_RESEARCH` | `DRIVING:`, `PRICED IN:`, `THE VALUE:`, then `name\|ticker\|exchange\|buy or sell\|why` |
+| `verdicts` | Gives each company BUY, HOLD or SELL from the facts fetched for it, three a call | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `RISK:` |
 | `analysis` | Writes up one company's accounts for `/analyse` | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with capitalised headings |
 
 Sorting sends the day's articles in batches of 60, two at a time
@@ -120,15 +121,18 @@ data/cache/analysis/
   model/
 data/cache/recommendations/
   run.json
-  look.json             the brief it follows: its text, citations, new names
-  market-movers.json    the day's largest moves, from Massive
-  research.json         the new names proposed
-  screen-rows.json      each followed company's move and news, as screened
-  screen.json           the followed companies picked
+  look.json             the brief's articles, and whether it was the scheduled run
   backdrop.json         commodities, the dollar, rates
-  facts.json            the facts each company was judged on
+  leaders.json          on the week's run: the market's leaders, as measured
+  industries.json       the popular and early industries, as measured
+  themes.json           the themes sorted and scouted, with their figures
+  research.json         what each theme's research found
+  moves.json            the day's largest moves against each share's usual
+  reactions.json        those the brief's articles explain, to be judged
+  facts.json            the facts each company was judged on, with its
+                        valuation (facts-2.json, verdicts-2.json: the second
+                        round, on the week's run)
   verdicts.json         every verdict, shown or not
-  facts-2.json, verdicts-2.json   the stand-ins' round, when there was one
   shown.json            what was shown
   messages.html
   model/
@@ -246,56 +250,121 @@ subscription.
 
 ## Worth a closer look
 
-About half an hour after the daily brief, a second message follows it: twenty listed
-companies, each with a verdict. Up to six are companies you follow, shown only
-as BUY or SELL, and new names fill the rest. A followed HOLD is left out, and
-the next new name the research found takes its place, so there are twenty
-wherever the research found enough.
+A second message follows the daily brief, about half an hour after it. It has
+two parts, both starting from numbers rather than from the day's news, and
+both leave out the companies you follow, which the brief covers.
 
-1. **New names** (`ideas`, Opus with web search) start from the brief, its new
-   names, and the day's fifteen largest moves among US companies nobody
-   follows and worth at least US$2bn, read from Massive (`MASSIVE_API_KEY`). The research picks companies
-   of two kinds: ones the stories or the moves are about, and ones they bear on
-   without naming, such as a supplier, a customer or a rival. It never picks a
-   company you follow. Every ticker is checked against the exchange, and one
-   that does not check out is dropped.
-2. **Followed companies** (`screen`, Sonnet, no tools) are chosen from a table
-   of all of them: each one's move today against the week, month, six months,
-   year and year to date, where it sits against its averages and its year's
-   range, the multiple of today's price on the next two years' forecasts, which
-   way the forecasts moved in four weeks, the distance to the price target, and
-   the day's articles that name it. It picks those where what changed and how
-   the share moved do not fit each other, and none on a day with nothing to
-   pick.
-3. **Facts** are fetched for each, four at a time: a year of daily prices from
-   the chart source on any of the fourteen exchanges, today's move, and for a
-   company that files with the SEC, three years of accounts, what its price
-   implies, the first part of its latest results release, and what analysts
-   expect of it and what its insiders, short sellers and funds have done (from
-   Nasdaq, `CONSENSUS`). A company with no SEC filings is judged on its price
-   and trading alone, and the message says so.
-4. **Verdicts** (`verdicts`, Opus, no tools, five companies a call, two calls at
-   once) give BUY, HOLD or SELL over twelve months with a confidence; what the
-   news changed and by how much; how far the share moved; whether that move
-   overreacted, underreacted or matched the change; the case; the two to four
-   numbers that decide it; and the biggest risk. The oil price, the dollar and
-   the cost of money are set above them all. BUY and SELL mean at least five
-   percentage points better or worse than the S&P 500 over the twelve months,
-   in US dollars. **A followed company is shown only as BUY or SELL**: its
-   HOLD is left out.
+**Every Monday: the week's picks.** Up to ten companies, under the themes
+they were found in, each with a verdict. Fewer where fewer hold up; never
+more to fill a number.
 
-It starts twenty minutes after the brief and takes ten to fifteen, most of it
-the research and the verdicts, so it arrives about an hour before the US open.
-The research and the screen run side by side. The wait is kept on the data
-volume (`pending-look.json`), so a restart or a deploy in that time delays it
-rather than losing it; one more than six hours late is dropped. After `/now`,
-or `--once`, it follows at once. `IDEAS=false` turns it off.
+1. **The market's history** (`internal/market`): two years of every US
+   listing's daily bars from Massive (`MASSIVE_API_KEY`), kept in
+   `data/market/`, and Nasdaq's list of what each symbol is, how much it is
+   worth and its industry. The first fill is about 500 requests at five a
+   minute -- two hours -- and runs in the background from startup; after it,
+   one request a day. Splits are read from Massive and applied, so a
+   two-for-one does not look like a crash. Singapore's thirty largest
+   (`config/singapore.yaml`, the Straits Times Index) are read from the chart
+   source and measured beside them, in US dollars.
+2. **The leaders.** Every company worth at least US$2bn, with a share of at
+   least US$5, US$20m traded on an average day, and thirteen months of
+   history; no funds, blank-cheque companies or other securities. Of those
+   still above their 200-day average, and whose rise did not come in one day
+   or stop dead at a takeover price, each is ranked on its two-year return,
+   its year's less the last month, six months', and the year's for each unit
+   of its swing, all against the S&P 500. The best 150 by their mean rank go
+   forward. Singapore's are held to none of the size floors.
+3. **The industries**, across every eligible company in each, not only the
+   leaders. *Popular*: the median member's six- and twelve-month returns
+   against the index, the share above their 200-day average, the money going
+   in against a year ago, and how often the recent briefs' headlines named
+   them. *Early*: among those whose year still lags the typical industry's,
+   the three months' return, the rise in the share above their 50-day average
+   over the month, the money going in against the six months before, and the
+   headlines.
+4. **The themes.** Sonnet (`themes`) sorts the leaders into up to three
+   themes by what is driving them, not by the exchange's labels. Opus with the
+   web (`scout`) looks for up to two industries whose business is measurably
+   growing -- order books, shipments, capacity, contracted demand, a policy
+   with money behind it -- before their shares have followed, from the early
+   industries or from wherever its research leads, and never one of the
+   week's popular themes again.
+5. **The research** (`research`, Opus with the web, two themes at a time):
+   what drives each theme, which parts of it the market has already paid for,
+   which part it has not and why, and up to four companies in that part as
+   BUY candidates, or one priced past what its numbers support as a SELL. US
+   and Singapore listings only; every ticker is checked against the
+   exchange. A theme that continues from last week is given last week's
+   research to take further, and a company picked in the last eight weeks is
+   proposed again only if something material has changed.
+6. **Facts and valuation**, for up to sixteen of them, round the themes: what
+   `/analyse` reads (below), and the company's multiples -- price to
+   earnings, price to sales, and company value to operating profit, from
+   Nasdaq's market value and the last twelve months of filed figures in US
+   dollars -- against the median of the rest of its theme, whose best members'
+   accounts are read for it, and against its own last five year ends. And the
+   warning signs: more than 40% above its 200-day average, above the average
+   analyst target, insiders selling a net quarter of a percent of the shares
+   in three months, or a tenth of the shares sold short.
+7. **Verdicts**, as below. **Two rules are the code's, not the model's**: a
+   company that is dearer than its theme on every measure and whose growth
+   does not pay for it (price to sales for each point of growth no lower than
+   the theme's), or dearer on every measure with two or more warning signs,
+   cannot be a BUY -- a BUY given to one is turned into a HOLD; and a company
+   whose accounts could not be read, as none of Singapore's can, is low
+   confidence at most. HOLDs are not shown. A company given the same verdict
+   in the last eight weeks is not written up again.
 
-**Cost.** No search credits: the research searches with Claude's own web
-search, not Tavily. On the plan, reckoned from the size of what it reads rather
-than measured, it is about two and a half times the six-company closer look it
-replaced, and the whole day about a third more than before. The ledger of a
-`look` run in `relay/` has the actual sizes.
+The message ends with **the earlier picks**: each from the last eight weeks,
+with how far it has gone the way it was called against the S&P 500, from the
+first open after it. The week is written to `data/themes.json`, so it runs
+once a week on the scheduled run -- the first whose history is full enough --
+and remembers what each theme's research said.
+
+**Every day: the reactions.** Up to three shares that moved at least three
+times their usual daily move on the last session, on at least twice their
+usual trading, where the brief's articles say why. Results come first, then
+the largest moves against their usual. Up to six are judged; a reaction that
+matched its news is a HOLD and not shown; a day with none sends nothing.
+
+**Facts** for every company, four at a time: a year of daily prices from the
+chart source, the last session's move, and for an SEC filer what `/analyse`
+reads -- five years of accounts, the business description and recent filings,
+what its price implies, the latest results release at 7,000 characters, the
+news feed's stories about it, and what analysts expect and insiders, short
+sellers and funds have done (from Nasdaq, `CONSENSUS`). A company with no SEC
+filings is judged on its price and trading alone, and the message says so.
+
+**Verdicts** (`verdicts`, Opus, no tools, three companies a call, two calls at
+once) give BUY, HOLD or SELL over twelve months with a confidence, the case,
+what is ahead, the lever in the accounts it turns on, the two to four numbers
+that decide it, and the biggest risk. A theme pick adds its price against its
+theme and its own history; a reaction adds what the news changed, how far the
+share moved, and whether the move overreacted, underreacted or matched. The
+oil price, the dollar and the cost of money are set above them all. BUY and
+SELL mean at least five percentage points better or worse than the S&P 500
+over the twelve months, in US dollars.
+
+It starts twenty minutes after the brief. A day's reactions take five to ten
+minutes; a Monday with the themes forty or so, so it still arrives before the
+US open. The wait is kept on the data volume (`pending-look.json`), so a
+restart or a deploy in that time delays it rather than losing it; one more
+than six hours late is dropped. After `/now`, or `--once`, it follows at once,
+with the reactions alone: the week's themes go with the scheduled run.
+`IDEAS=false` turns it off.
+
+To see the numbers the themes start from without asking a model,
+`LIVE_MARKET=1 go test ./internal/app -run TestLiveMarket -v -timeout 4h`
+fills `data/market` on your machine and logs the leaders, the industries and
+the day's moves. `LIVE_THEMES=1 go test ./internal/app -run TestLiveThemes -v
+-timeout 2h` runs a whole week's themes with the models and sends them to your
+chat alone, without writing the week down.
+
+**Cost.** No search credits: the scout and the research search with Claude's
+own web search, not Tavily. A day is up to two verdict calls; a Monday adds a
+Sonnet call, a scout, five research calls and six more verdict calls, all
+Opus. The ledger of a `look` run in `relay/` has the actual sizes.
 
 **Nasdaq is unofficial.** Its figures come from the endpoints Nasdaq's own
 website reads, with no key and no agreement, like the chart source. They can

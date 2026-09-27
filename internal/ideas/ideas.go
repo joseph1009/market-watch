@@ -1,20 +1,34 @@
 // Package ideas finds companies worth a closer look and judges them.
 //
-// It starts where the brief ends. The new-names section says which companies
-// the day's stories were about; this goes further, to the companies the news
-// bears on without naming -- the supplier whose order book a customer's outlook
-// just changed, the rival a price cut hurts -- and then gives each one a
-// verdict: buy, hold or sell over twelve months.
+// Two ways in, both starting from numbers rather than from the day's news.
 //
-// Two model calls, with a fetch between them. Research runs with web search,
-// because finding who supplies whom is exactly what the day's articles do not
-// say. Every ticker it proposes is checked against the exchange, the same way
-// the new names are, and a company that does not check out is dropped: a
-// verdict on the wrong symbol is the worst thing this package could produce.
-// The facts are then read -- the share's trading, and for a US listing its SEC
-// accounts -- and the verdicts are written from those, with no tools, so the
-// figures they cite are ones this service fetched rather than ones a web page
-// asserted.
+// Once a week, from two years of the whole US market's prices
+// (internal/market), and Singapore's thirty largest beside it, the themes: the
+// shares that have risen furthest and most steadily, sorted by what drives
+// them (Sorter, Sonnet); and apart from those, the industries whose business
+// is growing before their shares have followed (Scout, Opus with the web).
+// Each theme is then researched (Researcher, Opus with the web): what drives
+// it, which part of it the market has already paid for, which part it has
+// not, and which companies sit in that part -- the ones it has not paid for as
+// BUY candidates, and one it has paid too much for as a SELL. The market's
+// leaders are where the search starts, not what it recommends: a pick is as
+// likely to be a company that has not risen yet as one that has.
+//
+// Every day, the reactions: shares that moved several times their usual on
+// heavy trading, where the day's articles say why. Markets misjudge news
+// often, and a share that fell a fifth on news that barely touches its
+// earnings is the case the verdict looks for.
+//
+// Every candidate's ticker is checked against the exchange, and one that does
+// not check out is dropped: a verdict on the wrong symbol is the worst thing
+// this package could produce. The facts are then read -- the accounts, the
+// price, the valuation against the theme and the company's own history, what
+// analysts expect -- and the verdicts are written from those, with no tools,
+// so the figures they cite are ones this service fetched rather than ones a
+// web page asserted (Judge). The code holds each verdict to rules the model is
+// told but cannot bend: no BUY where the price is dearer than the theme on
+// every measure and not paid for by growth, and no more than low confidence
+// without accounts.
 //
 // The verdicts go to the owner, and to the channel with the daily brief, where
 // they are published under a note saying a model wrote them and that they are
@@ -24,260 +38,45 @@ package ideas
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// LookSize is how many companies the closer look shows: the followed ones the
-// screen chose (Screener) and shown as BUY or SELL, and new names for the rest.
-const LookSize = 20
+const (
+	// PicksShown is how many theme picks a week shows at most: fewer where
+	// fewer hold up, never more to fill a number.
+	PicksShown = 10
 
-// DefaultMax is how many new companies the research may propose: enough to
-// fill the whole look. On most days fourteen or so are used, beside the
-// followed companies; the rest stand by, best first, to take the place of a
-// followed HOLD, which is not shown. Only those used cost a fetch of their
-// accounts and a verdict.
-const DefaultMax = LookSize
+	// ReactionsShown is how many reactions a day shows at most, and
+	// ReactionsJudged how many are given a verdict to find them: a reaction
+	// that matched its news is a HOLD, and not shown.
+	ReactionsShown  = 3
+	ReactionsJudged = 6
 
-// EventWindow is how far ahead a dated event counts: near enough to matter to
-// a verdict made today, and not so far that nothing will have been announced.
-const EventWindow = 90 * 24 * time.Hour
+	// PopularThemes and EarlyThemes are how many of each the week reads.
+	PopularThemes = 3
+	EarlyThemes   = 2
 
-// Completer is the model call both stages make.
+	// PerTheme is how many companies the research proposes in one theme, and
+	// PicksJudged how many are given a verdict across them all.
+	PerTheme    = 4
+	PicksJudged = 16
+
+	// RepeatWindow is how long a pick is not written up again unless its
+	// verdict changes: it is on the earlier picks list meanwhile.
+	RepeatWindow = 8 * 7 * 24 * time.Hour
+)
+
+// PickExchanges are where a pick may be listed: the US, where the accounts
+// can be read, and Singapore, where the reader lives.
+var PickExchanges = map[string]bool{"US": true, "SP": true}
+
+// Completer is the model call every stage makes.
 type Completer interface {
 	Complete(ctx context.Context, system, prompt string) (string, model.Usage, error)
-}
-
-// Input is what the research starts from.
-type Input struct {
-	// Brief is the brief's prose, overview and sections, with its [n]
-	// citations, and Cited the articles those numbers refer to.
-	Brief string
-	Cited []model.Article
-
-	// Candidates are the day's new names, and Tracked every company name and
-	// ticker the watchlists carry, so the research can tell what the investor
-	// already follows.
-	Candidates []model.Candidate
-	Tracked    []string
-
-	// Followed are the tickers the watchlists follow, which the research
-	// must not return: they are the screen's to choose, and one found twice
-	// would take a new name's place.
-	Followed map[string]bool
-
-	// Movers are the day's largest moves among US companies nobody follows,
-	// where a new name is most likely to be found: a share that moved a
-	// fifth has a reason, and the research can go and find it.
-	Movers []Mover
-
-	// Today is the day of the brief, which the dated events are counted
-	// from. Zero means now.
-	Today time.Time
-}
-
-// Mover is one of the day's largest moves across the market.
-type Mover struct {
-	Symbol, Name string
-	Percent      float64
-	DollarVolume float64
-}
-
-// Researcher proposes and verifies the companies.
-type Researcher struct {
-	Completer Completer
-	Verifier  discover.Verifier
-	Max       int
-}
-
-// Propose returns the companies worth a closer look, every ticker verified.
-func (r *Researcher) Propose(ctx context.Context, in Input) ([]model.Idea, model.Usage, error) {
-	if r.Completer == nil {
-		return nil, model.Usage{}, nil
-	}
-	system, err := config.RenderPrompt("ideas.system", struct{ Max int }{r.max()})
-	if err != nil {
-		return nil, model.Usage{}, err
-	}
-
-	text, usage, err := r.Completer.Complete(ctx, system, researchPrompt(in))
-	if err != nil {
-		// Unwrapped: the answerer names the stage it was asked for, and the
-		// caller says what the section was.
-		return nil, usage, err
-	}
-
-	today := in.Today
-	if today.IsZero() {
-		today = time.Now()
-	}
-	found := parseIdeas(text, in.Cited, today)
-	found = unfollowed(found, in.Followed)
-	found, err = verify(ctx, r.Verifier, found)
-	if err != nil {
-		// Unchecked tickers are not shown, and a verdict needs a ticker, so a
-		// failed check leaves nothing to judge.
-		return nil, usage, fmt.Errorf("verifying tickers: %w", err)
-	}
-	if len(found) > r.max() {
-		found = found[:r.max()]
-	}
-	return found, usage, nil
-}
-
-func (r *Researcher) max() int {
-	if r.Max > 0 {
-		return r.Max
-	}
-	return DefaultMax
-}
-
-func researchPrompt(in Input) string {
-	var b strings.Builder
-	if !in.Today.IsZero() {
-		fmt.Fprintf(&b, "Today is %s.\n\n", in.Today.Format("Monday 2 January 2006"))
-	}
-	b.WriteString("Today's brief:\n\n")
-	b.WriteString(strings.TrimSpace(in.Brief))
-
-	b.WriteString("\n\nThe articles it cites, by number:\n")
-	for i, a := range in.Cited {
-		fmt.Fprintf(&b, "[%d] %s (%s)\n", i+1, oneLine(a.Title), a.SourceName)
-	}
-
-	if len(in.Candidates) > 0 {
-		b.WriteString("\nNew names the brief found in today's news:\n")
-		for _, c := range in.Candidates {
-			symbol := c.Symbol()
-			switch {
-			case c.Private:
-				symbol = "private"
-			case symbol == "":
-				symbol = "ticker unknown"
-			}
-			fmt.Fprintf(&b, "- %s (%s): %s\n", c.Name, symbol, oneLine(c.Why))
-		}
-	}
-
-	if len(in.Movers) > 0 {
-		b.WriteString("\nThe day's largest moves among US companies the investor does not track, with what changed hands:\n")
-		for _, m := range in.Movers {
-			fmt.Fprintf(&b, "- %s (%s) %+.1f%%, US$%.0fm traded\n", m.Name, m.Symbol, m.Percent, m.DollarVolume/1e6)
-		}
-	}
-
-	if len(in.Tracked) > 0 {
-		b.WriteString("\nCompanies the investor already tracks, which are judged separately and must not be chosen: ")
-		b.WriteString(strings.Join(in.Tracked, ", "))
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// unfollowed drops the US listings the watchlists follow.
-func unfollowed(ideas []model.Idea, followed map[string]bool) []model.Idea {
-	var out []model.Idea
-	for _, idea := range ideas {
-		if (idea.Exchange == "US" || idea.Exchange == "") && followed[idea.Ticker] {
-			continue
-		}
-		out = append(out, idea)
-	}
-	return out
-}
-
-// ideaLine is one company: name, ticker, exchange, news or connected, article
-// numbers, how the news bears on it, and then, where the research found one,
-// the event ahead: what, when, how much it matters and which way.
-var ideaLine = regexp.MustCompile(`^\s*-?\s*([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\|([^|]*)\|([^|]+?)\s*(?:\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*?))?\s*$`)
-
-// parseIdeas reads the research's lines back, keeping a company once and only
-// with a ticker to check.
-func parseIdeas(text string, cited []model.Article, today time.Time) []model.Idea {
-	var out []model.Idea
-	seen := map[string]bool{}
-
-	for _, raw := range strings.Split(text, "\n") {
-		m := ideaLine.FindStringSubmatch(raw)
-		if m == nil {
-			continue
-		}
-		idea := model.Idea{
-			Name:      strings.TrimSpace(m[1]),
-			Ticker:    strings.ToUpper(strings.TrimSpace(m[2])),
-			Exchange:  strings.ToUpper(strings.TrimSpace(m[3])),
-			Connected: strings.Contains(strings.ToLower(m[4]), "connect"),
-			Link:      strings.TrimSpace(m[6]),
-		}
-		switch idea.Ticker {
-		case "", "?", "-", "PRIVATE":
-			continue // nothing to verify, so nothing to judge
-		}
-		if idea.Name == "" || idea.Link == "" {
-			continue
-		}
-		key := idea.Ticker + "." + idea.Exchange
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-
-		for _, field := range strings.Split(m[5], ",") {
-			n, err := strconv.Atoi(strings.TrimSpace(strings.Trim(field, "[] ")))
-			if err != nil || n < 1 || n > len(cited) {
-				continue
-			}
-			if !hasArticle(idea.Articles, cited[n-1].ID) {
-				idea.Articles = append(idea.Articles, cited[n-1])
-			}
-		}
-		idea.Event = parseEvent(m[7], m[8], m[9], m[10], today)
-		out = append(out, idea)
-	}
-	return out
-}
-
-// parseEvent reads the event fields, and keeps an event only with a date in
-// the window: an event without one cannot be timed, and one already past or
-// months away is not what a verdict today turns on. A date that has been
-// announced is written in full, so one given as a month alone is dropped too.
-func parseEvent(name, date, impact, bias string, today time.Time) *model.Event {
-	name = strings.TrimSpace(name)
-	switch strings.ToLower(name) {
-	case "", "none", "-", "?":
-		return nil
-	}
-	day, err := time.Parse(time.DateOnly, strings.TrimSpace(date))
-	if err != nil {
-		return nil
-	}
-	start := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
-	if day.Before(start) || day.After(start.Add(EventWindow)) {
-		return nil
-	}
-	return &model.Event{
-		Name:   name,
-		Date:   day,
-		Impact: oneOf(impact, "HIGH", "MEDIUM", "LOW"),
-		Bias:   oneOf(bias, "BULLISH", "BEARISH", "NEUTRAL"),
-	}
-}
-
-// oneOf is s in capitals where it is one of allowed, and empty otherwise.
-func oneOf(s string, allowed ...string) string {
-	s = strings.ToUpper(strings.Trim(strings.TrimSpace(s), ".*"))
-	for _, a := range allowed {
-		if s == a {
-			return s
-		}
-	}
-	return ""
 }
 
 // verify keeps the ideas whose ticker belongs to the company named, and drops
@@ -318,13 +117,17 @@ func verify(ctx context.Context, v discover.Verifier, ideas []model.Idea) ([]mod
 	return out, nil
 }
 
-func hasArticle(articles []model.Article, id string) bool {
-	for _, a := range articles {
-		if a.ID == id {
-			return true
-		}
+// field reads "LABEL: value" at the head of a line, in any case, with any
+// bold the model added dropped.
+func field(line, label string) (string, bool) {
+	line = strings.TrimSpace(strings.ReplaceAll(line, "*", ""))
+	if len(line) < len(label) || !strings.EqualFold(line[:len(label)], label) {
+		return "", false
 	}
-	return false
+	return strings.TrimSpace(line[len(label):]), true
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// pct writes a fraction as a signed percentage: +12.3%.
+func pct(f float64) string { return fmt.Sprintf("%+.0f%%", 100*f) }

@@ -2,31 +2,36 @@ package app
 
 import (
 	"context"
-	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/joseph1009/market-watch/config"
+	"github.com/joseph1009/market-watch/internal/consensus"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/ideas"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
-// "Worth a closer look" follows the brief: twenty companies a day, each with a
-// buy, hold or sell verdict. Up to six are companies the watchlists follow,
-// where a screen of all of them found the move and the news not fitting each
-// other, and new names -- found by research on the web from the day's news and
-// the market's largest moves -- fill the rest. See the ideas package for how,
-// and docs/RUNBOOK.md for the stages.
+// "Worth a closer look" follows the brief. Once a week, on the scheduled
+// run's first look of the week, the themes: up to ten companies found from the
+// market's numbers -- what it has been paying for, and what is growing before
+// its shares have followed -- each with a verdict (themes.go). Every day, the
+// reactions: up to three shares that moved several times their usual on the
+// day's news, where the move and the news do not fit (reactions.go). A day
+// with neither sends nothing. Only companies the watchlists do not follow are
+// shown; the brief covers those.
 //
 // The daily run's closer look starts twenty minutes after the brief (look.go),
 // so the brief is never held up by it and the plan's allowance is not asked
 // for both at once. A brief asked for with /now, or sent with -once, is
-// followed at once.
+// followed at once, with the reactions alone: the week's themes belong to the
+// scheduled run, which the channel reads.
 //
 // It follows the brief to the same places: the owner always, and the channel
 // on the days the brief goes there, which is the scheduled run and -once
@@ -45,60 +50,46 @@ import (
 // nothing.
 
 const (
-	// ideasBudget bounds the whole pass: research with the web and the screen
-	// side by side, the facts for each company, and the verdicts. It usually
-	// takes ten to fifteen minutes. The run lock is held throughout, so a /now
-	// sent meanwhile waits; this is what keeps that wait finite.
-	ideasBudget = 30 * time.Minute
+	// ideasBudget bounds a day's closer look: the market's latest sessions,
+	// the facts for six companies, and their verdicts, which takes five to
+	// ten minutes. The run lock is held throughout, so a /now sent meanwhile
+	// waits; this is what keeps that wait finite.
+	ideasBudget = 25 * time.Minute
+
+	// themesBudget bounds the week's: the sorting, the scout, five themes
+	// researched two at a time, the facts for their companies and their
+	// peers, and up to sixteen verdicts, on top of the day's. Forty minutes
+	// or so, done before the open.
+	themesBudget = 75 * time.Minute
 
 	// factWorkers is how many companies' facts are read at once. Each is SEC
 	// reads, paced across all of them by the accounts client, and six Nasdaq
 	// reads of a second or two each.
 	factWorkers = 4
-
-	// screenWorkers is how many followed companies' histories are read at once
-	// for the screen.
-	screenWorkers = 4
-
-	// moversBudget bounds the market's movers: two to five requests, twelve
-	// and a half seconds apart on the free plan.
-	moversBudget = 2 * time.Minute
-
-	// The movers the research is shown: fifteen of them, biggest move first,
-	// each a share of at least US$5 on which at least US$25m changed hands, in
-	// a company worth at least US$2bn. On the first day it was read, without
-	// the last floor, the list was a real-estate trust up 191% and three
-	// biotechs a tenth of that size -- spikes, not news. The sixty largest
-	// moves are sized, to find fifteen that clear it.
-	moverMinPrice  = 5
-	moverMinVolume = 25e6
-	moverMinValue  = 2e9
-	moverCount     = 15
-	moverSized     = 60
 )
 
-// look is what the closer look starts from: the brief it follows, and whether
-// the channel is reading today. It is written to the data volume while it
-// waits its hour, so it carries the brief's text and articles rather than the
-// report, whose citations are not kept on disk.
+// look is what the closer look starts from: the brief's articles, whether
+// the channel is reading today, and whether this is the scheduled run, the
+// one the week's themes go with. It is written to the data volume while it
+// waits, so it carries the articles rather than the report, whose citations
+// are not kept on disk.
 type look struct {
-	Due        time.Time         `json:"due"`
-	Share      bool              `json:"share"`
-	Brief      string            `json:"brief"`
-	Cited      []model.Article   `json:"cited"`
-	Candidates []model.Candidate `json:"candidates,omitempty"`
+	Due       time.Time       `json:"due"`
+	Share     bool            `json:"share"`
+	Scheduled bool            `json:"scheduled,omitempty"`
+	Cited     []model.Article `json:"cited"`
 }
 
-func lookFrom(rep model.Report, share bool) look {
-	return look{Share: share, Brief: briefText(rep), Cited: rep.Cited, Candidates: rep.Candidates}
+func lookFrom(rep model.Report, share, scheduled bool) look {
+	return look{Share: share, Scheduled: scheduled, Cited: rep.Cited}
 }
 
-// sendIdeas researches, screens, judges and delivers. Every failure costs this
-// section only: the brief has already arrived. lk.Share says whether the
-// channel gets it too, and carries the value the brief was sent with, so the
-// two never disagree about who is reading today.
+// sendIdeas finds, judges and delivers. Every failure costs this section only:
+// the brief has already arrived. lk.Share says whether the channel gets it
+// too, and carries the value the brief was sent with, so the two never
+// disagree about who is reading today.
 func (a *App) sendIdeas(ctx context.Context, lk look) {
-	if a.Researcher == nil || a.Judge == nil {
+	if a.Judge == nil || a.MarketStore == nil {
 		return
 	}
 	prefs := a.Prefs()
@@ -106,7 +97,13 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, ideasBudget)
+	weekly := lk.Scheduled && a.Themes != nil && a.Sorter != nil && a.Researcher != nil &&
+		!a.Themes.DoneThisWeek(a.now(), a.Cfg.ScheduleLocation)
+	budget := ideasBudget
+	if weekly {
+		budget = themesBudget
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	started := time.Now()
 
@@ -114,56 +111,54 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	defer cached.Finish(nil)
 	cached.Save("look", lk)
 
-	// The new names and the followed companies are found side by side: the
-	// research is minutes of web searches, the screen a minute of prices and
-	// one short call, and neither needs the other.
-	var found, picked []model.Idea
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); found = a.researchNewNames(ctx, lk, prefs.Groups) }()
-	go func() { defer wg.Done(); picked = a.screenFollowed(ctx, lk, prefs.Groups) }()
-	wg.Wait()
-
-	// LookSize are shown: the followed companies, and new names for the
-	// rest, best first. The rest of the research stands by.
-	want := min(ideas.LookSize-len(picked), len(found))
-	all, spare := append(picked, found[:want]...), found[want:]
-	if len(all) == 0 {
-		cached.Fail(errors.New("nothing to judge: the research and the screen found no companies"))
+	a.topUpMarket(ctx)
+	listings, err := a.listings(ctx)
+	if err != nil {
+		a.Log.Warn("no closer look: Nasdaq's listings could not be read", "error", err)
+		cached.Fail(err)
 		return
 	}
-
 	backdrop := a.backdrop(ctx)
 	cached.Save("backdrop", backdrop)
-	shown, charts, judged, usage := a.judgeIdeas(ctx, all, lk.Cited, backdrop)
+	following := newFollowing(prefs.Groups)
 
-	// A followed HOLD is not shown, and a verdict can fail. Each place left
-	// goes to the next new name, whose verdict is always shown, in one more
-	// round: judging the spares up front would spend a verdict on each of
-	// them every day, for the one or two a day that are needed.
-	var standIns []model.Idea
-	if short := min(ideas.LookSize-len(shown), len(spare)); short > 0 {
-		standIns = spare[:short]
-		more, moreCharts, moreJudged, moreUsage := a.judgeIdeas(ctx, standIns, lk.Cited, backdrop)
-		shown = append(shown, more...)
-		all, charts = append(all, standIns...), append(charts, moreCharts...)
-		judged += moreJudged
-		usage.InputTokens += moreUsage.InputTokens
-		usage.OutputTokens += moreUsage.OutputTokens
+	var (
+		picks  telegram.Picks
+		shown  []model.Idea
+		charts = map[string]string{}
+		week   *ideas.ThemeRun
+	)
+	if weekly {
+		w := a.runThemes(ctx, listings, following, backdrop)
+		if w.ran {
+			picks.Themes, picks.Earlier = w.views, w.earlier
+			shown = append(shown, w.shown...)
+			for k, v := range w.charts {
+				charts[k] = v
+			}
+			week = &w.run
+		}
 	}
-	a.Log.Info("ideas judged",
-		"judged", judged,
-		"of", len(all),
-		"shown", len(shown),
-		"stand_ins", len(standIns),
-		"input_tokens", usage.InputTokens,
-		"output_tokens", usage.OutputTokens)
-	if len(shown) == 0 {
-		cached.Fail(errors.New("nothing to show: every verdict was a hidden HOLD or failed"))
+	reactions, reactionCharts := a.runReactions(ctx, lk, listings, following, backdrop)
+	picks.Reactions = reactions
+	shown = append(shown, reactions...)
+	for k, v := range reactionCharts {
+		charts[k] = v
+	}
+
+	// The week is written down however it went, so a week whose research
+	// found nothing does not search again every day until it does.
+	if week != nil {
+		if err := a.Themes.Add(*week); err != nil {
+			a.Log.Warn("could not record the week's themes", "error", err)
+		}
+	}
+	if picks.Empty() {
+		a.Log.Info("closer look: nothing to show today", "weekly", weekly, "took", time.Since(started).Round(time.Second))
 		return
 	}
 
-	messages := telegram.RenderIdeas(shown, lk.Cited, telegram.IdeasOptions{})
+	messages := telegram.RenderPicks(picks, lk.Cited, telegram.IdeasOptions{}, a.Cfg.DisplayLocation)
 	cached.Save("shown", shown)
 	cached.Text("messages.html", joinMessages(messages))
 	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
@@ -185,185 +180,101 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	// The channel is posted before the verdicts are scored, for the reason the
 	// brief is: the reader's copy should not wait on bookkeeping.
 	if lk.Share {
-		a.shareIdeas(ctx, telegram.RenderIdeas(shown, lk.Cited, telegram.IdeasOptions{ForChannel: true}))
+		a.shareIdeas(ctx, telegram.RenderPicks(picks, lk.Cited, telegram.IdeasOptions{ForChannel: true}, a.Cfg.DisplayLocation))
 	}
 
-	a.recordVerdicts(ctx, shown, all, charts)
+	a.recordVerdicts(ctx, shown, charts)
 	a.Log.Info("ideas delivered",
+		"weekly", weekly,
+		"themes", len(picks.Themes),
+		"reactions", len(picks.Reactions),
 		"messages", len(messages),
 		"took", time.Since(started).Round(time.Second))
 }
 
-// judgeIdeas reads the facts for some companies and judges them. It returns
-// the verdicts to show, the chart symbol of each company it was given, in
-// order, how many verdicts came back, and what they cost.
-func (a *App) judgeIdeas(ctx context.Context, list []model.Idea, cited []model.Article, backdrop []string) ([]model.Idea, []string, int, model.Usage) {
-	facts, charts := a.factsFor(ctx, list)
-	cached := runcache.From(ctx)
-	cached.Save("facts", factsView(list, facts, charts))
-	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop)
-	if err != nil {
-		a.Log.Warn("some verdicts are missing", "error", err)
-	}
-	cached.Save("verdicts", judged)
-	var shown []model.Idea
-	for _, idea := range judged {
-		if idea.Shown() {
-			shown = append(shown, idea)
-		}
-	}
-	return shown, charts, len(judged), usage
+// following is what the watchlists follow, which the closer look leaves to
+// the brief: US tickers, and every name and ticker they carry.
+type following struct {
+	tickers map[string]bool
+	names   []string
 }
 
-// factsView pairs each company judged with the facts it was judged on and the
-// chart it was priced from, for the run cache.
-func factsView(list []model.Idea, facts, charts []string) any {
-	type row struct {
-		Ticker string `json:"ticker"`
-		Name   string `json:"name"`
-		Chart  string `json:"chart,omitempty"`
-		Facts  string `json:"facts"`
-	}
-	out := make([]row, len(list))
-	for i, idea := range list {
-		out[i] = row{Ticker: idea.Ticker, Name: idea.Name, Chart: charts[i], Facts: facts[i]}
-	}
-	return out
-}
-
-// researchNewNames finds the companies nobody follows that today's news, or
-// today's largest moves, bear on.
-func (a *App) researchNewNames(ctx context.Context, lk look, groups []model.Group) []model.Idea {
-	started := time.Now()
-	followed := map[string]bool{}
+func newFollowing(groups []model.Group) following {
+	f := following{tickers: map[string]bool{}, names: trackedNames(groups)}
 	for _, t := range watchedTickers(groups) {
-		followed[t] = true
+		f.tickers[t] = true
 	}
-	movers := a.marketMovers(ctx, followed)
-	cached := runcache.From(ctx)
-	cached.Save("market-movers", movers)
-	found, usage, err := a.Researcher.Propose(ctx, ideas.Input{
-		Brief:      lk.Brief,
-		Cited:      lk.Cited,
-		Candidates: lk.Candidates,
-		Tracked:    trackedNames(groups),
-		Followed:   followed,
-		Movers:     movers,
-		Today:      a.now(),
-	})
-	if err != nil {
-		a.Log.Warn("could not research new names for a closer look", "error", err)
-		return nil
-	}
-	cached.Save("research", found)
-	a.Log.Info("ideas researched",
-		"verified", len(found),
-		"input_tokens", usage.InputTokens,
-		"output_tokens", usage.OutputTokens,
-		"took", time.Since(started).Round(time.Second))
-	return found
+	return f
 }
 
-// marketMovers are the day's largest moves among the US companies nobody
-// follows, named as the SEC knows them. Funds, and the notes a bank issues,
-// are left out -- a leveraged fund moving three times its index is arithmetic,
-// not news -- and so are companies worth less than moverMinValue, whose moves
-// are mostly noise.
-func (a *App) marketMovers(ctx context.Context, followed map[string]bool) []ideas.Mover {
-	if !a.Movers.Enabled() || a.Filings == nil {
-		return nil
+// follows reports whether an idea is a company the watchlists follow.
+func (f following) follows(idea model.Idea) bool {
+	if (idea.Exchange == "US" || idea.Exchange == "") && f.tickers[idea.Ticker] {
+		return true
 	}
-	ctx, cancel := context.WithTimeout(ctx, moversBudget)
-	defer cancel()
-
-	type filer struct {
-		cik  int
-		name string
-	}
-	filers := map[string]filer{}
-	moves, err := a.Movers.Movers(ctx, a.now(), prices.MoverRules{
-		MinPrice:        moverMinPrice,
-		MinDollarVolume: moverMinVolume,
-		Limit:           moverSized,
-		Keep: func(symbol string) bool {
-			if followed[symbol] {
-				return false
-			}
-			// The SEC writes a share class with a dash: BRK-B, not BRK.B.
-			sec := strings.ReplaceAll(symbol, ".", "-")
-			cik, name, err := a.Filings.LookupCIK(ctx, sec)
-			if err != nil || isFund(name) || !a.Filings.MainTicker(ctx, sec) {
-				return false
-			}
-			filers[symbol] = filer{cik, name}
-			return true
-		},
-	})
-	if err != nil {
-		a.Log.Warn("could not read the market's movers", "error", err)
-		return nil
-	}
-
-	var out []ideas.Mover
-	for _, m := range moves {
-		if len(out) == moverCount {
-			break
-		}
-		f := filers[m.Symbol]
-		if a.Accounts != nil {
-			shares, err := a.Accounts.SharesOutstanding(ctx, f.cik)
-			if err != nil || m.Close*shares < moverMinValue {
-				continue // too small, or no share count to tell
-			}
-		}
-		out = append(out, ideas.Mover{Symbol: m.Symbol, Name: f.name, Percent: m.Percent, DollarVolume: m.DollarVolume})
-	}
-	a.Log.Info("market movers", "sized", len(moves), "kept", len(out))
-	return out
-}
-
-// isFund reports whether a registered name is a fund's rather than a
-// company's.
-func isFund(name string) bool {
-	upper := " " + strings.ToUpper(name) + " "
-	for _, word := range []string{" ETF", " FUND", " ETN", "PROSHARES", "DIREXION", "ISHARES", "SPDR", "SHARES TRUST"} {
-		if strings.Contains(upper, word) {
+	for _, n := range f.names {
+		if strings.EqualFold(n, idea.Name) || strings.EqualFold(n, market.PlainName(idea.Listed)) {
 			return true
 		}
 	}
 	return false
 }
 
-// screenFollowed chooses which of the followed companies get a verdict today.
-func (a *App) screenFollowed(ctx context.Context, lk look, groups []model.Group) []model.Idea {
-	if a.Screener == nil {
-		return nil
+// judge reads the facts for some companies and judges them. It returns the
+// verdicts, in the order given, what was read for each company given, by
+// position, and what the verdicts cost.
+func (a *App) judge(ctx context.Context, list []model.Idea, sheets []sheet, cited []model.Article, backdrop []string) []model.Idea {
+	facts := make([]string, len(sheets))
+	for i, s := range sheets {
+		facts[i] = s.facts
 	}
-	started := time.Now()
-	rows := a.screenRows(ctx, groups, lk.Cited)
 	cached := runcache.From(ctx)
-	cached.Save("screen-rows", rows)
-	picked, usage, err := a.Screener.Pick(ctx, lk.Brief, lk.Cited, rows)
+	cached.Save("facts", factsView(list, sheets))
+	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop)
 	if err != nil {
-		a.Log.Warn("could not screen the followed companies", "error", err)
-		return nil
+		a.Log.Warn("some verdicts are missing", "error", err)
 	}
-	cached.Save("screen", picked)
-	a.Log.Info("followed companies screened",
-		"rows", len(rows),
-		"picked", len(picked),
+	cached.Save("verdicts", judged)
+	a.Log.Info("ideas judged",
+		"judged", len(judged),
+		"of", len(list),
 		"input_tokens", usage.InputTokens,
-		"output_tokens", usage.OutputTokens,
-		"took", time.Since(started).Round(time.Second))
-	return picked
+		"output_tokens", usage.OutputTokens)
+	return judged
 }
 
-// factsFor reads each idea's facts, a few companies at a time, and returns
-// the ideas' fact sheets and chart symbols by position. The ideas themselves
-// are updated in place with their prices.
-func (a *App) factsFor(ctx context.Context, all []model.Idea) (facts, charts []string) {
-	facts = make([]string, len(all))
-	charts = make([]string, len(all))
+// factsView pairs each company judged with the facts it was judged on and the
+// chart it was priced from, for the run cache.
+func factsView(list []model.Idea, sheets []sheet) any {
+	type row struct {
+		Ticker    string `json:"ticker"`
+		Name      string `json:"name"`
+		Chart     string `json:"chart,omitempty"`
+		Valuation string `json:"valuation,omitempty"`
+		Facts     string `json:"facts"`
+	}
+	out := make([]row, len(list))
+	for i, idea := range list {
+		out[i] = row{Ticker: idea.Ticker, Name: idea.Name, Chart: sheets[i].chart, Valuation: idea.Valuation, Facts: sheets[i].facts}
+	}
+	return out
+}
+
+// sheet is what was read for one company: the fact sheet its verdict rests
+// on, the chart its price comes from, and the accounts and the analysts'
+// figures behind the sheet, where they were read.
+type sheet struct {
+	chart  string
+	facts  string
+	snap   *fundamentals.Snapshot
+	expect *consensus.Report
+}
+
+// factsFor reads each idea's facts, a few companies at a time. The ideas
+// themselves are updated in place with their prices and whether their
+// accounts were read.
+func (a *App) factsFor(ctx context.Context, all []model.Idea) []sheet {
+	sheets := make([]sheet, len(all))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range factWorkers {
@@ -371,7 +282,7 @@ func (a *App) factsFor(ctx context.Context, all []model.Idea) (facts, charts []s
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				all[i], charts[i], facts[i] = a.ideaFacts(ctx, all[i])
+				all[i], sheets[i] = a.ideaFacts(ctx, all[i])
 			}
 		}()
 	}
@@ -385,7 +296,7 @@ queue:
 	}
 	close(jobs)
 	wg.Wait()
-	return facts, charts
+	return sheets
 }
 
 // ideaFacts reads what a verdict should rest on, and returns the idea with its
@@ -401,7 +312,7 @@ queue:
 // stories stand in for them. For anything else it is the price and the
 // trading alone, and it says so, so the verdict cannot quietly pretend to a
 // knowledge of the accounts it does not have.
-func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, string, string) {
+func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, sheet) {
 	chart := prices.ChartSymbol(idea.Ticker, idea.Exchange)
 	if chart != "" {
 		idea.Trading, idea.Quote = a.marketFor(ctx, chart)
@@ -422,10 +333,10 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 					a.Log.Info("idea context", "ticker", idea.Ticker, "error", problem)
 				}
 				a.addPressNews(ctx, &snap)
-				a.addExpectations(ctx, &snap)
+				expect := a.addExpectations(ctx, &snap)
 				a.addRelease(ctx, &snap, analysisReleaseRunes)
 				idea.Accounts = true
-				return idea, chart, snap.Table() + snap.SensitivityFacts()
+				return idea, sheet{chart: chart, facts: snap.Table() + snap.SensitivityFacts(), snap: &snap, expect: expect}
 			}
 			a.Log.Info("no accounts for an idea", "ticker", idea.Ticker, "error", err)
 		}
@@ -438,27 +349,21 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 		b.WriteString("No price history could be read for it.\n")
 	}
 	b.WriteString("\nNo SEC accounts were read for it: it does not file with the SEC, or its filings could not be read. Say that the accounts are missing, and weigh your confidence accordingly.\n")
-	return idea, chart, b.String()
+	return idea, sheet{chart: chart, facts: b.String()}
 }
 
-// recordVerdicts writes each verdict to the scorecard. judged is a subset of
-// found, and charts is found's, by position. The price each is measured from
-// is not known yet: it is the next session's open, which /scorecard reads
-// once it has happened.
-func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, charts []string) {
+// recordVerdicts writes each verdict shown to the scorecard, with the chart
+// each is priced from, by symbol. The price each is measured from is not
+// known yet: it is the next session's open, which /scorecard reads once it
+// has happened.
+func (a *App) recordVerdicts(ctx context.Context, shown []model.Idea, charts map[string]string) {
 	if a.Scorecard == nil {
 		return
 	}
-
-	chartOf := map[string]string{}
-	for i, f := range found {
-		chartOf[f.Symbol()] = charts[i]
-	}
-
 	var records []ideas.Record
 	var currencies []string
-	for _, idea := range judged {
-		if r, ok := ideas.NewRecord(idea, chartOf[idea.Symbol()], a.now()); ok {
+	for _, idea := range shown {
+		if r, ok := ideas.NewRecord(idea, charts[idea.Symbol()], a.now()); ok {
 			records = append(records, r)
 			currencies = append(currencies, r.Currency)
 		}
@@ -474,7 +379,7 @@ func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, ch
 		a.Log.Warn("could not record the verdicts", "error", err)
 		return
 	}
-	a.Log.Info("verdicts recorded", "count", len(records), "of", len(judged))
+	a.Log.Info("verdicts recorded", "count", len(records), "of", len(shown))
 }
 
 // pathFor is a chart's sessions as the scorecard reads them, or nil.
@@ -568,20 +473,42 @@ func (a *App) dollarRates(ctx context.Context, currencies []string) ideas.Rates 
 	return rates
 }
 
-// briefText is the brief's prose as the research reads it: the overview, then
-// each section under its name, with the citations as written.
-func briefText(rep model.Report) string {
-	var b strings.Builder
-	b.WriteString("OVERVIEW\n")
-	b.WriteString(strings.TrimSpace(rep.Overview))
-	for _, s := range rep.Sections {
-		if strings.TrimSpace(s.Body) == "" {
-			continue
-		}
-		b.WriteString("\n\n" + strings.ToUpper(s.GroupName) + "\n")
-		b.WriteString(strings.TrimSpace(s.Body))
+// confidenceRank orders verdicts for the cut to a limit: high before medium
+// before low.
+func confidenceRank(c string) int {
+	switch c {
+	case "high":
+		return 0
+	case "medium":
+		return 1
 	}
-	return b.String()
+	return 2
+}
+
+// best keeps up to n of the ideas, the most confident first where there are
+// more, and otherwise in the order given.
+func best(list []model.Idea, n int) []model.Idea {
+	if len(list) <= n {
+		return list
+	}
+	order := make([]int, len(list))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return confidenceRank(list[order[i]].Confidence) < confidenceRank(list[order[j]].Confidence)
+	})
+	keep := map[int]bool{}
+	for _, i := range order[:n] {
+		keep[i] = true
+	}
+	var out []model.Idea
+	for i, idea := range list {
+		if keep[i] {
+			out = append(out, idea)
+		}
+	}
+	return out
 }
 
 // trackedNames is every company the watchlists name, by name where they have

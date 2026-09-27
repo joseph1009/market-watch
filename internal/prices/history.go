@@ -86,12 +86,23 @@ type History struct {
 // forward: a filled-in price would flow into every average below and could not
 // afterwards be told from a real one.
 func (h *History) Fetch(ctx context.Context, symbol string) (Series, error) {
+	return h.fetch(ctx, symbol, chartRange, "1d", minBars)
+}
+
+// Monthly reads five years of month-end prices, oldest first: enough to say
+// what a company's share cost at each of its last five year ends, which the
+// daily two years cannot reach.
+func (h *History) Monthly(ctx context.Context, symbol string) (Series, error) {
+	return h.fetch(ctx, symbol, "5y", "1mo", 12)
+}
+
+func (h *History) fetch(ctx context.Context, symbol, span, interval string, least int) (Series, error) {
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
 	if symbol == "" {
 		return Series{}, fmt.Errorf("no symbol")
 	}
 
-	url := fmt.Sprintf("%s%s?range=%s&interval=1d", h.url(), symbol, chartRange)
+	url := fmt.Sprintf("%s%s?range=%s&interval=%s", h.url(), symbol, span, interval)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return Series{}, err
@@ -152,7 +163,7 @@ func (h *History) Fetch(ctx context.Context, symbol string) (Series, error) {
 		}
 		series.Bars = append(series.Bars, bar)
 	}
-	if len(series.Bars) < minBars {
+	if len(series.Bars) < least {
 		return Series{}, fmt.Errorf("%s: only %d sessions of history", symbol, len(series.Bars))
 	}
 	sort.Slice(series.Bars, func(i, j int) bool {

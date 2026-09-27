@@ -10,7 +10,10 @@ import (
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
+	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
+	"github.com/joseph1009/market-watch/internal/market"
+	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/report"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
@@ -101,6 +104,100 @@ func TestCannedAnalysis(t *testing.T) {
 	if err := service.handleAnalyse(ctx, telegram.Message{Chat: telegram.Chat{ID: chat}}, []string{ticker}); err != nil {
 		t.Fatalf("analyse: %v", err)
 	}
+}
+
+// TestLiveMarket fills the market's history under data/market -- about two
+// hours from empty, a minute a day after -- and logs what the week's themes
+// would start from: the leaders, the popular industries and the early ones.
+// It asks no model anything.
+//
+//	LIVE_MARKET=1 go test ./internal/app -run TestLiveMarket -v -timeout 4h
+func TestLiveMarket(t *testing.T) {
+	if os.Getenv("LIVE_MARKET") == "" {
+		t.Skip("set LIVE_MARKET=1 to fill the market's history and read it")
+	}
+	service := liveService(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
+	defer cancel()
+	for failures := 0; ; {
+		asked, err := service.MarketStore.Sync(ctx, service.Movers, time.Now(), marketChunk)
+		if err != nil {
+			if failures++; failures == 5 {
+				t.Fatalf("sync: %v", err)
+			}
+			t.Logf("sync: %v; again in a minute", err)
+			time.Sleep(time.Minute)
+			continue
+		}
+		t.Logf("fetched %d days; %d missing", asked, service.MarketStore.Missing(time.Now()))
+		if asked < marketChunk {
+			break
+		}
+	}
+	listings, err := service.listings(ctx)
+	if err != nil {
+		t.Fatalf("listings: %v", err)
+	}
+	panel, err := service.loadPanel(listings)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	stocks := market.Measure(panel, listings)
+	bench := market.MeasureSeries(panel.Get(market.Benchmark), market.Listing{Symbol: market.Benchmark})
+	pool := append(append([]market.Stock{}, stocks...), service.singaporeStocks(ctx)...)
+	leaders, left := market.Leaders(pool, market.DefaultRules, leaderCount)
+	why := map[string]int{}
+	for _, l := range left {
+		why[l.Why]++
+	}
+	t.Logf("%d sessions, %d measured, %d leaders; left out: %v", len(panel.Dates), len(pool), len(leaders), why)
+	for i, l := range leaders[:min(40, len(leaders))] {
+		t.Logf("%3d %-7s %-40s %-45s 2y %s 12-1 %s 6m %s score %.2f", i+1, l.Symbol, market.PlainName(l.Name), l.Industry,
+			pp(l.R24-bench.R24), pp(l.R12x1-bench.R12x1), pp(l.R6-bench.R6), l.Score)
+	}
+	headlines := service.recentHeadlines()
+	inds := market.Industries(stocks, bench, market.DefaultRules, market.Mentions(headlines, listings))
+	for _, d := range market.Popular(inds, popularIndustries) {
+		t.Logf("popular %.2f: %s", d.Popular, ideas.IndustryLine(d))
+	}
+	for _, d := range market.Early(inds, earlyIndustries) {
+		t.Logf("early %.2f: %s", d.Early, ideas.IndustryLine(d))
+	}
+	moves := market.Moves(panel, listings, market.DefaultRules, moveTimes, moveBusy)
+	for _, m := range moves[:min(10, len(moves))] {
+		t.Logf("move %-6s %+.1f%% (%.1f times usual, %.1f times the trading) %s", m.Symbol, 100*m.Percent, m.Times, m.Busy, market.PlainName(m.Name))
+	}
+}
+
+// TestLiveThemes runs one week's themes and the day's reactions for real,
+// with the models, and sends the result to the chat alone: the week is not
+// written down, so the scheduled run still does it.
+//
+//	LIVE_THEMES=1 go test ./internal/app -run TestLiveThemes -v -timeout 2h
+func TestLiveThemes(t *testing.T) {
+	if os.Getenv("LIVE_THEMES") == "" {
+		t.Skip("set LIVE_THEMES=1 to run a week's themes and send them to the chat")
+	}
+	service := liveService(t)
+	if service.Prefs().ChatID == 0 {
+		t.Fatal("no chat registered; send /start to the bot first")
+	}
+	// A log that remembers nothing, so the week runs, and is kept apart.
+	log, err := ideas.LoadThemeLog(filepath.Join(t.TempDir(), "themes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Themes = log
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+	defer cancel()
+	if service.Relay != nil {
+		var run *relay.Run
+		if ctx, run, err = service.Relay.Begin(ctx, "look"); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("relay run in %s", run.Dir)
+	}
+	service.sendIdeas(ctx, look{Scheduled: true})
 }
 
 // written stands in for the model with a reply that already exists.

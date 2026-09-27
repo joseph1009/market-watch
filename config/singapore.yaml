@@ -1,0 +1,45 @@
+# Singapore's thirty largest listed companies, the Straits Times Index, as
+# FTSE Russell listed them in May 2026. The weekly themes measure these beside
+# the US market from their prices on the Singapore Exchange, since no source
+# covers the whole of that market in one request.
+#
+# None of them files accounts with the SEC, so a verdict on one is made
+# without accounts and is never more than low confidence.
+#
+# The index is reviewed each quarter. When a company leaves or joins it,
+# change it here.
+#
+#   symbol  the SGX code, as the exchange writes it: D05 for DBS
+#   name    how a headline writes it
+#   sector  what it does, in a few words
+
+- {symbol: A17U, name: CapitaLand Ascendas REIT, sector: Industrial and business-park REIT}
+- {symbol: C38U, name: CapitaLand Integrated Commercial Trust, sector: Retail and office REIT}
+- {symbol: "9CI", name: CapitaLand Investment, sector: Real estate investment manager}
+- {symbol: C09, name: City Developments, sector: Property developer}
+- {symbol: D05, name: DBS, sector: Bank}
+- {symbol: D01, name: DFI Retail Group, sector: Retailer}
+- {symbol: J69U, name: Frasers Centrepoint Trust, sector: Retail REIT}
+- {symbol: BUOU, name: Frasers Logistics & Commercial Trust, sector: Logistics and office REIT}
+- {symbol: G13, name: Genting Singapore, sector: Casino resort}
+- {symbol: H78, name: Hongkong Land, sector: Property investor}
+- {symbol: J36, name: Jardine Matheson, sector: Conglomerate}
+- {symbol: BN4, name: Keppel, sector: Infrastructure and asset manager}
+- {symbol: AJBU, name: Keppel DC REIT, sector: Data-centre REIT}
+- {symbol: ME8U, name: Mapletree Industrial Trust, sector: Industrial and data-centre REIT}
+- {symbol: M44U, name: Mapletree Logistics Trust, sector: Logistics REIT}
+- {symbol: N2IU, name: Mapletree Pan Asia Commercial Trust, sector: Retail and office REIT}
+- {symbol: O39, name: OCBC, sector: Bank}
+- {symbol: S58, name: SATS, sector: Airport ground handling and catering}
+- {symbol: "5E2", name: Seatrium, sector: Offshore rigs and shipbuilding}
+- {symbol: U96, name: Sembcorp Industries, sector: Power and renewables}
+- {symbol: C6L, name: Singapore Airlines, sector: Airline}
+- {symbol: S68, name: Singapore Exchange, sector: Exchange}
+- {symbol: Z74, name: Singtel, sector: Telecoms}
+- {symbol: S63, name: ST Engineering, sector: Defence and engineering}
+- {symbol: Y92, name: Thai Beverage, sector: Brewer and distiller}
+- {symbol: U11, name: UOB, sector: Bank}
+- {symbol: U14, name: UOL Group, sector: Property developer and hotels}
+- {symbol: V03, name: Venture Corporation, sector: Electronics manufacturing services}
+- {symbol: F34, name: Wilmar International, sector: Agribusiness}
+- {symbol: BS6, name: Yangzijiang Shipbuilding, sector: Shipbuilder}

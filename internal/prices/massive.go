@@ -1,16 +1,16 @@
 // Massive, formerly Polygon.io: the whole US market's day in one request.
 //
-// The quote feed and the chart source answer for the companies asked about,
-// which are the ones already followed. What neither can say is what moved
-// among the thousands nobody asked about -- and those are where the closer
-// look's new names have to come from. The grouped daily bars answer that: one
-// request returns every US listing's open, close and volume for a session, so
-// two requests compare the last two sessions across the market.
+// The quote feed and the chart source answer for the companies asked about.
+// What neither can say is how the thousands nobody asked about have done --
+// which industries have risen together over a year, which share moved four
+// times its usual on the news -- and those are where the recommendations
+// start. The grouped daily bars answer that: one request returns every US
+// listing's open, close and volume for a session, and two years of them,
+// kept on the data volume, are the market's history (internal/market).
 //
-// The free plan allows five requests a minute and serves each session some
-// hours after it has closed: in the New York evening the day's session is not
-// served yet. That is enough: this runs the next morning, before the open, and
-// needs two sessions, or a few more attempts across a weekend or a holiday.
+// The free plan allows five requests a minute, reaches two years back, and
+// serves each session some hours after it has closed: in the New York
+// evening the day's session is not served yet.
 package prices
 
 import (
@@ -19,10 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -37,10 +35,6 @@ const (
 	// massiveBody bounds a grouped reply: about 12,000 listings at around
 	// 150 bytes each.
 	massiveBody = 16 << 20
-
-	// sessionsBack is how far back to look for the last two sessions. A
-	// Friday holiday before a weekend puts the second one five days back.
-	sessionsBack = 7
 )
 
 // ErrMassiveKey means the key was refused, which no retry will change.
@@ -135,99 +129,84 @@ func (m *Massive) Session(ctx context.Context, date time.Time) (map[string]Sessi
 	return out, nil
 }
 
-// MarketMove is one listing's move between the last two sessions.
-type MarketMove struct {
-	Symbol          string
-	Close, Previous float64
-	Percent         float64
-	DollarVolume    float64
-	Date            time.Time
+// Split is a change in a share's count: split_from old shares became
+// split_to new ones on Date. A two-for-one is 1 to 2, a one-for-fifty reverse
+// split 50 to 1.
+type Split struct {
+	Symbol   string
+	Date     time.Time
+	From, To float64
 }
 
-// MoverRules say which moves count.
-type MoverRules struct {
-	// MinPrice and MinDollarVolume keep out the shares whose moves mean
-	// little: a penny stock doubles on nothing, and a listing that traded a
-	// few hundred thousand dollars was moved by a few people.
-	MinPrice, MinDollarVolume float64
-
-	// Keep, where set, is asked of each symbol: the caller's test of whether
-	// it is an operating company worth naming, rather than a fund or a
-	// warrant.
-	Keep func(symbol string) bool
-
-	Limit int
-}
-
-// Movers compares the last two sessions served before now and returns the
-// largest moves, either way, that pass the rules.
-func (m *Massive) Movers(ctx context.Context, now time.Time, rules MoverRules) ([]MarketMove, error) {
-	var sessions []map[string]SessionBar
-	ny := now.In(newYork())
-	day := time.Date(ny.Year(), ny.Month(), ny.Day(), 0, 0, 0, 0, time.UTC)
-	for back := 0; back <= sessionsBack && len(sessions) < 2; back++ {
-		date := day.AddDate(0, 0, -back)
-		if wd := date.Weekday(); wd == time.Saturday || wd == time.Sunday {
-			continue // no request spent on a day with no session
+// Splits reads the splits that took effect from since to until, both days
+// included.
+func (m *Massive) Splits(ctx context.Context, since, until time.Time) ([]Split, error) {
+	if !m.Enabled() {
+		return nil, fmt.Errorf("massive: no key")
+	}
+	next := fmt.Sprintf("%s/v3/reference/splits?execution_date.gte=%s&execution_date.lte=%s&limit=1000",
+		m.baseURL(), since.Format(time.DateOnly), until.Format(time.DateOnly))
+	var out []Split
+	// A page holds a thousand; a busy month has a few hundred, so the second
+	// page is there for safety rather than use.
+	for page := 0; next != "" && page < 5; page++ {
+		if err := m.wait(ctx); err != nil {
+			return nil, err
 		}
-		bars, err := m.Session(ctx, date)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, next+"&apiKey="+m.APIKey, nil)
 		if err != nil {
 			return nil, err
 		}
-		if len(bars) > 0 {
-			sessions = append(sessions, bars)
+		resp, err := m.client().Do(req)
+		if err != nil {
+			return nil, errors.New(strings.ReplaceAll(err.Error(), m.APIKey, "KEY"))
 		}
+		var doc struct {
+			Results []struct {
+				Ticker string  `json:"ticker"`
+				Date   string  `json:"execution_date"`
+				From   float64 `json:"split_from"`
+				To     float64 `json:"split_to"`
+			} `json:"results"`
+			Next string `json:"next_url"`
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			err = json.NewDecoder(io.LimitReader(resp.Body, massiveBody)).Decode(&doc)
+		case http.StatusUnauthorized:
+			err = ErrMassiveKey
+		default:
+			err = fmt.Errorf("massive splits: %s", resp.Status)
+		}
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range doc.Results {
+			day, err := time.Parse(time.DateOnly, r.Date)
+			if err != nil || r.From <= 0 || r.To <= 0 || r.Ticker == "" {
+				continue
+			}
+			out = append(out, Split{Symbol: r.Ticker, Date: day, From: r.From, To: r.To})
+		}
+		// The next page's address carries no key; it is added on the way out.
+		next = doc.Next
 	}
-	if len(sessions) < 2 {
-		return nil, fmt.Errorf("massive: found %d of the two sessions needed in the last %d days", len(sessions), sessionsBack)
-	}
-	return movers(sessions[0], sessions[1], rules), nil
+	return out, nil
 }
 
 // ordinary is the shape of a common share's symbol: letters, and a class
 // after a dot. Preferred shares carry lower-case letters that do not fit it.
 var ordinary = regexp.MustCompile(`^[A-Z]{1,5}(\.[A-Z])?$`)
 
-// common reports whether a symbol is a common share. On Nasdaq a fifth letter
-// of W, U or R marks a warrant, a unit or a right, whose price is a leveraged
-// or partial claim on the share and moves accordingly.
-func common(sym string) bool {
+// CommonShare reports whether a symbol is a common share's. On Nasdaq a fifth
+// letter of W, U or R marks a warrant, a unit or a right, whose price is a
+// leveraged or partial claim on the share and moves accordingly.
+func CommonShare(sym string) bool {
 	if !ordinary.MatchString(sym) {
 		return false
 	}
 	return len(sym) != 5 || !strings.ContainsAny(sym[4:], "WUR")
-}
-
-func movers(latest, previous map[string]SessionBar, rules MoverRules) []MarketMove {
-	var out []MarketMove
-	for sym, bar := range latest {
-		prev, ok := previous[sym]
-		if !ok || prev.Close <= 0 || bar.Close <= 0 || !common(sym) {
-			continue
-		}
-		if bar.Close < rules.MinPrice || bar.DollarVolume() < rules.MinDollarVolume {
-			continue
-		}
-		if rules.Keep != nil && !rules.Keep(sym) {
-			continue
-		}
-		out = append(out, MarketMove{
-			Symbol: sym, Close: bar.Close, Previous: prev.Close,
-			Percent:      (bar.Close/prev.Close - 1) * 100,
-			DollarVolume: bar.DollarVolume(),
-			Date:         bar.Date,
-		})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if a, b := math.Abs(out[i].Percent), math.Abs(out[j].Percent); a != b {
-			return a > b
-		}
-		return out[i].Symbol < out[j].Symbol
-	})
-	if rules.Limit > 0 && len(out) > rules.Limit {
-		out = out[:rules.Limit]
-	}
-	return out
 }
 
 // wait holds a request back until it is the plan's gap after the last one.
@@ -265,14 +244,4 @@ func (m *Massive) client() *http.Client {
 		return m.HTTP
 	}
 	return &http.Client{Timeout: 60 * time.Second}
-}
-
-// newYork is where a session's date is decided. The scheduled brief runs in the
-// New York morning, when UTC agrees on the day, but a /now in the New York
-// evening is already the next day in UTC.
-func newYork() *time.Location {
-	if loc, err := time.LoadLocation("America/New_York"); err == nil {
-		return loc
-	}
-	return time.FixedZone("EST", -5*60*60)
 }

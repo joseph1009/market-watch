@@ -6,9 +6,6 @@ you, and why it is worth doing.
 ## Waiting on you
 
 - **Push the repository.** Every commit is still local only.
-- **Add `MASSIVE_API_KEY` to `.env`.** The closer look's research reads the
-  market's largest moves from it; without it the research works from the news
-  alone. `market-watch --check` then proves it with one request.
 - **Deploy.** News search, the movers, inflation, the `config/` lists, the
   review, the thin-section top-up, the new data sources and the twenty-company
   closer look are built and checked locally, not yet deployed.
@@ -67,26 +64,24 @@ you, and why it is worth doing.
   `config/companies.yaml` would go without a price, a moves line or a mover
   search. Giving companies an exchange and spelling it with `ChartSymbol`
   would fix it.
-- **Judge the twenty-company closer look after two weeks.** Read a fortnight
-  of them for two things. Whether the followed companies the screen picks are
-  real mismatches rather than big moves, and whether the new names include the
-  market's movers with a reason, not only the day's headline companies. And
-  what it costs the plan: the `look` runs' ledgers in `relay/` have the sizes.
-  If it is too much, `ideas.DefaultMax` and `ideas.DefaultPicks` are the two
-  numbers to lower.
-- **Judge the verdicts after three months.** `/scorecard` will by then hold a
-  few hundred. If BUY is not ahead of the index more often than not, or SELL
-  not behind it, the verdicts are adding nothing the index would not, and
-  should change or stop. Worth checking separately: the companies found in
-  the news against the connected ones, and the followed companies the screen
-  chose against the new names.
+- **Judge the weekly themes after a month.** Read four weeks of them for
+  whether the themes are ones the numbers really show, whether the early ones
+  are backed by figures rather than talk, and whether the picks sit in the
+  unpriced part of their theme or simply are its leaders. And what a Monday
+  costs the plan: the `look` runs' ledgers in `relay/` have the sizes.
+- **Judge the verdicts after three months.** `/scorecard` will by then hold
+  enough of each kind to compare. If BUY is not ahead of the index more often
+  than not, or SELL not behind it, the verdicts are adding nothing the index
+  would not, and should change or stop. Its breakdowns say which of the
+  weekly themes, the reactions, `/analyse` and the old news-led closer look
+  have done better, and whether high confidence has meant anything.
 - **Promotion.** A command to move a name from "new names in the news" straight
   into a sector. `/watchlist add <sector> <ticker> <name>` already does the
   work; this would just save the typing.
-- **Market-wide movers in the brief.** Massive's two sessions already name the
-  day's largest moves across the market for the closer look. A line of them in
-  the overview -- the ten biggest moves among companies of some size, followed
-  or not -- would give the brief the same view, for no extra request.
+- **Market-wide movers in the brief.** The market's history already names the
+  day's outsized moves for the closer look's reactions. A line of them in the
+  overview -- the biggest moves among companies of some size, followed or not
+  -- would give the brief the same view, for no extra request.
 - **Tickers for the companies followed by name.** Morgan Stanley, Moderna and
   Spotify are followed by name alone, which leaves them without a price, a
   moves line or filings. Their tickers were left out because MS and SPOT match
@@ -150,17 +145,18 @@ you, and why it is worth doing.
   subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
-- Worth a closer look: about half an hour after the brief, twenty companies, each with a
-  buy, hold or sell verdict. Up to six followed companies, chosen by a screen
-  of all of them where the move and the news do not fit, and shown only as BUY
-  or SELL; new names found with web search from the news and the market's
-  largest moves (Massive) fill the rest, taking the place of any followed HOLD. Each verdict says what
-  changed, how the share moved and whether the move was justified, with two to
-  four numbers and the biggest risk, from its trading, SEC accounts, latest
-  results release and what analysts expect. It goes to the channel with the
-  daily brief, under a note saying a model wrote it and that it is not advice;
-  `/now` keeps it to you. `/scorecard` measures every verdict against the S&P
-  500 once it is a week old.
+- Worth a closer look: about half an hour after the brief. On Mondays up to
+  ten companies found from two years of the whole US market's prices (Massive)
+  and Singapore's thirty largest: the leaders sorted into the themes driving
+  them, industries growing before their shares found on the web, each theme
+  researched for the part the market has not paid for, and the companies in
+  it judged against their theme's valuation and their own history, under two
+  rules the code enforces. Every day up to three shares that moved far beyond
+  their usual on the news, where the move and the news do not fit. Each
+  verdict rests on what `/analyse` reads. It goes to the channel with the daily
+  brief, under a note saying a model wrote it and that it is not advice; `/now`
+  keeps it to you. `/scorecard` measures every verdict against the S&P 500
+  from the next open once it is a week old.
 - More data behind the verdicts and `/analyse`: analysts' forecasts and their
   revisions, price targets, results against forecast, insider trades, short
   interest and fund holdings (Nasdaq); the latest results release (SEC); oil,

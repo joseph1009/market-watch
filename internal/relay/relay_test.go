@@ -339,9 +339,9 @@ func TestClaudeUsesTheModelConfiguredForAStage(t *testing.T) {
 	}
 }
 
-// Research may search the web and read pages, and nothing else: no shell, no
-// files, no connectors. Every other stage, the verdicts included, still gets no
-// tools at all.
+// The scout and the research may search the web and read pages, and nothing
+// else: no shell, no files, no connectors. Every other stage, the verdicts and
+// the sorting of themes included, still gets no tools at all.
 func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	bin := fakeClaude(t)
 	rec := filepath.Join(t.TempDir(), "record.json")
@@ -349,7 +349,7 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	t.Setenv("FAKE_CLAUDE_MODE", "ok")
 	r := &Relay{Root: t.TempDir(), Answer: Claude{Bin: bin}}
 
-	if _, _, err := r.Plain(Ideas).Complete(context.Background(), "s", "p"); err != nil {
+	if _, _, err := r.Plain(Research).Complete(context.Background(), "s", "p"); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	got := recorded(t, rec)
@@ -383,7 +383,14 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 		t.Errorf("review ran with thinking on: %v", got.Args)
 	}
 
-	for _, stage := range []string{Verdicts, Triage} {
+	if _, _, err := r.Plain(Scout).Complete(context.Background(), "s", "p"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") || got.Model != "opus" {
+		t.Errorf("scout args = %v, model %q; want web search and opus", got.Args, got.Model)
+	}
+
+	for _, stage := range []string{Verdicts, Triage, Themes} {
 		if _, _, err := r.Plain(stage).Complete(context.Background(), "s", "p"); err != nil {
 			t.Fatalf("Complete: %v", err)
 		}
@@ -434,7 +441,7 @@ func TestThePlanLimitIsReportedAsItself(t *testing.T) {
 	t.Setenv("FAKE_CLAUDE_MODE", "limit")
 
 	r := &Relay{Root: t.TempDir(), Answer: Claude{Bin: bin}}
-	_, _, err := r.Plain(Ideas).Complete(context.Background(), "s", "p")
+	_, _, err := r.Plain(Research).Complete(context.Background(), "s", "p")
 	if err == nil {
 		t.Fatal("a run stopped by the limit was taken for an answer")
 	}

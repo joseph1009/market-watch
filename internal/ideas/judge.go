@@ -3,6 +3,7 @@ package ideas
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -120,13 +121,29 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		idea.Verdict, idea.Confidence = v.verdict, v.confidence
 		idea.Case, idea.Numbers, idea.Risk = v.theCase, v.numbers, v.risk
 		idea.Changed, idea.Moved, idea.Reaction = v.changed, v.moved, v.reaction
+		idea.Value = v.value
 		idea.Catalyst, idea.Sensitivity = v.catalyst, v.sensitivity
-		out = append(out, idea)
+		out = append(out, hold(idea))
 	}
 	if failed > 0 {
 		return out, usage, fmt.Errorf("%d of %d verdict batches failed: %w", failed, len(bounds), first)
 	}
 	return out, usage, nil
+}
+
+// hold applies the rules the model is told but may not bend. A BUY the
+// valuation has closed is a HOLD, and says why; a verdict without accounts is
+// low confidence at most, since the numbers that would justify more were
+// never read.
+func hold(idea model.Idea) model.Idea {
+	if idea.Verdict == model.Buy && idea.BuyClosed != "" {
+		idea.Verdict = model.Hold
+		idea.Overruled = "BUY turned to HOLD: " + idea.BuyClosed
+	}
+	if !idea.Accounts && idea.Confidence != "" && idea.Confidence != "low" {
+		idea.Confidence = "low"
+	}
+	return idea
 }
 
 func (j *Judge) batch() int {
@@ -152,10 +169,31 @@ func (j *Judge) now() time.Time {
 
 func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string, today time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Today is %s.\n\n", today.Format("Monday 2 January 2006"))
-	b.WriteString("The articles, numbered as in today's brief:\n")
-	for i, a := range cited {
-		fmt.Fprintf(&b, "[%d] %s (%s)\n", i+1, oneLine(a.Title), a.SourceName)
+	fmt.Fprintf(&b, "Today is %s.\n", today.Format("Monday 2 January 2006"))
+
+	// Only the articles these companies hang on, by the brief's numbers: the
+	// whole day's list is five hundred headlines, most of them about
+	// something else.
+	var listed []int
+	seen := map[int]bool{}
+	for _, idea := range ideas {
+		for _, a := range idea.Articles {
+			if n := number(a, cited); n > 0 && !seen[n] {
+				seen[n] = true
+				listed = append(listed, n)
+			}
+		}
+	}
+	if len(listed) > 0 {
+		sort.Ints(listed)
+		b.WriteString("\nThe articles these companies are tied to, numbered as in today's brief:\n")
+		for _, n := range listed {
+			a := cited[n-1]
+			fmt.Fprintf(&b, "[%d] %s (%s, %s)\n", n, oneLine(a.Title), a.SourceName, a.Published.Format("2 Jan 15:04 MST"))
+			if summary := oneLine(a.Summary); summary != "" {
+				fmt.Fprintf(&b, "    %s\n", clip(summary, 400))
+			}
+		}
 	}
 
 	if len(backdrop) > 0 {
@@ -170,46 +208,37 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 		fmt.Fprintf(&b, "\n=== %s\n", idea.Symbol())
 		fmt.Fprintf(&b, "%s, registered as %s.\n", idea.Name, idea.Listed)
 
-		kind := "In today's news"
-		switch {
-		case idea.Followed:
-			kind = "Followed by the investor, and chosen today because"
-		case idea.Connected:
-			kind = "Not in today's news, but connected to it"
+		switch idea.Kind {
+		case model.IdeaTheme:
+			fmt.Fprintf(&b, "A theme pick, under %q. The research proposed it as a %s candidate: %s\n", idea.Theme, idea.Lean, idea.Link)
+			b.WriteString("Answer VALUE, and leave out CHANGED, MOVE and REACTION.\n")
+		default:
+			fmt.Fprintf(&b, "A reaction: %s", idea.Link)
+			for _, a := range idea.Articles {
+				if n := number(a, cited); n > 0 {
+					fmt.Fprintf(&b, " [%d]", n)
+				}
+			}
+			b.WriteString("\nAnswer CHANGED, MOVE and REACTION, and leave out VALUE.\n")
 		}
-		fmt.Fprintf(&b, "%s: %s", kind, idea.Link)
-		for _, a := range idea.Articles {
-			if n := number(a, cited); n > 0 {
-				fmt.Fprintf(&b, " [%d]", n)
-			}
+		if idea.Before != "" {
+			fmt.Fprintf(&b, "It was picked in the last eight weeks: %s. Say what has changed since, if anything.\n", idea.Before)
 		}
-		b.WriteString("\n")
-		if idea.Followed {
-			b.WriteString("Only BUY or SELL will be shown for it: a HOLD is left out.\n")
-		}
-		if e := idea.Event; e != nil {
-			fmt.Fprintf(&b, "Ahead, as the research found it on the web and unchecked: %s on %s", e.Name, e.Date.Format("Monday 2 Jan 2006"))
-			var rated []string
-			if e.Impact != "" {
-				rated = append(rated, strings.ToLower(e.Impact)+" impact")
-			}
-			if e.Bias != "" {
-				rated = append(rated, strings.ToLower(e.Bias))
-			}
-			if len(rated) > 0 {
-				fmt.Fprintf(&b, " (the research rates it %s)", strings.Join(rated, ", "))
-			}
-			b.WriteString(".\n")
+		if !idea.Accounts {
+			b.WriteString("Its accounts could not be read, so your confidence can be low at most.\n")
 		}
 
 		if q := idea.Quote; q != nil {
-			// With the unit, always. A Hong Kong listing is quoted in Hong Kong
-			// dollars, and a bare 512.40 set beside a US company's 512.40
+			// With the unit, always. A Singapore listing is quoted in
+			// Singapore dollars, and a bare 42.10 set beside a US company's
 			// invites a comparison that means nothing.
 			fmt.Fprintf(&b, "Last session: %s, at %s %.2f.\n", q.Move(), q.Unit(), q.Price)
 			if late := untraded(idea.Articles, q.AsOf, cited); late != "" {
 				fmt.Fprintf(&b, "Articles %s came out after that price: the market has not traded on them yet.\n", late)
 			}
+		}
+		if idea.Valuation != "" {
+			b.WriteString(strings.TrimSpace(idea.Valuation) + "\n")
 		}
 		if i < len(facts) && strings.TrimSpace(facts[i]) != "" {
 			b.WriteString(strings.TrimSpace(facts[i]))
@@ -219,9 +248,22 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 	return b.String()
 }
 
+// clip cuts s to n runes at a word.
+func clip(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	cut := string(rs[:n])
+	if at := strings.LastIndex(cut, " "); at > n/2 {
+		cut = cut[:at]
+	}
+	return cut + "..."
+}
+
 type verdict struct {
 	verdict, confidence, theCase, numbers, risk string
-	changed, moved, reaction                    string
+	changed, moved, reaction, value             string
 	catalyst, sensitivity                       string
 }
 
@@ -253,6 +295,7 @@ func parseVerdicts(text string) map[string]verdict {
 		{"CHANGED:", func(v *verdict) *string { return &v.changed }},
 		{"MOVE:", func(v *verdict) *string { return &v.moved }},
 		{"REACTION:", func(v *verdict) *string { return &v.reaction }},
+		{"VALUE:", func(v *verdict) *string { return &v.value }},
 		{"CATALYST:", func(v *verdict) *string { return &v.catalyst }},
 		{"SENSITIVITY:", func(v *verdict) *string { return &v.sensitivity }},
 	}

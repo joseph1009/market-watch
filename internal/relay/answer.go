@@ -27,8 +27,9 @@ var DefaultModels = map[string]string{
 	Review:   "sonnet",
 	Names:    "haiku",
 	Brief:    "opus",
-	Ideas:    "opus",
-	Screen:   "sonnet",
+	Themes:   "sonnet",
+	Scout:    "opus",
+	Research: "opus",
 	Verdicts: "opus",
 	Analysis: "opus",
 }
@@ -45,15 +46,16 @@ var quickStages = map[string]bool{Triage: true, Names: true, Review: true}
 // noThinking is the settings override that turns thinking off for one call.
 const noThinking = `{"alwaysThinkingEnabled":false}`
 
-// webStages may search the web and read pages, and nothing else. Research is
-// the one stage whose job is to find what the day's articles do not say: which
-// companies supply, buy from or compete with the ones in the news, and what has
-// happened to them lately. It still gets no shell, no files and no connectors,
-// so a page that tries to steer it can change its answer and nothing more.
+// webStages may search the web and read pages, and nothing else. The scout and
+// the research are the stages whose job is to find what the market's numbers
+// do not say: what is growing and by how much, who supplies whom, which part
+// of an industry has been paid for. They still get no shell, no files and no
+// connectors, so a page that tries to steer them can change an answer and
+// nothing more.
 //
 // The review may search too, to learn what an unfamiliar company does when an
 // article does not say and its section depends on it.
-var webStages = map[string]bool{Ideas: true, Review: true}
+var webStages = map[string]bool{Scout: true, Research: true, Review: true}
 
 // webTools are the tools a web stage is given, and pre-approved for, since a
 // headless call has nobody to ask.

@@ -1265,64 +1265,6 @@ func TestSectionHeadingsAreRecognisedNotGuessed(t *testing.T) {
 	}
 }
 
-func TestTheCloserLookShowsEachVerdictWithWhatItRestsOn(t *testing.T) {
-	cited := []model.Article{{ID: "a1", Title: "Micron raises HBM outlook", URL: "https://example.com/1"}}
-	ideas := []model.Idea{
-		{Name: "Micron", Ticker: "MU", Exchange: "US", Link: "Raised its HBM outlook.", Articles: cited,
-			Quote: &model.Quote{Percent: 4.12}, Accounts: true,
-			Verdict: model.Hold, Confidence: "medium", Case: "Priced for it already [1].",
-			Numbers: "25x earnings", Risk: "Memory prices turn."},
-		{Name: "SK Hynix", Ticker: "000660", Exchange: "KS", Connected: true, Link: "The largest HBM maker & a rival.",
-			Verdict: model.Buy, Confidence: "low", Risk: "<b>not bold</b>"},
-	}
-
-	out := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{}), "\n")
-
-	for _, want := range []string{
-		"Worth a closer look",
-		"/scorecard",
-		"<b>In the news</b>",
-		"⚪ <b>Micron</b> <code>MU</code> · +4.1% last session",
-		"<b>HOLD</b> · medium confidence",
-		`Priced for it already <a href="https://example.com/1">[1]</a>.`,
-		"<i>Numbers:</i> 25x earnings",
-		"<b>Connected to today's news</b>",
-		"<code>000660.KS</code>",
-		"<b>BUY</b> · low confidence · <i>no SEC accounts behind it</i>",
-		"The largest HBM maker &amp; a rival.",
-		"&lt;b&gt;not bold&lt;/b&gt;",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("closer look is missing %q:\n%s", want, out)
-		}
-	}
-	if strings.Index(out, "In the news") > strings.Index(out, "Connected to today's news") {
-		t.Error("the connected companies came before the ones in the news")
-	}
-	if RenderIdeas(nil, cited, IdeasOptions{}) != nil {
-		t.Error("an empty list rendered a heading over nothing")
-	}
-
-	// The channel's copy is the same list under a different note: a reader who
-	// has never seen this before is told what wrote it and that it is not advice.
-	forChannel := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{ForChannel: true}), "\n")
-	for _, want := range []string{
-		"<b>Micron</b>",
-		"<b>HOLD</b> · medium confidence",
-		"an AI model",
-		"nobody checking its work",
-		"not financial advice",
-		"someone licensed",
-	} {
-		if !strings.Contains(forChannel, want) {
-			t.Errorf("the channel's closer look is missing %q:\n%s", want, forChannel)
-		}
-	}
-	if strings.Contains(forChannel, "/scorecard") {
-		t.Error("the channel was told to use /scorecard, a command only the owner can send")
-	}
-}
-
 // The biggest moves sit directly under the section's heading, where a break
 // between messages cannot separate them, and a quiet section has no line.
 func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
@@ -1341,43 +1283,85 @@ func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
 	}
 }
 
-// A followed company comes first, under its own heading, and every verdict
-// shows what changed, how the share moved and whether the one justifies the
-// other, with the judgment itself on the verdict line.
-func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
+// The week's picks come under their themes, each theme with its numbers and
+// what the research found, labelled popular or early; the reactions follow,
+// then the earlier picks. A pick says where it fits and what its price is
+// against its theme, with its warning signs.
+func TestThePicksComeUnderTheirThemes(t *testing.T) {
 	cited := []model.Article{{ID: "a1", Title: "Micron raises HBM outlook", URL: "https://example.com/1"}}
-	ideas := []model.Idea{
-		{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Connected: true, Link: "Its chips go into every HBM stack.",
-			Verdict: model.Buy, Confidence: "medium", Accounts: true},
-		{Name: "Micron", Ticker: "MU", Exchange: "US", Followed: true, Link: "Forecasts up while the share fell.",
-			Verdict: model.Buy, Confidence: "high", Accounts: true,
-			Changed:  "Next year's expected earnings rose 4% to 158.67 a share [1].",
-			Moved:    "Down 9% in a week and 3% today, against a flat S&P 500.",
-			Reaction: "Underreacted: the outlook rose and the price fell [1].", Quote: &model.Quote{Percent: -3}},
+	picks := Picks{
+		Themes: []ThemeView{
+			{Kind: "popular", Name: "AI data centres", Figures: "median member +40 pts over 12 months",
+				Driving: "Hyperscalers spend $400bn a year.", PricedIn: "Chips at 40x earnings.", Value: "Power equipment & cooling.",
+				Ideas: []model.Idea{{Name: "Vertiv", Ticker: "VRT", Exchange: "US", Kind: model.IdeaTheme, Theme: "AI data centres",
+					Link: "Cools the racks; backlog up 30%.", Accounts: true, Verdict: model.Buy, Confidence: "medium",
+					Value: "22x earnings against the theme's 35x.", Flags: []string{"above the average analyst target"},
+					Case: "Orders outrun the price."}}},
+			{Kind: "early", Name: "Grid batteries", Ideas: []model.Idea{{Name: "Seatrium", Ticker: "5E2", Exchange: "SP", Kind: model.IdeaTheme,
+				Link: "Builds platforms.", Verdict: model.Sell, Confidence: "low", Before: "BUY on 6 Oct"}}},
+			{Kind: "popular", Name: "Nothing held up"},
+		},
+		Reactions: []model.Idea{{Name: "Micron", Ticker: "MU", Exchange: "US", Kind: model.IdeaReaction, Accounts: true,
+			Verdict: model.Buy, Confidence: "high", Articles: cited,
+			Changed: "Next year's expected earnings rose 4% [1].", Moved: "-9% in a week",
+			Reaction: "Underreacted: the outlook rose and the price fell [1]."}},
+		Earlier: []EarlierPick{
+			{Name: "Rambus", Symbol: "RMBS", Verdict: model.Buy, At: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC), Ahead: 4.2, Priced: true},
+			{Name: "DBS", Symbol: "D05.SP", Verdict: model.Hold, At: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)},
+		},
 	}
-	out := strings.Join(RenderIdeas(ideas, cited, IdeasOptions{}), "\n")
-
+	out := strings.Join(RenderPicks(picks, cited, IdeasOptions{}, time.UTC), "\n")
 	for _, want := range []string{
-		"<b>Companies you follow</b>",
+		"<b>🔎 This week's picks</b>",
+		"/scorecard",
+		"<b>AI data centres</b> · <i>Popular</i>",
+		"<i>The numbers:</i> median member +40 pts over 12 months",
+		"<i>Where the value is:</i> Power equipment &amp; cooling.",
+		"🟢 <b>Vertiv</b> <code>VRT</code>",
+		"<i>Where it fits:</i> Cools the racks; backlog up 30%.",
+		"<i>The price:</i> 22x earnings against the theme's 35x.",
+		"<i>Warning signs:</i> above the average analyst target",
+		"<b>Grid batteries</b> · <i>Early</i>",
+		"<code>5E2.SP</code>",
+		"<b>SELL</b> · low confidence · <i>no SEC accounts behind it</i> · <i>was BUY on 6 Oct</i>",
+		"<b>Reacting to the news</b>",
 		"<b>BUY</b> · high confidence · underreacted",
-		`<i>What changed:</i> Next year's expected earnings rose 4% to 158.67 a share <a href="https://example.com/1">[1]</a>.`,
-		"<i>The move:</i> Down 9% in a week",
-		"<i>Justified?</i> Underreacted: the outlook rose",
-		"🟢 <b>Micron</b> <code>MU</code>\n<b>BUY</b>", // today's move is in the move's own line
-		`the price fell <a href="https://example.com/1">[1]</a>.`,
+		`<i>What changed:</i> Next year's expected earnings rose 4% <a href="https://example.com/1">[1]</a>.`,
+		"<b>Earlier picks</b>",
+		"• Rambus <code>RMBS</code> · BUY on 28 Sep · +4.2 points the way called",
+		"• DBS <code>D05.SP</code> · HOLD on 5 Oct · not yet traded since",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("closer look is missing %q:\n%s", want, out)
+			t.Errorf("picks are missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Index(out, "Companies you follow") > strings.Index(out, "Connected to today's news") {
-		t.Error("the followed companies did not come first")
+	if strings.Contains(out, "Nothing held up") {
+		t.Error("a theme with no picks was shown")
 	}
-	if strings.Contains(out, "medium confidence · ") {
-		t.Error("a verdict without a reaction was given one")
+	if i, j := strings.Index(out, "AI data centres"), strings.Index(out, "Reacting to the news</b>"); i > j {
+		t.Error("the reactions came before the themes")
 	}
-	if strings.Contains(out, "Forecasts up while the share fell") {
-		t.Error("the research's reason was repeated beside what changed")
+
+	// A day with no themes is headed for what it is.
+	day := strings.Join(RenderPicks(Picks{Reactions: picks.Reactions}, cited, IdeasOptions{}, time.UTC), "\n")
+	if !strings.Contains(day, "<b>🔎 Reacting to the news</b>") || strings.Contains(day, "This week's picks") || strings.Count(day, "Reacting to the news") != 1 {
+		t.Errorf("a day's reactions:\n%s", day)
+	}
+	if RenderPicks(Picks{Themes: []ThemeView{{Name: "Empty"}}}, nil, IdeasOptions{}, time.UTC) != nil {
+		t.Error("nothing to show rendered a heading over nothing")
+	}
+
+	// The channel's copy is the same under a different note: a reader who
+	// has never seen this before is told what wrote it and that it is not
+	// advice.
+	forChannel := strings.Join(RenderPicks(picks, cited, IdeasOptions{ForChannel: true}, time.UTC), "\n")
+	for _, want := range []string{"<b>Vertiv</b>", "an AI model", "nobody checking its work", "not financial advice", "someone licensed"} {
+		if !strings.Contains(forChannel, want) {
+			t.Errorf("the channel's picks are missing %q:\n%s", want, forChannel)
+		}
+	}
+	if strings.Contains(forChannel, "/scorecard") {
+		t.Error("the channel was told to use /scorecard, a command only the owner can send")
 	}
 }
 
@@ -1386,7 +1370,7 @@ func TestTheCloserLookSaysWhetherTheMoveWasJustified(t *testing.T) {
 // never opens a message, where it would be drawn under nothing.
 func TestTheCloserLookIsSpacedOut(t *testing.T) {
 	idea := func(name string) model.Idea {
-		return model.Idea{Name: name, Ticker: name, Exchange: "US", Accounts: true,
+		return model.Idea{Name: name, Ticker: name, Exchange: "US", Accounts: true, Kind: model.IdeaReaction,
 			Verdict: model.Sell, Confidence: "medium",
 			Changed:  "An order with no value attached.",
 			Moved:    "+4.4% today, +15.5% in a week",
@@ -1406,7 +1390,7 @@ func TestTheCloserLookIsSpacedOut(t *testing.T) {
 	for _, name := range []string{"RGTI", "QUBT", "ARQQ", "LAES", "QMCO", "HON", "IBM", "GOOGL", "MSFT", "NVDA"} {
 		ideas = append(ideas, idea(name))
 	}
-	out := RenderIdeas(ideas, nil, IdeasOptions{})
+	out := RenderPicks(Picks{Reactions: ideas}, nil, IdeasOptions{}, time.UTC)
 	if len(out) < 2 {
 		t.Fatalf("twelve companies fit one message; the test needs a break between messages")
 	}

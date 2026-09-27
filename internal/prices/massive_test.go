@@ -40,44 +40,76 @@ func massiveStub(t *testing.T, days map[string]string) (*Massive, *[]string) {
 	return &Massive{APIKey: "k", URL: srv.URL, HTTP: srv.Client(), Gap: time.Millisecond}, &asked
 }
 
-// The two latest sessions are compared across the market, walking back past
-// a day not yet served and a weekend without asking for the weekend; what is
-// too cheap, too thinly traded, not a common share or turned away by Keep is
-// left out, and the rest come biggest move first.
-func TestMoversCompareTheLastTwoSessionsAcrossTheMarket(t *testing.T) {
+// A session's bars come back by symbol; a day not served yet is an empty
+// map, not an error.
+func TestASessionIsReadWholeAndADayNotServedIsEmpty(t *testing.T) {
 	m, asked := massiveStub(t, map[string]string{
-		"2026-09-25": `{"T":"AAA","c":110,"v":1000000,"t":1790366400000,"n":5321},{"T":"BBB","c":80,"v":1000000},{"T":"PENNY","c":1.5,"v":90000000},{"T":"THIN","c":50,"v":100},{"T":"WARRW","c":9,"v":9000000},{"T":"KIMpL","c":30,"v":1000000},{"T":"FUND","c":130,"v":1000000},{"T":"BRK.B","c":505,"v":1000000}`,
-		"2026-09-24": `{"T":"AAA","c":100,"v":1000000},{"T":"BBB","c":100,"v":1000000},{"T":"PENNY","c":1,"v":90000000},{"T":"THIN","c":25,"v":100},{"T":"WARRW","c":3,"v":9000000},{"T":"KIMpL","c":20,"v":1000000},{"T":"FUND","c":100,"v":1000000},{"T":"BRK.B","c":500,"v":1000000}`,
+		"2026-09-25": `{"T":"AAA","o":100,"c":110,"v":1000000,"t":1790366400000,"n":5321},{"T":"BRK.B","o":500,"c":505,"v":1000}`,
 	})
-	// Monday the 28th, New York evening: the 28th is not served yet, the
-	// weekend is skipped, and Friday and Thursday are the two sessions.
-	now := time.Date(2026, 9, 29, 1, 0, 0, 0, time.UTC)
-	got, err := m.Movers(context.Background(), now, MoverRules{
-		MinPrice: 5, MinDollarVolume: 1e6, Limit: 10,
-		Keep: func(s string) bool { return s != "FUND" },
-	})
+	bars, err := m.Session(context.Background(), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var symbols []string
-	for _, g := range got {
-		symbols = append(symbols, fmt.Sprintf("%s %+.0f%%", g.Symbol, g.Percent))
+	if len(bars) != 2 || bars["AAA"].Open != 100 || bars["AAA"].Close != 110 || bars["BRK.B"].Volume != 1000 {
+		t.Errorf("bars = %+v", bars)
 	}
-	if strings.Join(symbols, ", ") != "BBB -20%, AAA +10%, BRK.B +1%" {
-		t.Errorf("movers = %v", symbols)
+	none, err := m.Session(context.Background(), time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(none) != 0 {
+		t.Errorf("a day not served = %v, %v", none, err)
 	}
-	if strings.Join(*asked, ",") != "2026-09-28,2026-09-25,2026-09-24" {
+	if strings.Join(*asked, ",") != "2026-09-25,2026-09-28" {
 		t.Errorf("asked for %v", *asked)
 	}
 }
 
-// A refused key stops the search at once rather than walking back a week.
+// A refused key is reported as such, which no retry will change.
 func TestARefusedKeyIsReportedAtOnce(t *testing.T) {
 	m, asked := massiveStub(t, nil)
 	m.APIKey = "wrong"
-	_, err := m.Movers(context.Background(), time.Date(2026, 9, 25, 1, 0, 0, 0, time.UTC), MoverRules{})
+	_, err := m.Session(context.Background(), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC))
 	if !errors.Is(err, ErrMassiveKey) || len(*asked) != 0 {
 		t.Errorf("err = %v after %d requests", err, len(*asked))
+	}
+}
+
+// Splits are read for a stretch of days, following the next page, with the
+// key added to each request and never taken from the reply.
+func TestSplitsAreReadAcrossPages(t *testing.T) {
+	var srv *httptest.Server
+	var keys []string
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.URL.Query().Get("apiKey"))
+		if r.URL.Query().Get("cursor") == "" {
+			if r.URL.Query().Get("execution_date.gte") != "2026-09-01" || r.URL.Query().Get("execution_date.lte") != "2026-09-25" {
+				t.Errorf("asked for %s", r.URL.RawQuery)
+			}
+			fmt.Fprintf(w, `{"results":[{"ticker":"NVDA","execution_date":"2026-09-10","split_from":1,"split_to":10}],"next_url":"%s/v3/reference/splits?cursor=two"}`, srv.URL)
+			return
+		}
+		w.Write([]byte(`{"results":[{"ticker":"DPU","execution_date":"2026-09-17","split_from":50,"split_to":1},{"ticker":"BAD","execution_date":"soon","split_from":1,"split_to":2}]}`))
+	}))
+	defer srv.Close()
+	m := &Massive{APIKey: "k", URL: srv.URL, HTTP: srv.Client(), Gap: time.Millisecond}
+
+	got, err := m.Splits(context.Background(), time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Symbol != "NVDA" || got[0].To != 10 || got[1].Symbol != "DPU" || got[1].From != 50 {
+		t.Errorf("splits = %+v", got)
+	}
+	if strings.Join(keys, ",") != "k,k" {
+		t.Errorf("keys sent = %v", keys)
+	}
+}
+
+// A common share's symbol is letters with perhaps a class; a warrant, a unit,
+// a right or a preferred share is not one.
+func TestCommonShares(t *testing.T) {
+	for sym, want := range map[string]bool{"AAPL": true, "BRK.B": true, "GOOGL": true, "WARRW": false, "SPACU": false, "KIMpL": false, "ACP^A": false} {
+		if got := CommonShare(sym); got != want {
+			t.Errorf("CommonShare(%q) = %v", sym, got)
+		}
 	}
 }
 

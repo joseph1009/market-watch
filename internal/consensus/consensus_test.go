@@ -105,9 +105,6 @@ func TestTheFactsSetTheForecastsAgainstThePrice(t *testing.T) {
 			t.Errorf("facts lack %q:\n%s", want, facts)
 		}
 	}
-	if line := r.Line(1045.82); line != "fwd P/E 14.3x FYAug26, 6.6x FYAug27; estimates 4 wks +2/-0; target +49%" {
-		t.Errorf("line = %q", line)
-	}
 }
 
 // A part that fails is named and the rest stand; a symbol with nothing at all
@@ -124,10 +121,6 @@ func TestAFailedPartIsNamedAndAnUnknownSymbolIsNotCovered(t *testing.T) {
 
 	if _, err := c.Fetch(context.Background(), "SPY"); !errors.Is(err, ErrNotCovered) {
 		t.Errorf("a symbol with no data: err = %v", err)
-	}
-	got := c.FetchAll(context.Background(), []string{"MU", "SPY"}, 2)
-	if mu, ok := got["MU"]; !ok || len(got) != 1 || mu.Target != 1563.04 || len(mu.Surprises) != 0 {
-		t.Errorf("FetchAll = %+v, want MU alone, with its forecasts and target and nothing more", got)
 	}
 }
 

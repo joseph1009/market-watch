@@ -37,8 +37,9 @@ const (
 	Review   = "review"   // checking where the sorting put them
 	Brief    = "brief"    // writing the brief
 	Names    = "names"    // spotting companies no watchlist tracks
-	Ideas    = "ideas"    // researching companies worth a closer look
-	Screen   = "screen"   // choosing which followed companies to look at
+	Themes   = "themes"   // sorting the market's leaders into themes
+	Scout    = "scout"    // finding industries growing before their shares
+	Research = "research" // researching a theme for companies worth a look
 	Verdicts = "verdicts" // judging each of them
 	Analysis = "analysis" // writing up one company's accounts
 )

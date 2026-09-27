@@ -89,34 +89,6 @@ func (r Report) Facts(price float64) string {
 	return b.String()
 }
 
-// Line is the forecasts in one line, for a table of many companies: the
-// multiple on each of the next two years, and which way estimates moved.
-func (r Report) Line(price float64) string {
-	var parts []string
-	for _, y := range r.Years[:min(shownYears, len(r.Years))] {
-		if price > 0 && y.EPS > 0 {
-			parts = append(parts, fmt.Sprintf("%.1fx FY%s", price/y.EPS, shortPeriod(y.Period)))
-		} else if y.EPS <= 0 {
-			parts = append(parts, fmt.Sprintf("loss FY%s", shortPeriod(y.Period)))
-		}
-	}
-	// The next fiscal year's revisions alone: the same analyst revising the
-	// quarter and the year is one change of mind, not two.
-	up, down := 0, 0
-	if len(r.Years) > 0 {
-		up, down = r.Years[0].Up, r.Years[0].Down
-	}
-	line := "fwd P/E " + strings.Join(parts, ", ")
-	if len(parts) == 0 {
-		line = "fwd P/E n/a"
-	}
-	line += fmt.Sprintf("; estimates 4 wks +%d/-%d", up, down)
-	if r.Target > 0 && price > 0 {
-		line += fmt.Sprintf("; target %+.0f%%", (r.Target/price-1)*100)
-	}
-	return line
-}
-
 func estimates(list []Estimate, price float64) string {
 	var parts []string
 	for _, e := range list {
@@ -128,15 +100,6 @@ func estimates(list []Estimate, price float64) string {
 		parts = append(parts, s)
 	}
 	return strings.Join(parts, "; ")
-}
-
-// shortPeriod turns "Aug 2027" into "Aug27", to keep a table row narrow.
-func shortPeriod(p string) string {
-	f := strings.Fields(p)
-	if len(f) == 2 && len(f[1]) == 4 {
-		return f[0] + f[1][2:]
-	}
-	return strings.ReplaceAll(p, " ", "")
 }
 
 func distance(target, price float64) string {

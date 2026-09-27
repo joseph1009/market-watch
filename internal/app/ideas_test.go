@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +19,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/ideas"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -40,15 +45,64 @@ func (v stubVerifier) Verify(_ context.Context, queries []discover.Query) ([]str
 	return out, nil
 }
 
-func withIdeas(a *App, research, verdicts stubCompleter) {
-	a.Researcher = &ideas.Researcher{Completer: research, Verifier: stubVerifier{"RMBS.US": "RAMBUS INC"}}
+// fakeMarket fills the app's market store with sessions ending the day before
+// the test clock, and keeps Nasdaq's list beside it, fresh, so nothing is
+// read from the network. Each symbol trades at 100 on a million shares a
+// day, with a small daily wobble; moves are the last session's, as fractions,
+// on five times the usual trading.
+func fakeMarket(t *testing.T, a *App, sessions int, listings []market.Listing, moves map[string]float64, trend map[string]float64) {
+	t.Helper()
+	a.MarketStore = &market.Store{Dir: a.marketDir()}
+	last := time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC)
+	var days []time.Time
+	for day := last; len(days) < sessions; day = day.AddDate(0, 0, -1) {
+		if wd := day.Weekday(); wd != time.Saturday && wd != time.Sunday {
+			days = append([]time.Time{day}, days...)
+		}
+	}
+	symbols := []string{market.Benchmark}
+	for _, l := range listings {
+		symbols = append(symbols, l.Symbol)
+	}
+	for i, day := range days {
+		bars := map[string]market.Bar{}
+		for _, sym := range symbols {
+			price := 100 * math.Pow(1+trend[sym], float64(i)) * (1 + 0.01*math.Sin(float64(i)))
+			volume := 1e6
+			if move, ok := moves[sym]; ok && i == len(days)-1 {
+				prev := 100 * math.Pow(1+trend[sym], float64(i-1)) * (1 + 0.01*math.Sin(float64(i-1)))
+				price, volume = prev*(1+move), 5e6
+			}
+			bars[sym] = market.Bar{Open: price, Close: price, Volume: volume}
+		}
+		if err := a.MarketStore.Save(day, day.Add(20*time.Hour), bars); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, _ := json.Marshal(listingsCache{Fetched: a.now(), Listings: listings})
+	if err := os.WriteFile(filepath.Join(a.marketDir(), "listings.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// rambusMoved is a market in which Rambus rose 15% on the last session, on
+// five times its usual trading, and the brief carried why.
+func rambusMoved(t *testing.T, a *App, verdicts stubCompleter) {
+	t.Helper()
+	fakeMarket(t, a, 70, []market.Listing{
+		{Symbol: "RMBS", Name: "Rambus Inc. Common Stock", MarketCap: 8e9, Industry: "Semiconductors"},
+		{Symbol: "CALM", Name: "Calm Holdings Inc. Common Stock", MarketCap: 8e9},
+	}, map[string]float64{"RMBS": 0.15}, nil)
 	a.Judge = &ideas.Judge{Completer: verdicts}
 }
 
 var todaysBrief = model.Report{
-	Overview: "Micron raised its outlook [1].",
-	Cited:    []model.Article{{ID: "a1", Title: "Micron raises HBM outlook", URL: "https://example.com/1"}},
+	Overview: "Rambus won an HBM order [1].",
+	Cited: []model.Article{{ID: "a1", Title: "Rambus soars on HBM win", URL: "https://example.com/1",
+		Published: time.Date(2026, 9, 9, 15, 0, 0, 0, time.UTC)}},
 }
+
+const rambusBuy = "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCHANGED: A $200m order, a tenth of a year's sales [1].\nREACTION: Underreacted: the order is worth more.\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."
 
 // A brief asked for with /now is a check, so its closer look stays with the
 // owner -- and /share cannot pass it on either, since /share posts the last
@@ -57,18 +111,21 @@ func TestACloserLookNotSharedStaysWithTheOwner(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
+	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
 	a.remember("the brief of Thu 10 Sep", []string{"the brief"})
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
-	for _, want := range []string{"Worth a closer look", "Rambus", "RMBS", "<b>BUY</b>", "medium confidence", "Connected to today's news"} {
+	// No accounts could be read here, so the verdict is held to low
+	// confidence whatever it said.
+	for _, want := range []string{"Reacting to the news", "Rambus", "RMBS", "<b>BUY</b>", "low confidence", "underreacted"} {
 		if !strings.Contains(owner, want) {
 			t.Errorf("the owner's closer look is missing %q:\n%s", want, owner)
 		}
+	}
+	if strings.Contains(owner, "Calm") {
+		t.Errorf("a share that did not move was judged:\n%s", owner)
 	}
 	if got := messagesTo(*sent, testChannel); len(got) != 0 {
 		t.Fatalf("the channel was sent %q", got)
@@ -91,14 +148,12 @@ func TestTheDailyCloserLookReachesTheChannelUnderItsWarning(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
+	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true, false))
 
 	channel := strings.Join(messagesTo(*sent, testChannel), "\n")
-	for _, want := range []string{"Worth a closer look", "Rambus", "<b>BUY</b>", "not financial advice", "nobody checking its work", "someone licensed"} {
+	for _, want := range []string{"Reacting to the news", "Rambus", "<b>BUY</b>", "not financial advice", "nobody checking its work", "someone licensed"} {
 		if !strings.Contains(channel, want) {
 			t.Errorf("the channel's closer look is missing %q:\n%s", want, channel)
 		}
@@ -110,33 +165,51 @@ func TestTheDailyCloserLookReachesTheChannelUnderItsWarning(t *testing.T) {
 	}
 }
 
-// Research that fails costs the section and nothing else: the brief has
-// already gone, and nobody is sent a half-finished list.
-func TestFailedResearchSendsNothing(t *testing.T) {
+// A followed company is the brief's to cover, and a move no article explains
+// cannot be judged against its news: neither is sent for a verdict.
+func TestFollowedAndUnexplainedMovesAreNotJudged(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
-	withIdeas(a, stubCompleter{err: errors.New("claude: timed out")}, stubCompleter{})
+	a.prefs.Groups = []model.Group{{ID: "semis", Name: "Semis", Companies: []model.Company{{Symbol: "RMBS", Name: "Rambus"}}}}
+	fakeMarket(t, a, 70, []market.Listing{
+		{Symbol: "RMBS", Name: "Rambus Inc. Common Stock", MarketCap: 8e9},
+		{Symbol: "QUIET", Name: "Quiet Industries Inc. Common Stock", MarketCap: 8e9},
+	}, map[string]float64{"RMBS": 0.15, "QUIET": -0.12}, nil)
+	var calls []string
+	a.Judge = &ideas.Judge{Completer: askedFor{reply: rambusBuy, mu: &sync.Mutex{}, calls: &calls}}
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
 
-	if len(*sent) != 0 {
-		t.Errorf("sent %+v after the research failed", *sent)
+	if len(calls) != 0 || len(*sent) != 0 {
+		t.Errorf("verdicts asked for %q, sent %+v", calls, *sent)
 	}
 }
 
-// A verdict reply that names nobody it was asked about leaves nothing to show,
-// rather than a heading over an empty list.
-func TestNoVerdictsMeansNoMessage(t *testing.T) {
+// A reaction that matched its news is a HOLD, and a day of them sends
+// nothing, rather than a heading over an empty list.
+func TestADayOfMatchedMovesSendsNothing(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "I would rather not say."})
+	rambusMoved(t, a, stubCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: medium\nREACTION: Matched."})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
 
 	if len(*sent) != 0 {
-		t.Errorf("sent %+v with no verdicts", *sent)
+		t.Errorf("sent %+v with nothing to show", *sent)
+	}
+}
+
+// A failed verdict costs the section and nothing else: the brief has already
+// gone, and nobody is sent a half-finished list.
+func TestFailedVerdictsSendNothing(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	rambusMoved(t, a, stubCompleter{err: errors.New("claude: timed out")})
+
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+
+	if len(*sent) != 0 {
+		t.Errorf("sent %+v after the verdicts failed", *sent)
 	}
 }
 
@@ -192,9 +265,10 @@ func TestAListingOutsideTheUSIsPricedFromItsHistory(t *testing.T) {
 	a.Quotes = &prices.Client{} // no key, as on a free tier
 	a.Market = chartServer(t, "HKD", 60)
 
-	idea, chart, facts := a.ideaFacts(context.Background(), model.Idea{
+	idea, sh := a.ideaFacts(context.Background(), model.Idea{
 		Name: "Tencent", Ticker: "700", Exchange: "HK", Listed: "TENCENT HOLDINGS LTD",
 	})
+	chart, facts := sh.chart, sh.facts
 
 	if chart != "0700.HK" {
 		t.Errorf("chart symbol = %q, want 0700.HK", chart)
@@ -231,7 +305,7 @@ func TestAUSListingKeepsItsLiveQuote(t *testing.T) {
 	a.Quotes = &prices.Client{APIKey: "test", HTTP: quotes.Client(), URL: quotes.URL, Pause: time.Millisecond}
 	a.Market = chartServer(t, "USD", 60)
 
-	idea, _, _ := a.ideaFacts(context.Background(), model.Idea{
+	idea, _ := a.ideaFacts(context.Background(), model.Idea{
 		Name: "Rambus", Ticker: "RMBS", Exchange: "US", Listed: "RAMBUS INC",
 	})
 
@@ -257,26 +331,24 @@ func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
 
 	feedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel><title>Stub</title>
-<item><title>Micron raises HBM outlook</title><link>https://feed.example/mu</link>
-<description>Micron raised it.</description><pubDate>Thu, 10 Sep 2026 10:00:00 GMT</pubDate></item>
+<item><title>Rambus soars on HBM win</title><link>https://feed.example/rmbs</link>
+<description>Rambus won an order.</description><pubDate>Thu, 10 Sep 2026 10:00:00 GMT</pubDate></item>
 </channel></rss>`))
 	}))
 	defer feedSrv.Close()
 	a.prefs.Sources = []model.Source{{ID: "stub-feed", Name: "Stub", URL: feedSrv.URL, Weight: 8, Enabled: true}}
 	a.Fetcher = &feed.Fetcher{Client: feedSrv.Client(), Now: a.Now}
-	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nMicron raised its outlook [1].\n"}}
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium\nCASE: HBM demand runs through it [1].\nNUMBERS: 38x earnings\nRISK: One customer is a fifth of sales."})
+	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nRambus soared on an HBM order [1].\n"}}
+	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
 	if err := a.publishScheduled(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(messagesTo(*sent, 4242), "\n"); !strings.Contains(got, "Micron raised its outlook") || strings.Contains(got, "Worth a closer look") {
+	if got := strings.Join(messagesTo(*sent, 4242), "\n"); !strings.Contains(got, "Rambus soared") || strings.Contains(got, "Reacting to the news") {
 		t.Fatalf("after the brief the owner has:\n%s", got)
 	}
 	lk, err := a.pendingLook()
-	if err != nil || lk == nil || !lk.Due.Equal(now.Add(LookDelay)) || !lk.Share || len(lk.Cited) != 1 {
+	if err != nil || lk == nil || !lk.Due.Equal(now.Add(LookDelay)) || !lk.Share || !lk.Scheduled || len(lk.Cited) != 1 {
 		t.Fatalf("queued %+v (err %v), want the brief's look due after LookDelay, for the channel too", lk, err)
 	}
 
@@ -289,7 +361,7 @@ func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
 	a.sendDueLook(context.Background())
 
 	for _, chat := range []int64{4242, testChannel} {
-		if got := strings.Join(messagesTo(*sent, chat), "\n"); !strings.Contains(got, "Worth a closer look") || !strings.Contains(got, "Rambus") {
+		if got := strings.Join(messagesTo(*sent, chat), "\n"); !strings.Contains(got, "Reacting to the news") || !strings.Contains(got, "Rambus") {
 			t.Errorf("chat %d has no closer look:\n%s", chat, got)
 		}
 	}
@@ -303,10 +375,8 @@ func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
 func TestAStaleCloserLookIsDropped(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== RMBS\nVERDICT: BUY\nCONFIDENCE: medium"})
-	lk := lookFrom(todaysBrief, false)
+	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
+	lk := lookFrom(todaysBrief, false, false)
 	lk.Due = a.now().Add(-lookStale - time.Minute)
 	if err := a.queueLook(lk); err != nil {
 		t.Fatal(err)
@@ -317,34 +387,6 @@ func TestAStaleCloserLookIsDropped(t *testing.T) {
 	}
 	if lk, _ := a.pendingLook(); lk != nil {
 		t.Error("the stale look is still queued")
-	}
-}
-
-// The screen's choices among the followed companies join the new names; a
-// followed company judged HOLD is left out, and a followed BUY leads.
-func TestAFollowedHoldIsLeftOutOfTheCloserLook(t *testing.T) {
-	a, sent := newTestApp(t)
-	a.prefs.ChatID = 4242
-	a.prefs.Groups = []model.Group{{ID: "semis", Name: "Semis", Companies: []model.Company{
-		{Symbol: "MU", Name: "Micron"}, {Symbol: "NVDA", Name: "Nvidia"},
-	}}}
-	withIdeas(a,
-		stubCompleter{reply: "Rambus|RMBS|US|connected|1|Its chips go into every HBM stack."},
-		stubCompleter{reply: "=== MU\nVERDICT: BUY\nCONFIDENCE: high\nREACTION: underreacted, the outlook rose and the price fell.\n" +
-			"=== NVDA\nVERDICT: HOLD\nCONFIDENCE: medium\n" +
-			"=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low"})
-	a.Screener = &ideas.Screener{Completer: stubCompleter{reply: "MU|Forecasts up while the share fell.\nNVDA|Big run."}}
-
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
-
-	owner := strings.Join(messagesTo(*sent, 4242), "\n")
-	for _, want := range []string{"Companies you follow", "Micron", "underreacted", "Rambus", "<b>HOLD</b> · low confidence"} {
-		if !strings.Contains(owner, want) {
-			t.Errorf("the closer look is missing %q:\n%s", want, owner)
-		}
-	}
-	if strings.Contains(owner, "Nvidia") {
-		t.Errorf("a followed HOLD was shown:\n%s", owner)
 	}
 }
 
@@ -366,60 +408,4 @@ func (s askedFor) Complete(_ context.Context, _, prompt string) (string, model.U
 	*s.calls = append(*s.calls, strings.Join(symbols, " "))
 	s.mu.Unlock()
 	return s.reply, model.Usage{}, nil
-}
-
-// Twenty are shown every day. The research's names past those needed stand
-// by, and a followed HOLD, which is not shown, is replaced by the first of
-// them -- judged in a round of its own, so a spare is judged only when it is
-// used.
-func TestAHiddenHoldIsReplacedSoTwentyAreShown(t *testing.T) {
-	a, sent := newTestApp(t)
-	a.prefs.ChatID = 4242
-	a.prefs.Groups = []model.Group{{ID: "semis", Name: "Semis", Companies: []model.Company{
-		{Symbol: "MU", Name: "Micron"}, {Symbol: "NVDA", Name: "Nvidia"},
-	}}}
-
-	// Twenty new names, QAA to QAT, best first; every one a HOLD, which is
-	// shown for a new name.
-	var research, verdicts strings.Builder
-	verified := stubVerifier{}
-	var names []string
-	for i := range ideas.LookSize {
-		sym := fmt.Sprintf("Q%c%c", 'A'+i/26, 'A'+i%26)
-		names = append(names, sym)
-		fmt.Fprintf(&research, "Company %s|%s|US|news|1|In the news.\n", sym, sym)
-		fmt.Fprintf(&verdicts, "=== %s\nVERDICT: HOLD\nCONFIDENCE: low\n", sym)
-		verified[sym+".US"] = "COMPANY " + sym
-	}
-	verdicts.WriteString("=== MU\nVERDICT: BUY\nCONFIDENCE: high\n=== NVDA\nVERDICT: HOLD\nCONFIDENCE: medium\n")
-
-	var calls []string
-	a.Researcher = &ideas.Researcher{Completer: stubCompleter{reply: research.String()}, Verifier: verified}
-	a.Judge = &ideas.Judge{Completer: askedFor{reply: verdicts.String(), mu: &sync.Mutex{}, calls: &calls}}
-	a.Screener = &ideas.Screener{Completer: stubCompleter{reply: "MU|Forecasts up while the share fell.\nNVDA|Big run."}}
-
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
-
-	owner := strings.Join(messagesTo(*sent, 4242), "\n")
-	shown := strings.Count(owner, "<code>Q") + strings.Count(owner, "<code>MU</code>")
-	if shown != ideas.LookSize {
-		t.Errorf("%d companies shown, want %d:\n%s", shown, ideas.LookSize, owner)
-	}
-	// Two followed and eighteen new are judged first; Nvidia's HOLD leaves a
-	// place, which the nineteenth takes. The twentieth is never judged.
-	stand, last := names[18], names[19]
-	if !strings.Contains(owner, "<code>"+stand+"</code>") || strings.Contains(owner, "Nvidia") {
-		t.Errorf("the stand-in %s did not take the followed HOLD's place:\n%s", stand, owner)
-	}
-	if len(calls) == 0 {
-		t.Fatal("no verdicts were asked for")
-	}
-	if calls[len(calls)-1] != stand {
-		t.Errorf("the last verdict call was for %q, want the stand-in alone; calls: %q", calls[len(calls)-1], calls)
-	}
-	for _, c := range calls {
-		if strings.Contains(c, last) {
-			t.Errorf("%s was judged though no place was left for it; calls: %q", last, calls)
-		}
-	}
 }

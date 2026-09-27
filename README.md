@@ -8,10 +8,12 @@ Each morning, US time, it reads about forty news feeds and runs about fifteen
 news searches. It also reads the SEC's recent filings and prices every company
 it follows. A model sorts the day's articles into the reader's sectors, and a
 second pass checks where each one landed. Opus then writes the brief, section
-by section, from what survived. Half an hour later it sends a closer look at
-twenty companies -- new names from the day's news and the market's largest
-moves, and followed companies whose move and news do not fit -- each with a
-buy, hold or sell verdict. Between briefs the bot answers commands, the largest
+by section, from what survived. Half an hour later it sends a closer look,
+each company with a buy, hold or sell verdict: on Mondays up to ten found from
+two years of the whole market's prices -- under the themes the market has been
+paying for, and the industries growing before their shares have followed --
+and every day up to three shares that moved far beyond their usual on the
+news. Between briefs the bot answers commands, the largest
 of which reads a company's filed accounts, results and analysts' expectations
 and writes them up.
 

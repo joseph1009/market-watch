@@ -67,7 +67,10 @@ type Record struct {
 	Chart      string    `json:"chart"`
 	Verdict    string    `json:"verdict"`
 	Confidence string    `json:"confidence,omitempty"`
-	Connected  bool      `json:"connected,omitempty"`
+
+	// Connected marks a company the old closer look found connected to the
+	// day's news rather than in it. Kept for the records that carry it.
+	Connected bool `json:"connected,omitempty"`
 
 	// Source is how the company came to be judged, one of the Source
 	// constants; empty is SourceNews, which is what every record before the
@@ -184,8 +187,10 @@ func (r Rates) Latest(currency string) float64 {
 	return 0
 }
 
-// on is the currency's rate on the day of t, or the last day before it the
+// On is the currency's rate on the day of t, or the last day before it the
 // history has, or zero where the history starts later.
+func (r Rates) On(currency string, t time.Time) float64 { return r.on(currency, t) }
+
 func (r Rates) on(currency string, t time.Time) float64 {
 	day := t.UTC().Truncate(24 * time.Hour)
 	h := r[currency]
@@ -207,7 +212,13 @@ func NewRecord(idea model.Idea, chart string, at time.Time) (Record, bool) {
 		Chart:      chart,
 		Verdict:    idea.Verdict,
 		Confidence: idea.Confidence,
-		Connected:  idea.Connected,
+		Theme:      idea.Theme,
+	}
+	switch idea.Kind {
+	case model.IdeaTheme:
+		r.Source = SourceTheme
+	case model.IdeaReaction:
+		r.Source = SourceReaction
 	}
 	if idea.Trading != nil && idea.Trading.Last > 0 {
 		r.Price, r.Currency = idea.Trading.Last, idea.Trading.Currency
@@ -390,6 +401,35 @@ func (s scored) right() (bool, bool) {
 		return s.ahead() <= -need, true
 	}
 	return false, false
+}
+
+// Called is how far a verdict has gone the way it said against the index
+// since its entry, as a fraction -- ahead of it for a BUY, behind it for a
+// SELL, and plain ahead for a HOLD -- and whether it could be priced yet.
+func Called(r Record, path, bench Path, rates Rates) (float64, bool) {
+	entry, ok := settle(r, path, bench, rates)
+	current, have := path.last()
+	index, indexOK := bench.last()
+	if !ok || !have || !indexOK || entry.Entry <= 0 || entry.EntryBenchmark <= 0 {
+		return 0, false
+	}
+	gain, ok := r.gain(entry, current.Close, rates)
+	if !ok {
+		return 0, false
+	}
+	return scored{Record: entry, gain: gain, index: index.Close/entry.EntryBenchmark - 1}.called(), true
+}
+
+// Since returns the records from one source given since a time, oldest
+// first.
+func (s *Scorecard) Since(source string, since time.Time) []Record {
+	var out []Record
+	for _, r := range s.records {
+		if r.source() == source && !r.At.Before(since) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // Summary reads the record back for /scorecard. paths are each chart's

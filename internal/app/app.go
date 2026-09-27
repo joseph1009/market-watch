@@ -21,6 +21,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/history"
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
@@ -64,12 +65,14 @@ type App struct {
 	Press  *prices.News
 
 	// Consensus reads what analysts expect of a company and what its
-	// insiders, short sellers and funds have done; Movers the whole US
-	// market's last two sessions. The first informs every verdict and
-	// analysis, the second is where the closer look's new names start. Either
-	// being nil costs only what it adds.
-	Consensus *consensus.Client
-	Movers    *prices.Massive
+	// insiders, short sellers and funds have done, and Nasdaq's list of every
+	// US listing; Movers the whole US market's daily bars, which MarketStore
+	// keeps two years of. The first informs every verdict and analysis; the
+	// others are where the closer look's companies are found. Without them
+	// there is no closer look.
+	Consensus   *consensus.Client
+	Movers      *prices.Massive
+	MarketStore *market.Store
 
 	// Runs records what each brief cost and did, so the numbers that only ever
 	// reached a log can be read back with /stats.
@@ -89,16 +92,16 @@ type App struct {
 	Finder *discover.Finder
 	Names  *discover.Store
 
-	// Researcher and Judge write "worth a closer look" after the brief:
-	// companies the news bears on, found with web search, each given a
-	// verdict. Scorecard records every verdict so /scorecard can say how they
-	// have done. Nil Researcher or Judge disables the section.
-	//
-	// Screener chooses the followed companies that get a verdict alongside
-	// the new names. Nil leaves the section to the new names.
+	// Sorter, Scout and Researcher find the week's themes and the companies
+	// in them, Judge gives each company a verdict, and Themes remembers the
+	// weeks. Scorecard records every verdict so /scorecard can say how they
+	// have done. Nil Judge disables the closer look; nil Sorter or Researcher
+	// leaves it to the day's reactions.
+	Sorter     *ideas.Sorter
+	Scout      *ideas.Scout
 	Researcher *ideas.Researcher
-	Screener   *ideas.Screener
 	Judge      *ideas.Judge
+	Themes     *ideas.ThemeLog
 	Scorecard  *ideas.Scorecard
 
 	// Accounts and Analyzer answer /accounts: reported figures from EDGAR, and
@@ -259,13 +262,20 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 		a.Names = names
 	}
+	a.MarketStore = &market.Store{Dir: a.marketDir()}
 	if cfg.Ideas {
+		a.Sorter = &ideas.Sorter{Completer: rel.Plain(relay.Themes)}
+		a.Scout = &ideas.Scout{Completer: rel.Plain(relay.Scout)}
 		a.Researcher = &ideas.Researcher{
-			Completer: rel.Plain(relay.Ideas),
+			Completer: rel.Plain(relay.Research),
 			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
 		}
-		a.Screener = &ideas.Screener{Completer: rel.Plain(relay.Screen)}
 		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts), Now: a.now}
+		themes, err := ideas.LoadThemeLog(filepath.Join(cfg.DataDir, "themes.json"))
+		if err != nil {
+			return nil, err
+		}
+		a.Themes = themes
 	}
 	// Loaded whether or not new verdicts are being made, so /scorecard still
 	// reads the old ones with the section turned off.
@@ -357,8 +367,8 @@ func (a *App) brief(ctx context.Context, share, later bool) (err error) {
 	if share {
 		a.shareBrief(ctx, done.sent)
 	}
-	lk := lookFrom(done.rep, share)
-	if later && a.Researcher != nil && a.Judge != nil {
+	lk := lookFrom(done.rep, share, later)
+	if later && a.Judge != nil {
 		lk.Due = a.now().Add(LookDelay)
 		err := a.queueLook(lk)
 		if err == nil {
@@ -733,9 +743,9 @@ func (a *App) Serve(ctx context.Context) error {
 		a.Log.Info("discarded updates queued while offline", "count", n)
 	}
 
-	errs := make(chan error, 3)
+	errs := make(chan error, 4)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	go func() {
 		defer wg.Done()
@@ -744,6 +754,10 @@ func (a *App) Serve(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		errs <- a.RunLooks(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		errs <- a.RunMarket(ctx)
 	}()
 	go func() {
 		defer wg.Done()

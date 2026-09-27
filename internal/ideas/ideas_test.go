@@ -3,17 +3,20 @@ package ideas
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/discover"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
 var cited = []model.Article{
-	{ID: "a1", Title: "Micron raises HBM outlook", SourceName: "CNBC", URL: "https://example.com/1"},
+	{ID: "a1", Title: "Micron raises HBM outlook", SourceName: "CNBC", URL: "https://example.com/1", Summary: "Micron lifted its guide."},
 	{ID: "a2", Title: "Memory prices climb", SourceName: "Reuters", URL: "https://example.com/2"},
+	{ID: "a3", Title: "Oil slips", SourceName: "Reuters", URL: "https://example.com/3"},
 }
 
 // fakeCompleter answers with a fixed reply and remembers what it was asked.
@@ -39,467 +42,300 @@ func (v fakeVerifier) Verify(_ context.Context, queries []discover.Query) ([]str
 	return out, nil
 }
 
-func TestResearchKeepsOnlyCompaniesWhoseTickerChecksOut(t *testing.T) {
-	c := &fakeCompleter{reply: strings.Join([]string{
-		"Some preamble the model should not have written.",
-		"Rambus|RMBS|US|connected|1|Its interface chips go into every HBM stack.",
-		"SK Hynix|000660|KS|connected|1,2|The largest HBM maker.",
-		"Made Up Memory|MUM|US|connected|1|Invented, and the exchange says so.",
-		"Wrong Ticker Co|AAPL|US|news|2|The ticker belongs to someone else.",
-		"OpenAI|private|-|news|1|Private, so nothing to judge.",
-		"Rambus|RMBS|US|connected|2|Named twice.",
-		"Samsung Electronics|005930|ZZ|connected|1|An exchange outside the list.",
-	}, "\n")}
-	r := &Researcher{Completer: c, Verifier: fakeVerifier{
-		"RMBS.US":   "RAMBUS INC",
-		"000660.KS": "SK HYNIX INC",
-		"AAPL.US":   "APPLE INC",
-	}}
-
-	got, _, err := r.Propose(context.Background(), Input{Brief: "OVERVIEW\nMicron [1].", Cited: cited})
+// The sorting keeps to the leaders it was shown, a share in one theme at
+// most, and a theme of fewer than three is no theme.
+func TestSortingKeepsToTheLeaders(t *testing.T) {
+	leaders := []market.Stock{}
+	for _, sym := range []string{"NVDA", "VRT", "VST", "CEG", "AVGO", "LLY"} {
+		leaders = append(leaders, market.Stock{Listing: market.Listing{Symbol: sym, Name: sym + " Inc. Common Stock", Industry: "Semiconductors", Sector: "Technology"},
+			R24: 1, R12: 0.5, R12x1: 0.4, R6: 0.2, R3: 0.1, Volatility: 0.4})
+	}
+	c := &fakeCompleter{reply: `THEME: AI data centres
+DRIVER: Hyperscalers are spending
+  $400bn a year.
+MEMBERS: NVDA, VRT, VST, FAKE, CEG
+THEME: Obesity drugs
+DRIVER: GLP-1s.
+MEMBERS: LLY, NVDA
+THEME: **Custom chips**
+DRIVER: Own silicon.
+MEMBERS: AVGO, VRT, VST, NVDA`}
+	got, _, err := (&Sorter{Completer: c}).Sort(context.Background(), SortInput{
+		Leaders: leaders, Bench: market.Stock{R24: 0.3, R12: 0.1, R12x1: 0.1, R6: 0.05, R3: 0.02},
+		Headlines: []string{"Nvidia sells out"}, LastWeek: []string{"AI data centres"},
+	})
 	if err != nil {
-		t.Fatalf("Propose: %v", err)
+		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].Ticker != "RMBS" || got[1].Symbol() != "000660.KS" {
-		t.Fatalf("got %+v, want Rambus and SK Hynix only", got)
+	if len(got) != 1 || got[0].Name != "AI data centres" || strings.Join(got[0].Members, ",") != "NVDA,VRT,VST,CEG" {
+		t.Fatalf("themes = %+v", got)
 	}
-	if got[0].Listed != "RAMBUS INC" || !got[0].Connected {
-		t.Errorf("Rambus = %+v, want its registered name and marked connected", got[0])
+	if got[0].Driver != "Hyperscalers are spending $400bn a year." || got[0].Kind != ThemePopular {
+		t.Errorf("theme = %+v", got[0])
 	}
-	if len(got[1].Articles) != 2 || got[1].Articles[1].ID != "a2" {
-		t.Errorf("SK Hynix articles = %+v, want both cited stories", got[1].Articles)
-	}
-	if !strings.Contains(c.system, "up to 20 listed companies") {
-		t.Errorf("the system prompt did not carry the limit: %q", c.system[:200])
-	}
-	if !strings.Contains(c.prompt, "[1] Micron raises HBM outlook (CNBC)") {
-		t.Errorf("the prompt did not number the brief's articles:\n%s", c.prompt)
+	for _, want := range []string{"NVDA | NVDA | Semiconductors (Technology) | +70 pts | +30 pts | +15 pts | +8 pts | 40% | 1.25", "- Nvidia sells out", "Last week's themes: AI data centres"} {
+		if !strings.Contains(c.prompt, want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, c.prompt)
+		}
 	}
 }
 
-func TestResearchIsCappedAtItsMaximum(t *testing.T) {
-	var lines []string
-	verifier := fakeVerifier{}
-	for _, tk := range []string{"AAA", "BBB", "CCC", "DDD"} {
-		lines = append(lines, tk+" Corp|"+tk+"|US|news|1|Something happened.")
-		verifier[tk+".US"] = tk + " CORP"
+func TestTheScoutsFindsAreRead(t *testing.T) {
+	c := &fakeCompleter{reply: `Some thinking out loud first.
+THEME: Grid batteries
+DRIVER: Utility storage orders up 60% a year.
+EVIDENCE: US storage installs 12 GW in 2025 (EIA, March 2026); backlog $5bn (Fluence, Aug 2026)
+MEMBERS: FLNC:US, 5E2:SP
+THEME: Nothing much
+MEMBERS: X:US`}
+	got, _, err := (&Scout{Completer: c}).Find(context.Background(), ScoutInput{
+		Early:   []market.Industry{{Name: "Electrical Products", Sector: "Industrials", Members: 6, Top: []string{"FLNC"}}},
+		Names:   map[string]string{"FLNC": "Fluence Energy, Inc. Class A Common Stock"},
+		Popular: []Theme{{Name: "AI data centres", Driver: "Spending."}},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	r := &Researcher{Completer: &fakeCompleter{reply: strings.Join(lines, "\n")}, Verifier: verifier, Max: 3}
-
-	got, _, err := r.Propose(context.Background(), Input{Cited: cited})
-	if err != nil || len(got) != 3 {
-		t.Fatalf("got %d ideas, err %v; want 3", len(got), err)
+	if len(got) != 1 || got[0].Kind != ThemeEarly || got[0].Evidence == "" || strings.Join(got[0].Members, ",") != "FLNC:US,5E2:SP" {
+		t.Errorf("finds = %+v", got)
 	}
-}
-
-// Without a check there is no telling a real ticker from a plausible one, so
-// a failed check returns nothing rather than unchecked tickers.
-func TestResearchReturnsNothingWhenTheCheckFails(t *testing.T) {
-	r := &Researcher{
-		Completer: &fakeCompleter{reply: "Rambus|RMBS|US|connected|1|Interface chips."},
-		Verifier:  failingVerifier{},
-	}
-	got, _, err := r.Propose(context.Background(), Input{Cited: cited})
-	if err == nil || len(got) != 0 {
-		t.Errorf("got %+v, %v; want an error and nothing", got, err)
+	for _, want := range []string{"Electrical Products (Industrials, 6 companies)", "Fluence Energy (FLNC)", "- AI data centres: Spending."} {
+		if !strings.Contains(c.prompt, want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, c.prompt)
+		}
 	}
 }
 
-type failingVerifier struct{}
+// The research's companies are checked against the exchange; a followed
+// company, one listed where accounts cannot be read, and one whose ticker
+// does not check out are dropped.
+func TestResearchKeepsCheckableNewCompanies(t *testing.T) {
+	c := &fakeCompleter{reply: `DRIVING: $400bn of spending,
+growing 30% a year.
+PRICED IN: Chips at 40x.
+THE VALUE: Cooling and power.
+Vertiv|VRT|US|buy|Cools the racks.
+Nvidia|NVDA|US|buy|Followed already.
+SK Hynix|000660|KS|buy|Korea.
+Seatrium|5E2|SP|sell|Priced for more.
+Madeup|ZZZ|US|buy|Does not exist.
+Vertiv|VRT|US|buy|Twice.
+Holdco|HLD|US|maybe|Not a lean.`}
+	v := fakeVerifier{"VRT.US": "VERTIV HOLDINGS CO", "5E2.SP": "SEATRIUM LTD", "000660.KS": "SK HYNIX INC"}
+	r := &Researcher{Completer: c, Verifier: v}
+	got, _, err := r.Research(context.Background(), ResearchInput{
+		Theme:    Theme{Kind: ThemePopular, Name: "AI data centres", Driver: "Spending.", Figures: "median +40 pts"},
+		Previous: "Last week: chips.",
+		Recent:   []string{"Rambus (RMBS): BUY on 6 Oct"},
+		Tracked:  []string{"Nvidia"},
+		Followed: map[string]bool{"NVDA": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Driving != "$400bn of spending, growing 30% a year." || got.PricedIn != "Chips at 40x." || got.Value != "Cooling and power." {
+		t.Errorf("research = %+v", got)
+	}
+	var kept []string
+	for _, i := range got.Ideas {
+		kept = append(kept, i.Ticker+" "+i.Lean)
+		if i.Kind != model.IdeaTheme || i.Theme != "AI data centres" || i.Listed == "" {
+			t.Errorf("idea = %+v", i)
+		}
+	}
+	if strings.Join(kept, ",") != "VRT buy,5E2 sell" {
+		t.Errorf("kept %v", kept)
+	}
+	for _, want := range []string{"Last week's research on this theme:\nLast week: chips.", "- Rambus (RMBS): BUY on 6 Oct", "median +40 pts", "must not be chosen: Nvidia"} {
+		if !strings.Contains(c.prompt, want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, c.prompt)
+		}
+	}
 
-func (failingVerifier) Verify(context.Context, []discover.Query) ([]string, error) {
-	return nil, errors.New("openfigi: 429 Too Many Requests")
+	c.err = errors.New("plan exhausted")
+	if _, _, err := r.Research(context.Background(), ResearchInput{Theme: Theme{Name: "X"}}); err == nil {
+		t.Error("a failed call was not reported")
+	}
 }
 
-func TestVerdictsAreMatchedToTheirCompany(t *testing.T) {
+// Verdicts are matched to their companies by symbol; a BUY the valuation has
+// closed is turned into a HOLD, saying why, and a company without accounts is
+// low confidence at most.
+func TestVerdictsHoldToTheRules(t *testing.T) {
 	ideas := []model.Idea{
-		{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Listed: "RAMBUS INC", Connected: true, Link: "Interface chips.", Articles: cited[:1]},
-		{Name: "SK Hynix", Ticker: "000660", Exchange: "KS", Listed: "SK HYNIX INC", Link: "Largest HBM maker."},
-		{Name: "Skipped Co", Ticker: "SKP", Exchange: "US", Listed: "SKIPPED CO", Link: "The reply leaves it out."},
-		{Name: "Odd Co", Ticker: "ODD", Exchange: "US", Listed: "ODD CO", Link: "Given a verdict that is not one."},
+		{Name: "Vertiv", Ticker: "VRT", Exchange: "US", Listed: "VERTIV HOLDINGS CO", Kind: model.IdeaTheme, Theme: "AI data centres", Lean: "buy",
+			Link: "Cools the racks.", Accounts: true, Valuation: "Valuation against its theme: P/E 22 against 35.\n"},
+		{Name: "Dear Co", Ticker: "DEAR", Exchange: "US", Listed: "DEAR CO", Kind: model.IdeaTheme, Lean: "buy", Accounts: true,
+			BuyClosed: "it is dearer than its comparison on every measure"},
+		{Name: "Seatrium", Ticker: "5E2", Exchange: "SP", Listed: "SEATRIUM LTD", Kind: model.IdeaTheme, Lean: "buy"},
+		{Name: "Micron", Ticker: "MU", Exchange: "US", Listed: "MICRON TECHNOLOGY INC", Kind: model.IdeaReaction, Accounts: true,
+			Link: "Up 12% last session, 4.1 times its usual daily move.", Articles: []model.Article{cited[0]},
+			Quote: &model.Quote{Symbol: "MU", Price: 120, Percent: 12, AsOf: time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC)}},
 	}
-	reply := `=== RMBS
+	c := &fakeCompleter{reply: `=== VRT
 VERDICT: BUY
-CONFIDENCE: Medium
-CASE: HBM demand runs through its chips [1].
-It has no net debt.
-NUMBERS: revenue +18% a year; 38x earnings
-RISK: One customer is a fifth of sales.
-
-=== 000660.KS
-VERDICT: **HOLD**
-CONFIDENCE: low
-CASE: Priced for the upturn already.
-NUMBERS: 8% below its 50-day average
-RISK: Memory prices turn fast.
-
-=== ODD
-VERDICT: STRONG BUY
-CONFIDENCE: high`
-
-	c := &fakeCompleter{reply: reply}
-	got, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"FACTS FOR RAMBUS", "FACTS FOR HYNIX", "", ""}, cited, nil)
+CONFIDENCE: medium
+VALUE: 22x earnings against the theme's 35x.
+CASE: Orders outrun the price.
+=== DEAR
+VERDICT: BUY
+CONFIDENCE: high
+=== 5E2.SP
+VERDICT: SELL
+CONFIDENCE: high
+=== MU
+VERDICT: BUY
+CONFIDENCE: high
+CHANGED: Guide up 10% [1].
+REACTION: Underreacted: the guide rose more.`}
+	got, _, err := (&Judge{Completer: c, Batch: 10, Now: func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) }}).
+		Judge(context.Background(), ideas, []string{"FACTS VRT", "", "", "FACTS MU"}, cited, []string{"Brent $80"})
 	if err != nil {
-		t.Fatalf("Judge: %v", err)
+		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("got %d verdicts, want 2 (the skipped and the invalid dropped): %+v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("got %d verdicts", len(got))
 	}
-	r, h := got[0], got[1]
-	if r.Verdict != model.Buy || r.Confidence != "medium" || r.Case != "HBM demand runs through its chips [1]. It has no net debt." {
-		t.Errorf("Rambus = %+v", r)
+	if got[0].Verdict != model.Buy || got[0].Value != "22x earnings against the theme's 35x." {
+		t.Errorf("Vertiv = %+v", got[0])
 	}
-	if r.Numbers != "revenue +18% a year; 38x earnings" || r.Risk != "One customer is a fifth of sales." {
-		t.Errorf("Rambus numbers/risk = %q / %q", r.Numbers, r.Risk)
+	if got[1].Verdict != model.Hold || !strings.Contains(got[1].Overruled, "dearer") || got[1].Shown() {
+		t.Errorf("a closed BUY = %+v", got[1])
 	}
-	if h.Verdict != model.Hold || h.Confidence != "low" {
-		t.Errorf("SK Hynix = %+v", h)
+	if got[2].Confidence != "low" || got[2].Verdict != model.Sell {
+		t.Errorf("no accounts = %+v", got[2])
+	}
+	if got[3].Changed != "Guide up 10% [1]." {
+		t.Errorf("Micron = %+v", got[3])
 	}
 
-	for _, want := range []string{"=== RMBS", "=== 000660.KS", "FACTS FOR RAMBUS", "Not in today's news, but connected to it: Interface chips. [1]", "[1] Micron raises HBM outlook (CNBC)"} {
+	for _, want := range []string{
+		"=== VRT", `A theme pick, under "AI data centres". The research proposed it as a buy candidate: Cools the racks.`,
+		"Answer VALUE, and leave out CHANGED, MOVE and REACTION.",
+		"P/E 22 against 35.", "FACTS VRT",
+		"=== 5E2.SP", "Its accounts could not be read, so your confidence can be low at most.",
+		"A reaction: Up 12% last session, 4.1 times its usual daily move. [1]",
+		"Answer CHANGED, MOVE and REACTION, and leave out VALUE.",
+		"[1] Micron raises HBM outlook (CNBC", "    Micron lifted its guide.",
+		"- Brent $80",
+	} {
 		if !strings.Contains(c.prompt, want) {
 			t.Errorf("the verdict prompt is missing %q:\n%s", want, c.prompt)
 		}
 	}
-}
-
-func TestARecordNeedsAChartToMeasureFrom(t *testing.T) {
-	at := time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC)
-	idea := model.Idea{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Verdict: model.Buy,
-		Trading: &model.Trading{Last: 100, Currency: "USD"}}
-
-	r, ok := NewRecord(idea, "RMBS", at)
-	if !ok || r.Price != 100 || r.Symbol != "RMBS" || r.Entry != 0 {
-		t.Errorf("record = %+v, %v", r, ok)
-	}
-	if _, ok := NewRecord(idea, "", at); ok {
-		t.Error("a verdict with no chart was recorded; it could never be scored")
+	// Only the articles the companies hang on are listed, not the day's.
+	if strings.Contains(c.prompt, "Oil slips") {
+		t.Errorf("an article no company is tied to was listed:\n%s", c.prompt)
 	}
 }
 
-// day is a New York session: opened at 13:30 UTC on the day.
-func day(d int, open, close float64) Session {
-	return Session{Opened: time.Date(2026, 9, d, 13, 30, 0, 0, time.UTC), Open: open, Close: close}
-}
-
-func TestTheScorecardMeasuresEachVerdictAgainstTheIndex(t *testing.T) {
-	path := t.TempDir() + "/scorecard.json"
-	s, err := LoadScorecard(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	then := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	now := then.Add(30 * 24 * time.Hour)
-	if err := s.Add(
-		Record{At: then, Name: "Winner", Symbol: "WIN", Chart: "WIN", Verdict: model.Buy, Price: 90},
-		Record{At: then, Name: "Loser", Symbol: "LOS", Chart: "LOS", Verdict: model.Buy, Price: 90},
-		Record{At: then, Name: "Faller", Symbol: "FAL", Chart: "FAL", Verdict: model.Sell, Price: 90},
-		Record{At: now.Add(-24 * time.Hour), Name: "Fresh", Symbol: "NEW", Chart: "NEW", Verdict: model.Buy, Price: 10},
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	// Reloaded, as /scorecard will find it on another day.
-	s, err = LoadScorecard(path)
-	if err != nil || len(s.All()) != 4 {
-		t.Fatalf("reloaded %d records, err %v", len(s.All()), err)
-	}
-
-	due := s.Due(now, 0)
-	if strings.Join(due, ",") != "FAL,LOS,WIN" {
-		t.Errorf("due = %v, want the three a week old, newest first, and not the fresh one", due)
-	}
-
-	// Each opened at 100 the day of the verdict, whatever it closed at the
-	// night before, and the index at 500. The index is up 10%. The winner
-	// rose 30%, the loser 5%, the faller fell 10%.
-	paths := map[string]Path{
-		"WIN": {day(1, 100, 101), day(30, 128, 130)},
-		"LOS": {day(1, 100, 99), day(30, 104, 105)},
-		"FAL": {day(1, 100, 98), day(30, 91, 90)},
-	}
-	bench := Path{day(1, 500, 502), day(30, 548, 550)}
-	text := s.Summary(now, paths, bench, nil, time.UTC)
-	for _, want := range []string{
-		"4 verdicts since 1 Sep",
-		"3 are a week old or more",
-		"1 is newer",
-		// +20 and -5 points against the index.
-		"<b>BUY</b>, 2 scored: 1 on course to beat the S&amp;P 500 by 5 points (50%), on average 7.5 points ahead of it",
-		"<b>SELL</b>, 1 scored: 1 on course to trail it by 5 points (100%), on average 20.0 points behind it",
-		"Winner <code>WIN</code>, BUY on 1 Sep: +30.0%, against +10.0% for the index",
-		"Faller <code>FAL</code>, SELL on 1 Sep: -10.0%",
-		"the next session's open",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("summary is missing %q:\n%s", want, text)
-		}
-	}
-	// Every call came the same way, so there is no split to show.
-	if strings.Contains(text, "By how the company was found") {
-		t.Errorf("a breakdown into one group was shown:\n%s", text)
+// Verdicts come in batches, two at a time; a batch that fails costs its own
+// companies and the error says how many batches that was.
+func TestAFailedBatchCostsItsOwnCompanies(t *testing.T) {
+	ideas := []model.Idea{{Name: "A", Ticker: "A", Exchange: "US"}, {Name: "B", Ticker: "B", Exchange: "US"}}
+	c := &fakeCompleter{err: errors.New("down")}
+	got, _, err := (&Judge{Completer: c, Batch: 1}).Judge(context.Background(), ideas, nil, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "2 of 2 verdict batches failed") || len(got) != 0 {
+		t.Errorf("got %v, %v", got, err)
 	}
 }
 
-// The closer look is written before the open from the night's news. The share
-// that news sends up 10% at the open was never to be had at the close before
-// it, so the verdict is measured from the open.
-func TestAVerdictBeforeTheOpenIsMeasuredFromTheOpen(t *testing.T) {
-	s, err := LoadScorecard(t.TempDir() + "/scorecard.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 07:50 in New York on 1 September, before the 09:30 open.
-	given := time.Date(2026, 9, 1, 11, 50, 0, 0, time.UTC)
-	if err := s.Add(Record{At: given, Name: "Gapper", Symbol: "GAP", Chart: "GAP", Verdict: model.Buy, Price: 100}); err != nil {
-		t.Fatal(err)
-	}
-	// The session of 31 August opened before the verdict, and is not it.
-	aug31 := func(open, close float64) Session {
-		s := day(1, open, close)
-		s.Opened = s.Opened.AddDate(0, 0, -1)
-		return s
-	}
-	paths := map[string]Path{"GAP": {aug31(99, 100), day(1, 110, 112), day(29, 118, 121)}}
-	bench := Path{aug31(500, 500), day(1, 500, 501), day(29, 505, 505)}
-	now := given.Add(30 * 24 * time.Hour)
-
-	text := s.Summary(now, paths, bench, nil, time.UTC)
-	// From the open at 110, +10%; from the close at 100 it would have read +21%.
-	if !strings.Contains(text, "Gapper <code>GAP</code>, BUY on 1 Sep: +10.0%, against +1.0% for the index") {
-		t.Errorf("not measured from the open:\n%s", text)
-	}
-
-	// Settling writes the entry down, so it outlives the two years of
-	// history the chart source serves.
-	if err := s.Settle(paths, bench, nil); err != nil {
-		t.Fatal(err)
-	}
-	r := s.All()[0]
-	if r.Entry != 110 || r.EntryBenchmark != 500 || !r.EntryAt.Equal(day(1, 0, 0).Opened) {
-		t.Errorf("settled = %+v", r)
-	}
-	s, _ = LoadScorecard(s.Path)
-	if s.All()[0].Entry != 110 {
-		t.Errorf("the entry was not saved: %+v", s.All()[0])
-	}
-	text = s.Summary(now, map[string]Path{"GAP": {day(29, 118, 121)}}, Path{day(29, 505, 505)}, nil, time.UTC)
-	if !strings.Contains(text, "+10.0%") {
-		t.Errorf("a settled verdict lost its entry when the history no longer reached it:\n%s", text)
-	}
-}
-
-// A verdict whose next session has not happened has nothing to be measured
-// from yet.
-func TestAVerdictWithNoSessionSinceIsNotScored(t *testing.T) {
-	s, _ := LoadScorecard(t.TempDir() + "/scorecard.json")
-	given := time.Date(2026, 9, 1, 11, 50, 0, 0, time.UTC)
-	_ = s.Add(Record{At: given, Name: "Halted", Symbol: "HLT", Chart: "HLT", Verdict: model.Buy})
-	before := day(1, 10, 10)
-	before.Opened = before.Opened.AddDate(0, 0, -1)
-	text := s.Summary(given.Add(10*24*time.Hour), map[string]Path{"HLT": {before}},
-		Path{before, day(8, 500, 505)}, nil, time.UTC)
-	if !strings.Contains(text, "1 could not be priced") {
-		t.Errorf("summary = %s", text)
-	}
-}
-
-// The index is a dollar fund, so a share priced abroad is scored in dollars:
-// up 10% in yen while the yen fell 10% is down 1% to a dollar investor.
-func TestASharePricedAbroadIsScoredInDollars(t *testing.T) {
-	s, err := LoadScorecard(t.TempDir() + "/scorecard.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 20:00 in Tokyo, after its close: the next session is the 2nd.
-	then := time.Date(2026, 9, 1, 11, 0, 0, 0, time.UTC)
-	now := then.Add(30 * 24 * time.Hour)
-	if err := s.Add(
-		Record{At: then, Name: "Advantest", Symbol: "6857.T", Chart: "6857.T", Verdict: model.Buy, Price: 990, Currency: "JPY", FX: 0.0071},
-		Record{At: then, Name: "SK Hynix", Symbol: "000660.KS", Chart: "000660.KS", Verdict: model.Buy, Price: 99, Currency: "KRW"},
-		// A currency whose rate cannot be read goes unscored.
-		Record{At: then, Name: "Tencent", Symbol: "0700.HK", Chart: "0700.HK", Verdict: model.Buy, Price: 500, Currency: "HKD"},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(s.Currencies(now), ","); got != "JPY,KRW,HKD" {
-		t.Errorf("currencies = %s", got)
-	}
-
-	asia := func(d int, open, close float64) Session {
-		return Session{Opened: time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC), Open: open, Close: close}
-	}
-	date := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
-	rates := Rates{
-		"JPY": {{date(1), 0.0071}, {date(2), 0.0070}, {date(30), 0.0063}},
-		// The won on the 2nd, the day of the entry: not the 1st's, when the
-		// verdict was given, nor the 3rd's.
-		"KRW": {{date(1), 0.00070}, {date(2), 0.00080}, {date(3), 0.00090}, {date(30), 0.00088}},
-	}
-	paths := map[string]Path{
-		"6857.T":    {asia(1, 980, 990), asia(2, 1000, 1010), asia(30, 1090, 1100)},
-		"000660.KS": {asia(1, 98, 99), asia(2, 100, 101), asia(30, 100, 100)},
-		"0700.HK":   {asia(1, 490, 500), asia(2, 500, 505), asia(30, 590, 600)},
-	}
-	bench := Path{day(1, 500, 500), day(30, 500, 500)}
-	text := s.Summary(now, paths, bench, rates, time.UTC)
-	for _, want := range []string{
-		"2 are a week old or more",
-		"1 could not be priced in dollars today",
-		// -1% for Advantest and +10% for SK Hynix, against a flat index.
-		"<b>BUY</b>, 2 scored: 1 on course to beat the S&amp;P 500 by 5 points (50%), on average 4.5 points ahead of it",
-		"SK Hynix <code>000660.KS</code>, BUY on 1 Sep: +10.0% in US dollars",
-		"Advantest <code>6857.T</code>, BUY on 1 Sep: -1.0% in US dollars",
-		"Shares listed abroad are counted in US dollars",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("summary is missing %q:\n%s", want, text)
-		}
-	}
-}
-
-// Whether high confidence is worth more than low, and whether the themes do
-// better than the news, is what the breakdowns are for.
-func TestTheScorecardSplitsCallsByConfidenceAndSource(t *testing.T) {
-	s, _ := LoadScorecard(t.TempDir() + "/scorecard.json")
-	then := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	_ = s.Add(
-		Record{At: then, Name: "A", Symbol: "A", Chart: "A", Verdict: model.Buy, Confidence: "high", Source: SourceTheme, Theme: "Power"},
-		Record{At: then, Name: "B", Symbol: "B", Chart: "B", Verdict: model.Sell, Confidence: "high", Source: SourceReaction},
-		Record{At: then, Name: "C", Symbol: "C", Chart: "C", Verdict: model.Buy, Confidence: "low"},
-		Record{At: then, Name: "D", Symbol: "D", Chart: "D", Verdict: model.Hold, Confidence: "low"},
-	)
-	paths := map[string]Path{
-		"A": {day(1, 100, 100), day(30, 120, 120)}, // +20, 10 ahead
-		"B": {day(1, 100, 100), day(30, 90, 90)},   // -10, 20 behind, as called
-		"C": {day(1, 100, 100), day(30, 100, 100)}, // flat, 10 behind
-		"D": {day(1, 100, 100), day(30, 100, 100)},
-	}
-	bench := Path{day(1, 500, 500), day(30, 550, 550)}
-	text := s.Summary(then.Add(30*24*time.Hour), paths, bench, nil, time.UTC)
-	for _, want := range []string{
-		"<b>By confidence</b>, BUYs and SELLs together",
-		"• high: 2 of 2 on course (100%), on average +15.0 points the way called",
-		"• low: 0 of 1 on course (0%), on average -10.0 points the way called",
-		"<b>By how the company was found</b>",
-		"• weekly themes, from the numbers: 1 of 1 on course",
-		"• reactions to the news: 1 of 1 on course",
-		"• the old closer look, from the news: 0 of 1 on course",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("summary is missing %q:\n%s", want, text)
-		}
-	}
-	if strings.Contains(text, "medium") {
-		t.Errorf("a confidence nobody gave was listed:\n%s", text)
-	}
-}
-
-func TestAnEmptyScorecardSaysWhenItStarts(t *testing.T) {
-	s, _ := LoadScorecard(t.TempDir() + "/none.json")
-	if text := s.Summary(time.Now(), nil, nil, nil, time.UTC); !strings.Contains(text, "No verdicts yet") {
-		t.Errorf("summary = %q", text)
-	}
-}
-
-// The fact sheet now carries prices from two places: the US quote feed, in
-// dollars, and the chart source, in whatever the share trades in. Set side by
-// side in one request without their units, a Hong Kong price and a US one
-// invite a comparison that is nonsense.
-func TestTheFactSheetNamesTheCurrencyOfEachPrice(t *testing.T) {
-	ideas := []model.Idea{
-		{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Listed: "RAMBUS INC", Link: "Interface chips.",
-			Quote: &model.Quote{Symbol: "RMBS", Price: 94.20, Percent: 1.2}},
-		{Name: "Tencent", Ticker: "0700", Exchange: "HK", Listed: "TENCENT HOLDINGS LTD", Link: "Games and cloud.",
-			Quote: &model.Quote{Symbol: "0700.HK", Price: 512.40, Percent: -0.8, Currency: "HKD"}},
-	}
-
-	c := &fakeCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low\nCASE: Nothing to act on."}
-	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), ideas, []string{"", ""}, cited, nil); err != nil {
-		t.Fatalf("Judge: %v", err)
-	}
-
-	for _, want := range []string{"Last session: +1.2%, at USD 94.20.", "Last session: -0.8%, at HKD 512.40."} {
-		if !strings.Contains(c.prompt, want) {
-			t.Errorf("the verdict prompt is missing %q:\n%s", want, c.prompt)
-		}
-	}
-}
-
-// Before the open, a US share's price is the last close, and results out after
-// it have not been traded on. The verdict and the screen are told which
-// articles those are, so a share that has not moved is not read as having
-// shrugged the news off.
+// News that came after a price is marked as not traded yet: before the open,
+// a share that has not moved on it has not shrugged it off.
 func TestNewsAfterThePriceIsMarkedAsNotYetTraded(t *testing.T) {
-	closed := time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC) // 16:00 in New York
-	articles := []model.Article{
-		{ID: "before", Title: "Rambus shares rise", SourceName: "CNBC", Published: closed.Add(-2 * time.Hour)},
-		{ID: "after", Title: "Rambus beats and raises", SourceName: "Reuters", Published: closed.Add(10 * time.Minute)},
-		{ID: "undated", Title: "Rambus profile", SourceName: "Blog"},
+	late := cited[0]
+	late.Published = time.Date(2026, 9, 25, 21, 0, 0, 0, time.UTC)
+	idea := model.Idea{Name: "Micron", Ticker: "MU", Exchange: "US", Kind: model.IdeaReaction, Articles: []model.Article{late},
+		Quote: &model.Quote{Symbol: "MU", Price: 120, AsOf: time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC)}}
+	c := &fakeCompleter{reply: "=== MU\nVERDICT: HOLD\nCONFIDENCE: low"}
+	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), []model.Idea{idea}, []string{""}, []model.Article{late}, nil); err != nil {
+		t.Fatal(err)
 	}
-	idea := model.Idea{Name: "Rambus", Ticker: "RMBS", Exchange: "US", Listed: "RAMBUS INC", Link: "Results.",
-		Articles: articles, Quote: &model.Quote{Symbol: "RMBS", Price: 94.20, Percent: 0.3, AsOf: closed}}
-
-	c := &fakeCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low\nCASE: Wait."}
-	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), []model.Idea{idea}, []string{""}, articles, nil); err != nil {
-		t.Fatalf("Judge: %v", err)
-	}
-	if want := "Articles [2] came out after that price: the market has not traded on them yet."; !strings.Contains(c.prompt, want) {
-		t.Errorf("the verdict prompt is missing %q:\n%s", want, c.prompt)
-	}
-
-	rows := []Row{{Ticker: "RMBS", Name: "Rambus", Sector: "Semiconductors", Line: "last session +0.3%", Articles: articles, PricedAt: closed}}
-	if got, want := screenPrompt("Brief.", articles, rows), "today's articles [1][2][3], not yet traded on: [2]"; !strings.Contains(got, want) {
-		t.Errorf("the screen prompt is missing %q:\n%s", want, got)
-	}
-
-	// A price with no time marks nothing.
-	idea.Quote.AsOf = time.Time{}
-	c = &fakeCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: low\nCASE: Wait."}
-	(&Judge{Completer: c}).Judge(context.Background(), []model.Idea{idea}, []string{""}, articles, nil)
-	if strings.Contains(c.prompt, "not traded") {
-		t.Errorf("a price with no time marked articles:\n%s", c.prompt)
+	if !strings.Contains(c.prompt, "Articles [1] came out after that price: the market has not traded on them yet.") {
+		t.Errorf("prompt:\n%s", c.prompt)
 	}
 }
 
-// An event is kept with a full date inside the window, and a line without one
-// still reads as it always did.
-func TestResearchReadsTheEventAhead(t *testing.T) {
-	today := time.Date(2026, 9, 26, 8, 0, 0, 0, time.UTC)
-	c := &fakeCompleter{reply: strings.Join([]string{
-		"Rambus|RMBS|US|connected|1|Its chips go into every HBM stack.|Q3 results|2026-10-27|high|Bullish.",
-		"SK Hynix|000660|KS|connected|1|The largest HBM maker.|Investor day|2027-03-01|medium|neutral",
-		"Samsung|005930|KS|connected|2|A rival.|Results|October 2026|high|bearish",
-		"Kioxia|285A|JP|connected|2|Memory.|none|||",
-		"Lam Research|LRCX|US|connected|1|Sells the machines.",
-		"Applied Materials|AMAT|US|connected|1|Also machines.|Earnings|2026-09-26|LOUD|up",
-	}, "\n")}
-	r := &Researcher{Completer: c, Verifier: fakeVerifier{
-		"RMBS.US": "RAMBUS INC", "000660.KS": "SK HYNIX INC", "005930.KS": "SAMSUNG ELECTRONICS",
-		"285A.JP": "KIOXIA HOLDINGS", "LRCX.US": "LAM RESEARCH CORP", "AMAT.US": "APPLIED MATERIALS INC",
-	}}
-	got, _, err := r.Propose(context.Background(), Input{Cited: cited, Today: today})
-	if err != nil || len(got) != 6 {
-		t.Fatalf("got %d, err %v", len(got), err)
+// A BUY must be cheaper than its theme on a measure, or have the growth to
+// pay for being dearer; dearer on every measure with two warning signs is no
+// BUY whatever the growth; nothing to compare holds it to neither.
+func TestTheValuationGate(t *testing.T) {
+	theme := Medians([]Multiples{
+		{PE: 30, PS: 6, EVEBIT: 25, Growth: 0.20, HasGrowth: true},
+		{PE: 35, PS: 8, EVEBIT: 28, Growth: 0.30, HasGrowth: true},
+		{PE: 40, PS: 10, EVEBIT: 32, Growth: 0.25, HasGrowth: true},
+	})
+	if theme.PE != 35 || theme.PS != 8 || theme.EVEBIT != 28 || !theme.HasGrowth || math.Abs(theme.Growth-0.3) > 1e-9 {
+		t.Fatalf("medians = %+v", theme)
 	}
-	if !strings.Contains(c.prompt, "Today is Saturday 26 September 2026.") {
-		t.Errorf("the prompt does not say what day it is:\n%s", c.prompt)
-	}
-
-	e := got[0].Event
-	if e == nil || e.Name != "Q3 results" || e.Date.Format(time.DateOnly) != "2026-10-27" || e.Impact != "HIGH" || e.Bias != "BULLISH" {
-		t.Errorf("Rambus event = %+v", e)
-	}
-	if got[0].Link != "Its chips go into every HBM stack." {
-		t.Errorf("the reason ran into the event: %q", got[0].Link)
-	}
-	for i, why := range []string{"", "past the window", "a month is not a date", "none", "no event given"} {
-		if i > 0 && got[i].Event != nil {
-			t.Errorf("%s: %s kept %+v", why, got[i].Name, got[i].Event)
+	for _, tc := range []struct {
+		name   string
+		v      Valuation
+		closed bool
+	}{
+		{"cheaper on one", Valuation{Now: Multiples{PE: 30, PS: 12, EVEBIT: 40}, Theme: theme}, false},
+		{"dearer, growth pays", Valuation{Now: Multiples{PE: 50, PS: 12, EVEBIT: 40, Growth: 0.40, HasGrowth: true}, Theme: theme}, false},
+		{"dearer, growth does not pay", Valuation{Now: Multiples{PE: 50, PS: 12, EVEBIT: 40, Growth: 0.10, HasGrowth: true}, Theme: theme}, true},
+		{"dearer with two flags, growth or not", Valuation{Now: Multiples{PE: 50, PS: 12, EVEBIT: 40, Growth: 0.60, HasGrowth: true}, Theme: theme, Flags: []string{"a", "b"}}, true},
+		{"a loss, but cheaper on sales", Valuation{Now: Multiples{PS: 4}, Theme: theme}, false},
+		{"no theme: its own history", Valuation{Now: Multiples{PE: 20}, Own: Multiples{PE: 15}}, true},
+		{"nothing to compare", Valuation{Now: Multiples{PE: 20}}, false},
+		{"no accounts", Valuation{}, false},
+	} {
+		if got := tc.v.BuyClosed() != ""; got != tc.closed {
+			t.Errorf("%s: closed = %v (%q)", tc.name, got, tc.v.BuyClosed())
 		}
 	}
-	// Today counts; words outside the lists are left blank rather than kept.
-	if e := got[5].Event; e == nil || e.Impact != "" || e.Bias != "" {
-		t.Errorf("Applied Materials event = %+v", e)
+	// Fewer than three peers make no median.
+	if m := Medians([]Multiples{{PE: 10}, {PE: 20}}); m.PE != 0 {
+		t.Errorf("median of two = %v", m.PE)
+	}
+
+	facts := Valuation{Now: Multiples{PE: 50, PS: 12, Growth: 0.1, HasGrowth: true}, Theme: theme, Peers: 3, Flags: []string{"far above its average"}}.Facts()
+	for _, want := range []string{"- Price to earnings: 50.0; its theme's median 35.0", "Revenue growth, latest year: +10%", "over 3 companies", "Warning signs", "BUY is not open to this company"} {
+		if !strings.Contains(facts, want) {
+			t.Errorf("facts are missing %q:\n%s", want, facts)
+		}
+	}
+}
+
+func TestWarningSigns(t *testing.T) {
+	got := WarningSigns(150, 100, 140, -300_000, 12e6, 100e6)
+	if len(got) != 4 {
+		t.Errorf("signs = %v", got)
+	}
+	if got := WarningSigns(110, 100, 0, -1000, 0, 100e6); len(got) != 0 {
+		t.Errorf("signs from nothing much = %v", got)
+	}
+}
+
+// The log says whether this week's themes are done, and hands last week's
+// research to a theme of the same name.
+func TestTheThemeLog(t *testing.T) {
+	path := t.TempDir() + "/themes.json"
+	l, err := LoadThemeLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ny, _ := time.LoadLocation("America/New_York")
+	monday := time.Date(2026, 9, 28, 11, 50, 0, 0, time.UTC)
+	if l.DoneThisWeek(monday, ny) {
+		t.Error("an empty log said the week was done")
+	}
+	if err := l.Add(ThemeRun{At: monday, Themes: []ThemeEntry{
+		{Kind: ThemePopular, Name: "AI data centres", Research: "Chips priced in."},
+		{Kind: ThemeEarly, Name: "Grid batteries", Research: "Orders up."},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = LoadThemeLog(path)
+	if !l.DoneThisWeek(monday.Add(3*24*time.Hour), ny) || l.DoneThisWeek(monday.Add(7*24*time.Hour), ny) {
+		t.Error("the week is not counted from Monday")
+	}
+	if l.Previous("ai data centres") != "Chips priced in." || l.Previous("Obesity") != "" {
+		t.Error("last week's research was not found by name")
+	}
+	if strings.Join(l.Names(ThemeEarly), ",") != "Grid batteries" {
+		t.Errorf("early names = %v", l.Names(ThemeEarly))
 	}
 }

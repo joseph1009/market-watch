@@ -98,9 +98,10 @@ var required = map[string][]string{
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
-	"ideas.system":     {"{{.Max}}", "name|ticker|exchange|news or connected|article numbers|how today's news bears on it"},
-	"screen.system":    {"{{.Max}}", "ticker|what does not fit"},
-	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
+	"themes.system":    {"{{.Max}}", "THEME:", "DRIVER:", "MEMBERS:"},
+	"scout.system":     {"{{.Max}}", "THEME:", "DRIVER:", "EVIDENCE:", "MEMBERS:", "ticker:exchange"},
+	"research.system":  {"{{.Max}}", "DRIVING:", "PRICED IN:", "THE VALUE:", "name|ticker|exchange|buy or sell|"},
+	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "VALUE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers", "THE VERDICT", "VERDICT:", "CONFIDENCE:"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 }

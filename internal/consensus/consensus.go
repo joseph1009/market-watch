@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -171,52 +170,6 @@ func (c *Client) Estimates(ctx context.Context, symbol string) (Report, error) {
 		return r, fmt.Errorf("%s: %w", symbol, ErrNotCovered)
 	}
 	return r, nil
-}
-
-// Screen reads the forecasts and the price target, which is what a screen of
-// many companies needs: two requests each rather than six.
-func (c *Client) Screen(ctx context.Context, symbol string) (Report, error) {
-	r, err := c.Estimates(ctx, symbol)
-	if err != nil {
-		return r, err
-	}
-	if err := c.target(ctx, r.Symbol, &r); err != nil {
-		r.Missing = append(r.Missing, "price target")
-	}
-	return r, nil
-}
-
-// FetchAll reads Screen for many symbols, a few at a time, and returns what
-// was read by symbol. A symbol that failed is simply absent.
-func (c *Client) FetchAll(ctx context.Context, symbols []string, workers int) map[string]Report {
-	out := make(map[string]Report, len(symbols))
-	var mu sync.Mutex
-	jobs := make(chan string)
-	var wg sync.WaitGroup
-	for range max(workers, 1) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for s := range jobs {
-				if r, err := c.Screen(ctx, s); err == nil {
-					mu.Lock()
-					out[s] = r
-					mu.Unlock()
-				}
-			}
-		}()
-	}
-queue:
-	for _, s := range symbols {
-		select {
-		case jobs <- s:
-		case <-ctx.Done():
-			break queue
-		}
-	}
-	close(jobs)
-	wg.Wait()
-	return out
 }
 
 func (c *Client) estimates(ctx context.Context, symbol string, r *Report) error {
@@ -422,7 +375,12 @@ func (c *Client) holdings(ctx context.Context, symbol string, r *Report) error {
 // get reads one endpoint's "data" into into. Nasdaq answers an unknown symbol
 // with a 200 and a null data field, which is ErrNotCovered.
 func (c *Client) get(ctx context.Context, path string, into any) error {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	return c.getWith(ctx, path, into, maxBody, requestTimeout)
+}
+
+// getWith is get with its own bounds on the reply's size and wait.
+func (c *Client) getWith(ctx context.Context, path string, into any, limit int64, wait time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL()+"/"+path, nil)
@@ -443,7 +401,7 @@ func (c *Client) get(ctx context.Context, path string, into any) error {
 	var doc struct {
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&doc); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, limit)).Decode(&doc); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	if len(doc.Data) == 0 || string(doc.Data) == "null" {

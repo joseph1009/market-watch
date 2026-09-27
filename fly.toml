@@ -14,6 +14,8 @@
 #   FRED_API_KEY             market levels
 #   FINNHUB_API_KEY          share prices and company news
 #   TAVILY_API_KEY           news found by searching, beside the feeds
+#   MASSIVE_API_KEY          the whole US market's daily bars, two years of
+#                            which the closer look keeps in /data/market
 
 app = "joseph-market-watch"
 primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are worldwide anyway
