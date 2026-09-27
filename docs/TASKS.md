@@ -1,3 +1,7 @@
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → **7 Backlog**
+
+---
+
 # Backlog
 
 What is agreed but not built. Each entry says what it is, what it needs from
@@ -5,13 +9,12 @@ you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Push the repository.** Every commit is still local only.
-- **Deploy.** News search, the movers, inflation, the `config/` lists, the
-  review, the thin-section top-up, the new data sources and the twenty-company
-  closer look are built and checked locally, not yet deployed.
-  `scripts/fly-deploy.sh` sends `TAVILY_API_KEY` and `MASSIVE_API_KEY` from
-  `.env` as Fly secrets along with the others. The volume's `prefs.yaml` loads as it is: its
-  old copies of the watchlists and feeds are ignored from then on.
+- **Push the repository.** Every commit is still local only. GitHub holds only
+  an old first commit from before the history was regrouped, so the first push
+  replaces it: `git push --force-with-lease`.
+- **Judge Monday's run.** Everything built is deployed (27 September 2026).
+  The first weekly themes on the new code run on Monday 28 September; read
+  them with `scripts/sync-cache-from-fly.sh recommendations`.
 
 ## Reliability
 
@@ -190,3 +193,9 @@ you, and why it is worth doing.
 - Failure alerts: a brief that fails says so in the chat.
 - `/stats`: what recent briefs found and did, kept on the data volume.
 - CI: gofmt, vet, tests and build on every push.
+
+---
+
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → **7 Backlog**
+
+That's the end of the path. Back to the [README](../README.md), or to [4 Function by function](FUNCTIONS.md) to look something up.

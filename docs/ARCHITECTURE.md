@@ -1,3 +1,7 @@
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → **3 How it works** → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → [7 Backlog](TASKS.md)
+
+---
+
 # The shape of the code
 
 What every file does, what the functions in it are for, and how a day's work
@@ -7,6 +11,11 @@ This is the map. [RUNBOOK.md](RUNBOOK.md) is how to operate the thing;
 [TASKS.md](TASKS.md) is what is not built yet. What the service follows -- the
 sectors, the companies, the feeds -- and every instruction it gives a model are
 files in [config/](../config/), meant to be read and changed without touching Go.
+
+**On a first read,** read "The one-paragraph version", "The map" and "The flow
+of a day", then go on to [4 Function by function](FUNCTIONS.md). Come back to
+"File by file" when you are reading the code itself. Words you don't know are
+in the [Glossary](GLOSSARY.md).
 
 ---
 
@@ -70,19 +79,19 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L687) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L697) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L314) → [`brief(ctx, share: true)`](../internal/app/app.go#L315).
+[`Publish`](../internal/app/app.go#L324) → [`brief(ctx, share: true)`](../internal/app/app.go#L338).
 
 `brief` does three things before any work starts:
 
 - takes `a.running`, a mutex, so a `/now` arriving mid-brief waits instead of
   starting a second run;
-- calls [`Relay.Begin`](../internal/relay/relay.go#L94), which creates a directory
+- calls [`Relay.Begin`](../internal/relay/relay.go#L95), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L415), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L425), which is the pipeline.
 
 ### 2. Gathering
 
@@ -138,7 +147,7 @@ gathering — runs this sequence:
    formats. A source that fails becomes a `SourceError` and does not stop the run.
 2. The filings and search results are appended.
 3. [`DropStale`](../internal/feed/collect.go#L228) removes anything older than a week.
-4. [`Dedupe`](../internal/feed/collect.go#L243) removes the same story twice: first
+4. [`Dedupe`](../internal/feed/collect.go#L251) removes the same story twice: first
    by canonical URL, then by title similarity using
    [`similar.go`](../internal/feed/similar.go)'s token overlap, keeping whichever
    copy came from the better-weighted source. The kept copy remembers the
@@ -234,7 +243,7 @@ company ([`SameCompany`](../internal/discover/verify.go#L167)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
-name has been running, and [`priceCandidates`](../internal/app/prices.go#L267)
+name has been running, and [`priceCandidates`](../internal/app/prices.go#L284)
 attaches each one's move on the day — US names from the quote feed, everywhere
 else from the chart source.
 
@@ -242,9 +251,9 @@ else from the chart source.
 
 [`telegram.RenderWith`](../internal/telegram/render.go#L87) turns the report into
 Telegram HTML: the overview, each section under its line of biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L640)), the quiet watchlists,
+([`renderCandidates`](../internal/telegram/render.go#L703)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](../internal/telegram/render.go#L607). The brief is written as
+[`linkCitations`](../internal/telegram/render.go#L670). The brief is written as
 sub-headings, each a `### ` line, over one-sentence bullets;
 [`paragraphs`](../internal/telegram/render.go#L236) keeps each sub-heading with
 its bullets, [`bullets`](../internal/telegram/render.go#L331) bolds the
@@ -273,7 +282,7 @@ decides whether search can take over from the media feeds.
 
 ### 7. The channel
 
-[`shareBrief`](../internal/app/channel.go#L95) posts the same messages to the
+[`shareBrief`](../internal/app/channel.go#L110) posts the same messages to the
 channel, before the research starts, so readers are not kept waiting on minutes
 of web searches whose result they will never see.
 
@@ -282,10 +291,10 @@ commands from the owner's chat alone.
 
 ### 8. Worth a closer look
 
-The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L315)
-queues it ([`queueLook`](../internal/app/look.go#L37)) in `pending-look.json` on the
+The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L338)
+queues it ([`queueLook`](../internal/app/look.go#L40)) in `pending-look.json` on the
 data volume, due `LookDelay` (twenty minutes) later, and
-[`RunLooks`](../internal/app/look.go#L70), which runs beside the scheduler and the
+[`RunLooks`](../internal/app/look.go#L73), which runs beside the scheduler and the
 bot, sends it when it falls due: a restart in that time delays it rather than
 losing it, and one more than six hours late is dropped. A brief asked for with
 `/now`, or sent with `--once`, is followed at once.
@@ -387,7 +396,7 @@ fetched within minutes of being served.
   as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
   credential the configuration holds (`config.Secrets`), and the error text
   sent to the chat is scrubbed of the same list;
-- [`app.New`](../internal/app/app.go#L138) builds the service, loading the lists
+- [`app.New`](../internal/app/app.go#L141) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
@@ -407,60 +416,60 @@ writes the watchlist and feed changes made from Telegram, as
 ### The bot loop
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) long-polls `getUpdates` and
-hands each message to [`HandleMessage`](../internal/app/commands.go#L59), which
+hands each message to [`HandleMessage`](../internal/app/commands.go#L61), which
 checks the sender is the owner and routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L135) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L155) | A brief to the owner only; waits for `/share` |
-| `/share` | [`handleShare`](../internal/app/channel.go#L150) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L457) | Reads a company's filings — below |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L495) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L577) | What recent runs found and did |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L238) | Follow or stop following a company; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L321) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L227) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L184) | Delete the bot's earlier messages |
+| `/start` | [`handleStart`](../internal/app/commands.go#L137) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L157) | A brief to the owner only; waits for `/share` |
+| `/share` | [`handleShare`](../internal/app/channel.go#L165) | Posts whatever arrived last to the channel |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L459) | Reads a company's filings — below |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L409) | How the verdicts have done against the index |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L621) | What recent runs found and did |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L240) | Follow or stop following a company; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L323) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L229) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L186) | Delete the bot's earlier messages |
 
 ### `/analyse <ticker>`
 
-[`handleAnalyse`](../internal/app/commands.go#L457), under its own budget so it
+[`handleAnalyse`](../internal/app/commands.go#L459), under its own budget so it
 does not inherit whatever the caller's context has left:
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L197) looks the
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L215) looks the
    ticker up in EDGAR, pulls five years of XBRL facts through
    [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L153), and assembles a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), picks the filer's own
    reporting currency, prefers later filings over restated earlier ones
-   ([`supersedes`](../internal/fundamentals/metrics.go#L413)) and builds the current
-   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L521)),
+   ([`supersedes`](../internal/fundamentals/metrics.go#L431)) and builds the current
+   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L539)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L587) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L631) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
    [`tradingFor`](../internal/app/prices.go#L145) reads the daily price history and
-   [`prices.Summarise`](../internal/prices/history.go#L262) turns it into returns,
+   [`prices.Summarise`](../internal/prices/history.go#L281) turns it into returns,
    moving averages, the year's range, VWAP and volatility;
    [`addNews`](../internal/app/prices.go#L222) adds what has been written in the
    last month — the news feed's company headlines and two Tavily searches
-   ([`searchCompany`](../internal/app/research.go#L103)), two credits — filtered by
+   ([`searchCompany`](../internal/app/research.go#L106)), two credits — filtered by
    [`Relevant`](../internal/fundamentals/news.go#L92) to pieces that actually
    name the company. Of the twelve places, the searches have first call on
    eight and the feed on four ([`SetNews`](../internal/fundamentals/news.go#L74)),
    since sorted by date the feed's day of share-price items took them all.
    All three are best-effort.
-4. [`addExpectations`](../internal/app/research.go#L44) adds what analysts expect
+4. [`addExpectations`](../internal/app/research.go#L43) adds what analysts expect
    and what insiders, short sellers and funds have done
-   ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L123));
-   [`addRelease`](../internal/app/research.go#L67) the company's latest results
+   ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L132));
+   [`addRelease`](../internal/app/research.go#L70) the company's latest results
    release ([`sec.Client.EarningsRelease`](../internal/sec/release.go#L40)); and
-   [`backdrop`](../internal/app/research.go#L82) the commodities, the dollar and
+   [`backdrop`](../internal/app/research.go#L85) the commodities, the dollar and
    the cost of money from FRED. Best-effort again.
 5. [`Snapshot.Table`](../internal/fundamentals/table.go#L46) lays the figures out as
-   a fixed-width table, and [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L45)
+   a fixed-width table, and [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L47)
    sends it to Opus with [`method.md`](../config/method.md) — the
    house method for reading accounts — appended to the system prompt.
 6. [`SplitRelated`](../internal/fundamentals/related.go#L54) cuts the "companies to
@@ -482,28 +491,28 @@ does not inherit whatever the caller's context has left:
 
 ### Every model call
 
-There is one path, and this is it. [`Relay.Begin`](../internal/relay/relay.go#L94)
+There is one path, and this is it. [`Relay.Begin`](../internal/relay/relay.go#L95)
 opens a run directory and puts it on the context.
-[`Run.Ask`](../internal/relay/relay.go#L222):
+[`Run.Ask`](../internal/relay/relay.go#L226):
 
 1. writes `NN-stage-request.txt` — the system prompt and the prompt;
 2. notes it in the run's ledger, a markdown checklist;
 3. hands it to an `Answerer`;
 4. writes `NN-stage-reply.txt` beside it and ticks the ledger line.
 
-The answerer is normally [`Claude`](../internal/relay/answer.go#L74), which runs
+The answerer is normally [`Claude`](../internal/relay/answer.go#L76), which runs
 `claude -p` as a fresh process per call with `--no-session-persistence`, the
 system prompt in a temp file (Windows caps a command line at 32K characters),
 and the working directory set to the run's own so the call sees no `CLAUDE.md`
 and no project settings. `ANTHROPIC_API_KEY` is stripped from the child
-environment ([`childEnv`](../internal/relay/answer.go#L259)) so the subscription is
+environment ([`childEnv`](../internal/relay/answer.go#L261)) so the subscription is
 used rather than API credit.
 
-Tools are off for every stage except `ideas` and `review`, which get web search
-and web fetch and nothing else — no shell, no files, no MCP. A headline in a feed should
+Tools are off for every stage except `scout`, `research` and `review`, which get
+web search and web fetch and nothing else — no shell, no files, no MCP. A headline in a feed should
 not be able to steer a model into running a command.
 
-The alternative answerer, [`Session`](../internal/relay/answer.go#L293), waits for
+The alternative answerer, [`Session`](../internal/relay/answer.go#L295), waits for
 a person to write the reply file. That is how a run is watched or answered by
 hand.
 
@@ -1095,3 +1104,9 @@ under a note saying a model wrote it, that nobody checked it and that it is not
 advice to act on. That note is the condition the section is published under
 rather than a formality — see `channelNote` in `internal/telegram/ideas.go` and
 the section in RUNBOOK.md.
+
+---
+
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → **3 How it works** → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → [7 Backlog](TASKS.md)
+
+**Next:** [4 Function by function](FUNCTIONS.md): each feature on its own, with its entry point and its code in the order it runs.

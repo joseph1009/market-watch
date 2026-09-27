@@ -1,3 +1,7 @@
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → **6 Running it** → [7 Backlog](TASKS.md)
+
+---
+
 # Running the brief and the analysis
 
 Every model call the service makes goes through the **relay**. The call is
@@ -636,3 +640,9 @@ fly ssh console -a joseph-market-watch -C "ls /data/relay"
 fly ssh console -a joseph-market-watch -C "cat /data/relay/<run>/ledger.md"
 fly logs -a joseph-market-watch
 ```
+
+---
+
+**Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → **6 Running it** → [7 Backlog](TASKS.md)
+
+**Next:** [7 Backlog](TASKS.md): what isn't built yet, and what's known to be weak.
