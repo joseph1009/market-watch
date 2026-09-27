@@ -330,9 +330,10 @@ twenty companies (`ideas.LookSize`), found in two halves at once:
    of its own, the numbers are listed one to a line, a coloured mark leads
    each company, and a short rule separates one from the next.
 6. [`recordVerdicts`](../internal/app/ideas.go#L447) writes each verdict shown to
-   the scorecard with the price at the time, and the dollar's rate where it
-   trades abroad, so `/scorecard` can grade it against the S&P 500 in US
-   dollars once it is a week old.
+   the scorecard, with the dollar's rate where it trades abroad. `/scorecard`
+   grades it against the S&P 500 in US dollars once it is a week old, measuring
+   both from the first price after the verdict -- the next session's open --
+   and writes that entry down once the session has happened.
 
 ---
 
@@ -521,9 +522,9 @@ has no name there; `trendsFor` reads their price histories side by side.
 it starts from, and `lookFrom` makes one from a brief. `sendIdeas` runs the
 whole sequence: `researchNewNames` (with `marketMovers` and `isFund`) and
 `screenFollowed` side by side, then `factsFor`, which runs `ideaFacts` four at
-a time. `recordVerdicts` writes the verdicts to the scorecard; `lastClose`
-reads the benchmark's price at the time; `handleScorecard` answers
-`/scorecard`; `briefText` and `trackedNames` prepare the researcher's input.
+a time. `recordVerdicts` writes the verdicts to the scorecard; `pathFor`
+reads a chart's sessions for scoring; `handleScorecard` answers `/scorecard`;
+`briefText` and `trackedNames` prepare the researcher's input.
 
 **[look.go](../internal/app/look.go)** — the wait between the brief and its
 closer look. `queueLook` and `pendingLook` keep the waiting look on the data
@@ -794,9 +795,12 @@ verdicts, `DefaultBatch` (five) companies a call and two calls at a time;
 `judgePrompt`, `parseVerdicts`, `normaliseVerdict`.
 **[scorecard.go](../internal/ideas/scorecard.go)** — `Record`, `Scorecard.Add`,
 `Due` (which verdicts are old enough to grade), `Currencies` (whose exchange
-rates they need), and `Summary`, which measures each against the S&P 500 in US
-dollars. `MinAge` is a week; `Clearly`, five points a year, is the margin a
-BUY or SELL is held to, pro rata.
+rates they need), `Settle` (which writes down each verdict's entry, the first
+open after it, from a `Path` of sessions), and `Summary`, which measures each
+against the S&P 500 in US dollars from that entry, and splits the BUYs and
+SELLs by confidence and by how the company was found (`Source`). `MinAge` is a
+week; `Clearly`, five points a year, is the margin a BUY or SELL is held to,
+pro rata.
 
 ### internal/fundamentals
 
@@ -952,7 +956,7 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 | `covered.json` | [history/history.go](../internal/history/history.go) | Which stories earlier briefs carried, three weeks back |
 | `runs.json` | [history/runs.go](../internal/history/runs.go) | The last thirty runs, for `/stats` |
 | `candidates.json` | [discover/store.go](../internal/discover/store.go) | New names and how many days each has been running |
-| `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict and the price at the time |
+| `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, and once its next session has opened, the prices it is measured from |
 | `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its twenty minutes after the brief, when there is one |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, a ledger each |
 

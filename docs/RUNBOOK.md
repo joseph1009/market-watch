@@ -327,11 +327,17 @@ have `sendIdeas` deliver to the owner alone and let `/share` pass on the
 closer look, so nothing reaches readers until you have read it.
 
 **`/scorecard`** says how past verdicts have done. Every verdict is written to
-`scorecard.json` on the data volume with the price it was given at and the S&P
-500 fund's beside it, and for a share priced abroad the dollar's exchange rate.
-Once a verdict is a week old it is scored: how the share moved against the
-index since, in US dollars, so a Tokyo share that rose while the yen fell is
-counted as a dollar investor would have seen it. A BUY promises to beat the
+`scorecard.json` on the data volume, and is measured from the first price after
+it was given: the next session's open, for the share and for the S&P 500 fund
+alike. The verdicts are written before the US open from the night's news, and
+measuring from the close before would credit them with the move that news makes
+at the open, which nobody reading them could have had. Once that session has
+happened, `/scorecard` writes the entry down beside the verdict. Once a verdict
+is a week old it is scored: how the share moved against the index since, in US
+dollars, so a Tokyo share that rose while the yen fell is counted as a dollar
+investor would have seen it. The BUYs and SELLs are also split by confidence,
+and by how the company was found, to show whether either tells a better call
+from a worse one. A BUY promises to beat the
 index by five points over the year, and counts as on course while it is ahead
 by at least that pace -- five points a year, pro rata, so about 0.4 points
 after a month. A SELL, likewise behind. The verdicts are twelve-month calls, so read the

@@ -45,7 +45,14 @@ const (
 
 // Bar is one session.
 type Bar struct {
-	Date   time.Time
+	Date time.Time
+
+	// Opened is when the session opened, as the source stamps a daily bar:
+	// 13:30 UTC for New York, 01:00 UTC for Singapore. Date is the same day
+	// cut to midnight, which says which session but not whether it had begun
+	// by a given moment.
+	Opened time.Time
+
 	Open   float64
 	High   float64
 	Low    float64
@@ -130,6 +137,7 @@ func (h *History) Fetch(ctx context.Context, symbol string) (Series, error) {
 		}
 		bar := Bar{
 			Date:   time.Unix(ts, 0).UTC().Truncate(24 * time.Hour),
+			Opened: time.Unix(ts, 0).UTC(),
 			Close:  price,
 			Open:   at(q.Open, i),
 			High:   at(q.High, i),

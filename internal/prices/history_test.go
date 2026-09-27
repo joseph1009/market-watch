@@ -277,3 +277,29 @@ func TestLatestIsDatedWhenThePriceWasStruck(t *testing.T) {
 		t.Errorf("as at %v, want when it was struck, %v", got.AsOf, struck)
 	}
 }
+
+// A bar keeps the moment its session opened, which is what says whether a
+// verdict given at 07:50 in New York came before that day's open or after it.
+func TestFetchKeepsWhenEachSessionOpened(t *testing.T) {
+	var stamps, prices []string
+	open := time.Date(2026, time.August, 3, 13, 30, 0, 0, time.UTC)
+	for i := 0; i < 30; i++ {
+		stamps = append(stamps, fmt.Sprint(open.AddDate(0, 0, i).Unix()))
+		prices = append(prices, "10")
+	}
+	list := strings.Join(prices, ",")
+	reply := `{"chart":{"result":[{"meta":{"currency":"USD"},"timestamp":[` + strings.Join(stamps, ",") +
+		`],"indicators":{"quote":[{"open":[` + list + `],"high":[` + list + `],"low":[` + list + `],"close":[` + list + `],"volume":[` + list + `]}]}}],"error":null}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(reply))
+	}))
+	defer server.Close()
+
+	s, err := (&History{HTTP: server.Client(), URL: server.URL + "/"}).Fetch(context.Background(), "SPY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := s.Bars[0]; !first.Opened.Equal(open) || !first.Date.Equal(open.Truncate(24*time.Hour)) {
+		t.Errorf("first bar opened %v, dated %v", first.Opened, first.Date)
+	}
+}

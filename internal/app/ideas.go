@@ -442,16 +442,12 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, strin
 	return idea, chart, b.String()
 }
 
-// recordVerdicts writes each verdict to the scorecard with the price it was
-// given at and the index beside it. judged is a subset of found, and charts is
-// found's, by position.
+// recordVerdicts writes each verdict to the scorecard. judged is a subset of
+// found, and charts is found's, by position. The price each is measured from
+// is not known yet: it is the next session's open, which /scorecard reads
+// once it has happened.
 func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, charts []string) {
-	if a.Scorecard == nil || a.Market == nil {
-		return
-	}
-	bench := a.lastClose(ctx, ideas.Benchmark)
-	if bench <= 0 {
-		a.Log.Warn("verdicts not scored: the index could not be priced")
+	if a.Scorecard == nil {
 		return
 	}
 
@@ -463,13 +459,14 @@ func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, ch
 	var records []ideas.Record
 	var currencies []string
 	for _, idea := range judged {
-		if r, ok := ideas.NewRecord(idea, chartOf[idea.Symbol()], bench, a.now()); ok {
+		if r, ok := ideas.NewRecord(idea, chartOf[idea.Symbol()], a.now()); ok {
 			records = append(records, r)
 			currencies = append(currencies, r.Currency)
 		}
 	}
-	// A share priced abroad is scored in dollars, from the rate it was given
-	// at. One that cannot be read now is looked up from its history later.
+	// A share priced abroad is scored in dollars, from the rate on the day
+	// of its entry. The rate now is kept beside it, for a history that does
+	// not reach that day.
 	rates := a.dollarRates(ctx, currencies)
 	for i := range records {
 		records[i].FX = rates.Latest(records[i].Currency)
@@ -481,18 +478,22 @@ func (a *App) recordVerdicts(ctx context.Context, judged, found []model.Idea, ch
 	a.Log.Info("verdicts recorded", "count", len(records), "of", len(judged))
 }
 
-// lastClose is a symbol's latest price from the chart source, or zero.
-func (a *App) lastClose(ctx context.Context, chart string) float64 {
+// pathFor is a chart's sessions as the scorecard reads them, or nil.
+func (a *App) pathFor(ctx context.Context, chart string) ideas.Path {
 	if a.Market == nil {
-		return 0
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, historyBudget)
 	defer cancel()
 	series, err := a.Market.Fetch(ctx, chart)
-	if err != nil || len(series.Bars) == 0 {
-		return 0
+	if err != nil {
+		return nil
 	}
-	return series.Bars[len(series.Bars)-1].Close
+	path := make(ideas.Path, len(series.Bars))
+	for i, bar := range series.Bars {
+		path[i] = ideas.Session{Opened: bar.Opened, Open: bar.Open, Close: bar.Close}
+	}
+	return path
 }
 
 // scorecardSymbols bounds how many shares /scorecard prices in one go. The
@@ -516,20 +517,25 @@ func (a *App) handleScorecard(ctx context.Context, msg telegram.Message) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
-	now := map[string]float64{}
+	paths := map[string]ideas.Path{}
 	for _, chart := range due {
-		if p := a.lastClose(ctx, chart); p > 0 {
-			now[chart] = p
+		if p := a.pathFor(ctx, chart); len(p) > 0 {
+			paths[chart] = p
 		}
 	}
-	bench := 0.0
+	var bench ideas.Path
 	var rates ideas.Rates
 	if len(due) > 0 {
-		bench = a.lastClose(ctx, ideas.Benchmark)
+		bench = a.pathFor(ctx, ideas.Benchmark)
 		rates = a.dollarRates(ctx, a.Scorecard.Currencies(a.now()))
+		// Each verdict's entry is written down once its session has been,
+		// so it is still there when the history no longer reaches it.
+		if err := a.Scorecard.Settle(paths, bench, rates); err != nil {
+			a.Log.Warn("could not save the verdicts' entries", "error", err)
+		}
 	}
 
-	text := a.Scorecard.Summary(a.now(), now, bench, rates, a.Cfg.DisplayLocation)
+	text := a.Scorecard.Summary(a.now(), paths, bench, rates, a.Cfg.DisplayLocation)
 	return a.Bot.SendMessage(ctx, msg.Chat.ID, text)
 }
 
