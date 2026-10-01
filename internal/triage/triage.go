@@ -9,8 +9,8 @@
 // sector's description (config/sectors.yaml). The sorting only adds to the
 // matches by company name and ticker; the review (review.go) then takes a
 // second look at where everything that will reach the brief ended up, and can
-// move any of it. Both are Sonnet: with the keywords gone, more of the placing
-// rests on reading, and Haiku read too literally to carry it.
+// move any of it. Both are Opus 5.5, as every stage is: with the keywords
+// gone, more of the placing rests on reading.
 package triage
 
 import (

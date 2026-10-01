@@ -76,9 +76,8 @@ type Config struct {
 
 	// StageModels overrides the model for a stage (triage, review, brief,
 	// names, ideas, verdicts, analysis), by alias or full name, from
-	// MODEL_TRIAGE and the like. A stage not set here uses the relay's default:
-	// Sonnet to sort and review, Haiku to spot new names, Opus to research,
-	// judge and write.
+	// MODEL_TRIAGE and the like. A stage not set here uses the relay's default,
+	// Opus 5.5 for every stage.
 	StageModels map[string]string
 
 	// RelayConcurrency bounds how many sorting batches are answered at once,

@@ -31,7 +31,12 @@ FROM debian:bookworm-slim
 #
 # The signing key is checked against the fingerprint Anthropic publishes before
 # it is trusted, and the build stops if they differ.
+#
+# Opus 5.5, which answers every stage, is refused by Claude Code before
+# 2.1.280, so the build also stops below that rather than deploying a service
+# whose every model call fails.
 ARG CLAUDE_REPO_FINGERPRINT=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
+ARG CLAUDE_MIN_VERSION=2.1.280
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg; \
@@ -44,7 +49,8 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends claude-code; \
     apt-get purge -y --auto-remove curl gnupg; \
     rm -rf /var/lib/apt/lists/*; \
-    claude --version
+    claude --version; \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' claude-code)" ge "${CLAUDE_MIN_VERSION}"
 
 # The user the service runs as, by the same number the distroless image used,
 # so a volume made for either has the right owner.

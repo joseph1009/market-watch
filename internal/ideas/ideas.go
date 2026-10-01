@@ -5,7 +5,7 @@
 // Once a week, from two years of the whole US market's prices
 // (internal/market), and Singapore's thirty largest beside it, the themes: the
 // shares that have risen furthest and most steadily, sorted by what drives
-// them (Sorter, Sonnet); and apart from those, the industries whose business
+// them (Sorter, Opus); and apart from those, the industries whose business
 // is growing before their shares have followed (Scout, Opus with the web).
 // Each theme is then researched (Researcher, Opus with the web): what drives
 // it, which part of it the market has already paid for, which part it has

@@ -35,8 +35,8 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
   TRIAGE = "true"
   DISCOVER = "true"
 
-  # Every model call is answered by Claude Code on this machine: Sonnet to sort
-  # and review, Haiku to spot names, Opus to write. Two batches at a time.
+  # Every model call is answered by Claude Code on this machine, by Opus 5.5
+  # for every stage. Two batches at a time.
   RELAY_ANSWER = "claude"
   RELAY_CONCURRENCY = "2"
 

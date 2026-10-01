@@ -14,28 +14,29 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 )
 
-// DefaultModels is which model answers each stage. Spotting new names is a
-// coarse judgment over a lot of text, which is what a small model is for; the
-// brief and the analysis are the writing the reader actually reads.
-//
-// Sorting was Haiku too, until the keywords went (2026-09-24). With nothing but
-// company names matched by rule, where an article goes rests on reading it
-// against the sector descriptions, and Sonnet reads less literally. The review
-// that checks the sorting is Sonnet for the same reason.
+// Opus is the model every stage is answered by, named in full rather than by
+// the "opus" alias so the version cannot change under the service without a
+// deploy.
+const Opus = "claude-opus-5-5"
+
+// DefaultModels is which model answers each stage. Since 2026-10-01 that is
+// Opus 5.5 throughout, at the owner's request: the sorting, the review, the
+// names and the themes were Sonnet and Haiku before, chosen for speed over a
+// lot of text. MODEL_<STAGE> still puts any stage on another model.
 var DefaultModels = map[string]string{
-	Triage:   "sonnet",
-	Review:   "sonnet",
-	Names:    "haiku",
-	Brief:    "opus",
-	Themes:   "sonnet",
-	Scout:    "opus",
-	Research: "opus",
-	Verdicts: "opus",
-	Analysis: "opus",
+	Triage:   Opus,
+	Review:   Opus,
+	Names:    Opus,
+	Brief:    Opus,
+	Themes:   Opus,
+	Scout:    Opus,
+	Research: Opus,
+	Verdicts: Opus,
+	Analysis: Opus,
 }
 
 // quickStages answer without extended thinking. Rating a headline or naming the
-// company it is about is a mechanical judgment, and left to think, Haiku spent
+// company it is about is a mechanical judgment, and left to think, Haiku once spent
 // sixty-five seconds and 5,900 tokens reasoning its way to fourteen one-line
 // ratings that took it five seconds and ninety tokens without. The old API
 // client turned thinking off for the same reason. The brief and the analysis
@@ -241,7 +242,7 @@ func (c Claude) model(stage string) string {
 	if m := DefaultModels[stage]; m != "" {
 		return m
 	}
-	return "opus"
+	return Opus
 }
 
 func (c Claude) bin() string {

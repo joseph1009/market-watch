@@ -287,8 +287,8 @@ func TestClaudeRunsHeadlessWithTheStagesModelAndNoTools(t *testing.T) {
 	}
 
 	got := recorded(t, rec)
-	if got.Model != "sonnet" {
-		t.Errorf("model = %q, want sonnet for sorting", got.Model)
+	if got.Model != Opus {
+		t.Errorf("model = %q, want Opus 5.5 for sorting", got.Model)
 	}
 	if got.System != "You rate news." {
 		t.Errorf("system prompt = %q, want the stage's own", got.System)
@@ -362,8 +362,8 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	if strings.Contains(joined, "--disallowedTools") {
 		t.Errorf("research had every tool taken away, web search included: %v", got.Args)
 	}
-	if got.Model != "opus" {
-		t.Errorf("research model = %q, want opus", got.Model)
+	if got.Model != Opus {
+		t.Errorf("research model = %q, want Opus 5.5", got.Model)
 	}
 	if strings.Contains(joined, "alwaysThinkingEnabled") {
 		t.Errorf("research ran with thinking off: %v", got.Args)
@@ -376,8 +376,8 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	}
 	got = recorded(t, rec)
 	joined = strings.Join(got.Args, " ")
-	if !strings.Contains(joined, "--tools WebSearch,WebFetch") || got.Model != "sonnet" {
-		t.Errorf("review args = %v, model %q; want web search and sonnet", got.Args, got.Model)
+	if !strings.Contains(joined, "--tools WebSearch,WebFetch") || got.Model != Opus {
+		t.Errorf("review args = %v, model %q; want web search and Opus 5.5", got.Args, got.Model)
 	}
 	if !strings.Contains(joined, "alwaysThinkingEnabled") {
 		t.Errorf("review ran with thinking on: %v", got.Args)
@@ -386,8 +386,8 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 	if _, _, err := r.Plain(Scout).Complete(context.Background(), "s", "p"); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") || got.Model != "opus" {
-		t.Errorf("scout args = %v, model %q; want web search and opus", got.Args, got.Model)
+	if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") || got.Model != Opus {
+		t.Errorf("scout args = %v, model %q; want web search and Opus 5.5", got.Args, got.Model)
 	}
 
 	for _, stage := range []string{Verdicts, Triage, Themes} {
@@ -512,11 +512,11 @@ func TestVersionAsksNothingOfAModel(t *testing.T) {
 	}
 }
 
-func TestDefaultModelsSortWithSonnetAndWriteWithOpus(t *testing.T) {
+func TestEveryStageIsAnsweredByOpus55(t *testing.T) {
 	c := Claude{}
-	for stage, want := range map[string]string{Triage: "sonnet", Review: "sonnet", Names: "haiku", Brief: "opus", Analysis: "opus"} {
-		if got := c.ModelFor(stage); got != want {
-			t.Errorf("%s answered by %q, want %q", stage, got, want)
+	for _, stage := range []string{Triage, Review, Names, Brief, Themes, Scout, Research, Verdicts, Analysis, "unknown"} {
+		if got := c.ModelFor(stage); got != "claude-opus-5-5" {
+			t.Errorf("%s answered by %q, want claude-opus-5-5", stage, got)
 		}
 	}
 }

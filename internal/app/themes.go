@@ -18,7 +18,7 @@ import (
 )
 
 // The week's themes, in order: the market's leaders measured from two years
-// of prices; the themes driving them, sorted by Sonnet; the industries whose
+// of prices; the themes driving them, sorted by Opus; the industries whose
 // business is growing before their shares, found by Opus on the web; each
 // theme researched for the part of it the market has not paid for; the
 // companies proposed, with their accounts and their valuation against the
