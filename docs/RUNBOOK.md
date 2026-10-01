@@ -23,34 +23,38 @@ and waits for nothing. It exists to check formatting and delivery.
 
 ## The stages
 
-A brief makes four kinds of call, its closer look up to four more, and an
-analysis one:
+A brief makes four kinds of call, its closer look up to four more, an
+analysis one and `/industry` one:
 
 | Stage | What it does | Prompt | Default model | Override | Reply format |
 |---|---|---|---|---|---|
-| `triage` | Rates every article 1-5 and places it in up to two sectors | `triage.system` | Sonnet | `MODEL_TRIAGE` | `number\|rating\|watchlist ids` |
-| `review` | Checks where the sorting put everything that could reach the brief, and moves what belongs elsewhere, **with web search** | `review.system` | Sonnet | `MODEL_REVIEW` | `number\|section ids`, one line per move |
+| `triage` | Rates every article 1-5 and places it in up to two sectors | `triage.system` | Opus | `MODEL_TRIAGE` | `number\|rating\|watchlist ids` |
+| `review` | Checks where the sorting put everything that could reach the brief, and moves what belongs elsewhere, **with web search** | `review.system` | Opus | `MODEL_REVIEW` | `number\|section ids`, one line per move |
 | `brief` | Writes the brief | `brief.system` | Opus | `MODEL_BRIEF` | `## OVERVIEW` then `## SECTION: <id>` blocks |
-| `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Haiku | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
-| `themes` | Once a week, sorts the market's 150 leaders into the themes driving them | `themes.system` | Sonnet | `MODEL_THEMES` | `THEME:`, `DRIVER:`, `MEMBERS:` blocks |
+| `names` | Names the companies the day was about that no watchlist tracks | `discover.system` | Opus | `MODEL_NAMES` | `name\|ticker\|exchange\|article numbers\|what happened` |
+| `themes` | Once a week, sorts the market's 150 leaders into the themes driving them | `themes.system` | Opus | `MODEL_THEMES` | `THEME:`, `DRIVER:`, `MEMBERS:` blocks |
 | `scout` | Once a week, finds industries whose business is growing before their shares have followed, **with web search** | `scout.system` | Opus | `MODEL_SCOUT` | `THEME:`, `DRIVER:`, `EVIDENCE:`, `MEMBERS:` blocks |
 | `research` | Once a week for each theme, finds the part the market has not paid for and the companies in it, **with web search** | `research.system` | Opus | `MODEL_RESEARCH` | `DRIVING:`, `PRICED IN:`, `THE VALUE:`, then `name\|ticker\|exchange\|buy or sell\|why` |
-| `verdicts` | Gives each company BUY, HOLD or SELL from the facts fetched for it, three a call | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `RISK:` |
-| `analysis` | Writes up one company's accounts for `/analyse` | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with capitalised headings |
+| `verdicts` | Gives each company BUY, HOLD or SELL from the facts fetched for it, three a call, checking its case in two independent sources, **with web search** | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `CHECKED:`, `RISK:` |
+| `analysis` | Writes up one company's accounts for `/analyse`, looking for the last fortnight's news itself, **with web search** | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with capitalised headings |
+| `industry` | Explains how an industry fits together for `/industry`, part by part, with companies to look into, **with web search** | `industry.system` | Opus | `MODEL_INDUSTRY` | `### ` sub-headings over bullets, then `COMPANIES BY PART` and `part\|name\|ticker\|exchange\|why` |
 
 Sorting sends the day's articles in batches of 60, two at a time
 (`RELAY_CONCURRENCY`). When a person is answering, the batches are 150 each, so
 there are fewer files to deal with.
 
-Sorting was Haiku until the keywords went (24 September 2026). With nothing but
-company names matched by rule, where an article goes rests on reading it
-against the sector descriptions, and Sonnet reads less literally; the review is
-the check on that reading. `REVIEW=false` turns the review off.
+Every stage is Opus 5.5 (`claude-opus-5-5`) since 1 October 2026, at the
+owner's request. Before that the sorting, the review and the themes were
+Opus and the names Opus, chosen for speed over a lot of text; a stage can
+still be put on another model with its `MODEL_` variable. The review is the
+check on the sorting's reading. `REVIEW=false` turns the review off.
 
-`ideas` and `review` are the only stages with tools: web search and reading
-pages, and nothing else, no shell, no files and no connectors. The review is
-told to search only to learn what an unfamiliar company does. Every other stage
-runs with none. A subagent answering either by hand needs web access too.
+`scout`, `research`, `review`, `verdicts`, `analysis` and `industry` are the
+only stages with tools: web search and reading pages, and nothing else, no
+shell, no files and no connectors. The review is told to search only to learn
+what an unfamiliar company does; the verdicts to check a case in a second
+source; the analysis for the last fortnight's news. Every other stage runs
+with none. A subagent answering one of them by hand needs web access too.
 
 ## The prompts
 
@@ -194,7 +198,7 @@ those in the main session and there is no room left for the work.
 1. Read `ledger.md` in the newest run directory. It says which stages are
    waiting and how large each is.
 2. For each waiting request, spawn one subagent with the model that stage
-   would get (Sonnet to sort and review, Haiku to spot names, Opus to write),
+   would get (Opus 5.5 for every stage),
    told to:
    - read that one request file and nothing else,
    - write the reply file in the format the request's own `===== SYSTEM =====`
@@ -287,7 +291,7 @@ more to fill a number.
    the three months' return, the rise in the share above their 50-day average
    over the month, the money going in against the six months before, and the
    headlines.
-4. **The themes.** Sonnet (`themes`) sorts the leaders into up to three
+4. **The themes.** Opus (`themes`) sorts the leaders into up to three
    themes by what is driving them, not by the exchange's labels. Opus with the
    web (`scout`) looks for up to two industries whose business is measurably
    growing -- order books, shipments, capacity, contracted demand, a policy
@@ -367,7 +371,7 @@ chat alone, without writing the week down.
 
 **Cost.** No search credits: the scout and the research search with Claude's
 own web search, not Tavily. A day is up to two verdict calls; a Monday adds a
-Sonnet call, a scout, five research calls and six more verdict calls, all
+Opus call, a scout, five research calls and six more verdict calls, all
 Opus. The ledger of a `look` run in `relay/` has the actual sizes.
 
 **Nasdaq is unofficial.** Its figures come from the endpoints Nasdaq's own

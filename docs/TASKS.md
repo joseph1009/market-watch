@@ -33,7 +33,7 @@ you, and why it is worth doing.
 ## Brief quality
 
 - **Judge the sorting and the review after a week.** The keywords are gone:
-  an article reaches a section by naming a followed company, or because Sonnet
+  an article reaches a section by naming a followed company, or because Opus
   read it against the sector's description in `config/sectors.yaml` and the
   review agreed. `/stats` reports how many were placed by judgment and how many
   the review moved, with five of each. Read those for a week. If the placements
@@ -126,6 +126,13 @@ you, and why it is worth doing.
 
 ## Done
 
+- 1 October 2026, at the owner's request: every stage on Opus 5.5; the brief
+  in plainer English with about twice the room, emoji, highlighted figures and
+  linked jargon; a look ahead at the week's releases (ForexFactory) and
+  results (Nasdaq); one-line notes on the verdicts; verdicts checked in two
+  sources with web search and a news search per company; `/analyse` with the
+  latest quarters and its own search for recent news; and `/industry`.
+
 - Triage: a small model rates and places every article before the cap.
 - Market levels from FRED: yields, the curve, fed funds, S&P 500, VIX.
 - `SOURCE_LINKS=off|short|full`.
@@ -143,8 +150,8 @@ you, and why it is worth doing.
 - Deployed to Fly as `joseph-market-watch` (personal organisation, Singapore),
   with Claude Code on the machine logged in by `CLAUDE_CODE_OAUTH_TOKEN`.
 - The relay is the only way the service calls a model. Each call is a file
-  answered by Claude Code headless, one process per call -- Sonnet to sort and
-  review, Haiku to spot names, Opus to write -- or answered by hand with
+  answered by Claude Code headless, one process per call -- Opus 5.5 for
+  every stage since 1 October 2026 -- or answered by hand with
   subagents. No API
   key, no API spend.
 - The bot answers only the chat that registered it.
@@ -172,7 +179,7 @@ you, and why it is worth doing.
   the feeds. No keywords, no migrations: `/watchlist` and `/sources` changes
   are kept on the server on top of the files, and `scripts/sync-from-fly.sh`
   writes them in.
-- Sorting and a review, both Sonnet: an article belongs to at most two sectors,
+- Sorting and a review, both Opus: an article belongs to at most two sectors,
   the review moves what the sorting misplaced, a section with fewer than ten
   stories is filled from those rated 3 where the review agrees, a section is
   written from at most 25, and the general block keeps only what was rated 4

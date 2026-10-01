@@ -12,7 +12,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 ## What the reader sees
 
-**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L425).
+**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L452).
 
 **Sector, section, watchlist.** The brief's sections, such as chips or banks. Each is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). "Followed" means listed there.
 
@@ -24,9 +24,9 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **New names in the news.** Companies the day's stories were about that no sector follows. Each ticker is checked against the exchange before it is shown ([discover](../internal/discover/)).
 
-**Worth a closer look, the closer look, recommendations.** The message sent about 20 minutes after the brief, with BUY, HOLD or SELL verdicts on companies no sector follows. It has two parts, *themes* (weekly) and *reactions* (daily). [`sendIdeas`](../internal/app/ideas.go#L91).
+**Worth a closer look, the closer look, recommendations.** The message sent about 20 minutes after the brief, with BUY, HOLD or SELL verdicts on companies no sector follows. It has two parts, *themes* (weekly) and *reactions* (daily). [`sendIdeas`](../internal/app/ideas.go#L94).
 
-**Theme.** A group of companies with one story behind them, such as "AI memory demand". There are up to 3 **popular** themes each week, sorted by Sonnet from the market's leaders, and up to 2 **early** themes, found by Opus with the web from industries that are starting to turn. [`runThemes`](../internal/app/themes.go#L72).
+**Theme.** A group of companies with one story behind them, such as "AI memory demand". There are up to 3 **popular** themes each week, sorted by Opus from the market's leaders, and up to 2 **early** themes, found by Opus with the web from industries that are starting to turn. [`runThemes`](../internal/app/themes.go#L72).
 
 **Pick.** A company proposed by a theme's research and judged. Only BUYs and SELLs are shown, up to 10 a week.
 
@@ -39,6 +39,14 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 **Channel.** A Telegram channel other people can read but not write to (`TELEGRAM_CHANNEL_ID`). The daily brief and its closer look are posted there; `/share` posts the last brief or analysis.
 
 **Channel note, `channelNote`.** The warning at the head of the channel's closer look: a model wrote it, nobody checked it, it is not advice. Verdicts may go to the channel only because of it. [telegram/ideas.go](../internal/telegram/ideas.go#L31).
+
+---
+
+**Coming up.** The block under the overview listing what is due from now to the end of the week: economic releases with their time, forecast and previous figure (🔴 high impact, 🟠 medium), from ForexFactory's calendar, and company results with what analysts expect a share (⭐ a company you follow), from Nasdaq's earnings calendar. The overview's last sub-heading, **What to watch**, says which matter and why ([app/calendar.go](../internal/app/calendar.go)).
+
+**Linked terms.** Jargon in the brief whose first mention in a section links to an explanation, mostly Investopedia. The list, each link checked, is [config/glossary.yaml](../config/glossary.yaml).
+
+**`/industry`.** The command that explains how an industry fits together, part by part, with listed companies to look into in each ([industry.go](../internal/industry/industry.go)).
 
 ---
 
@@ -88,7 +96,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **Confidence.** High, medium or low, given by the model. The code caps it at low when no accounts were read (every Singapore company, and anything that doesn't file with the SEC).
 
-**Buy closed, overruled.** The code's valuation rules, which the model can't bend ([`BuyClosed`](../internal/ideas/valuation.go#L109), [`hold`](../internal/ideas/judge.go#L138)). A BUY becomes a HOLD, with the reason shown, if either holds:
+**Buy closed, overruled.** The code's valuation rules, which the model can't bend ([`BuyClosed`](../internal/ideas/valuation.go#L109), [`hold`](../internal/ideas/judge.go#L139)). A BUY becomes a HOLD, with the reason shown, if either holds:
 - it is dearer than its theme on every multiple and its growth doesn't pay for it;
 - it is dearer on every multiple and shows 2 or more warning signs.
 
@@ -103,6 +111,8 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 **Entry.** The price a verdict is measured from: the next session's open after the verdict, for the share and SPY alike. Using a later price would let the verdict see the future.
 
 **Clearly.** The bar a verdict must clear to count as right: 5 points a year against SPY, pro-rated, so about 0.4 points after a month (`Clearly` in [scorecard.go](../internal/ideas/scorecard.go)). A verdict is graded once it is 7 days old (`MinAge`).
+
+**Checked, one source only.** The line in a verdict naming the independent sources its case was checked in. A verdict must find the claim it rests on in two; where it found one, it says "one source only", and the code holds it to low confidence ([`hold`](../internal/ideas/judge.go#L139)).
 
 **Source.** How a verdict was found: `theme`, `reaction`, `analysis` (from `/analyse`), or `news` (the old closer look, before 27 September 2026).
 
@@ -121,6 +131,8 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 **6-K.** A foreign company's report of news, its version of the 8-K.
 
 **XBRL.** The tagged-data format filings are made in. The accounts in `/analyse` and the verdicts are read from it ([fundamentals](../internal/fundamentals/)).
+
+**Quarter, TTM.** A company's latest quarters, each three months on its own, read from its filings for `/analyse`; TTM (trailing twelve months) is the last four added together ([quarters.go](../internal/fundamentals/quarters.go)).
 
 **CIK.** The SEC's number for a company.
 
@@ -148,15 +160,15 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **The relay.** The only way the app calls a model. Each call is a request file, answered by a fresh headless `claude -p` on the owner's Claude subscription, with the reply written beside it. There is no API key. [relay](../internal/relay/).
 
-**Stage.** The name of a kind of model call, which fixes its model and whether it may use the web: `triage`, `review`, `brief`, `names`, `themes`, `scout`, `research`, `verdicts`, `analysis`. There is a table in [FUNCTIONS.md, section 12](FUNCTIONS.md#12-model-calls-the-relay).
+**Stage.** The name of a kind of model call, which fixes its model and whether it may use the web: `triage`, `review`, `brief`, `names`, `themes`, `scout`, `research`, `verdicts`, `analysis`, `industry`. There is a table in [FUNCTIONS.md, section 12](FUNCTIONS.md#12-model-calls-the-relay).
 
 **Run, run folder, ledger.** One brief, closer look or analysis, with all its model calls in one folder, `data/relay/<time>-<kind>/`. The ledger is a checklist of its calls.
 
 **Run cache.** The latest run of each kind (`brief`, `analysis`, `recommendations`), with each step's data as JSON, in `data/cache/<kind>/`. It is the first place to look when judging a run ([runcache](../internal/runcache/)).
 
-**Triage, sorting.** Sonnet rating every article 1 to 5 and placing it in up to 2 sectors ([triage.go](../internal/triage/triage.go)).
+**Triage, sorting.** Opus rating every article 1 to 5 and placing it in up to 2 sectors ([triage.go](../internal/triage/triage.go)).
 
-**Review.** A second Sonnet pass, with the web, that moves misplaced articles ([review.go](../internal/triage/review.go)).
+**Review.** A second Opus pass, with the web, that moves misplaced articles ([review.go](../internal/triage/review.go)).
 
 **Top-up, reserve.** A section with fewer than 10 articles is offered the ones rated 3, which are kept "in reserve", but only where the review agrees ([topup.go](../internal/triage/topup.go)).
 

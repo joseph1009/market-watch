@@ -13,9 +13,11 @@ each company with a buy, hold or sell verdict: on Mondays up to ten found from
 two years of the whole market's prices -- under the themes the market has been
 paying for, and the industries growing before their shares have followed --
 and every day up to three shares that moved far beyond their usual on the
-news. Between briefs the bot answers commands, the largest
-of which reads a company's filed accounts, results and analysts' expectations
-and writes them up.
+news. The brief also looks ahead: the economic releases and company results
+due today and this week, with what is expected of them. Between briefs the bot
+answers commands: the largest reads a company's filed accounts, its latest
+quarters, results and analysts' expectations and writes them up, and another
+explains how a whole industry fits together, with companies to look into.
 
 Every model call goes through Claude Code, run headless on the machine, on a
 Claude subscription. There is no API key and no API spend.

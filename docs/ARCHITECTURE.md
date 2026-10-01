@@ -53,7 +53,7 @@ headless Claude Code process, and the answer written beside it.
 | [internal/feed](../internal/feed/) | Fetching RSS, parsing it, deduplicating, matching to sectors by company, ranking |
 | [internal/sec](../internal/sec/) | EDGAR: recent filings as articles, and the annual report and the latest results release for `/analyse` and the closer look |
 | [internal/search](../internal/search/) | Tavily: news found by searching, one search per sector and one per share that moved, as articles |
-| [internal/triage](../internal/triage/) | Sonnet rating and filing every article, then reviewing where each one landed |
+| [internal/triage](../internal/triage/) | Opus rating and filing every article, then reviewing where each one landed |
 | [internal/report](../internal/report/) | Building the brief's prompt and parsing the brief back out |
 | [internal/discover](../internal/discover/) | "New names in the news", and checking every ticker against an exchange |
 | [internal/ideas](../internal/ideas/) | "Worth a closer look": the week's themes and their research, the valuation checks, verdicts, and the scorecard that grades them |
@@ -79,19 +79,19 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L697) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L732) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L324) → [`brief(ctx, share: true)`](../internal/app/app.go#L338).
+[`Publish`](../internal/app/app.go#L351) → [`brief(ctx, share: true)`](../internal/app/app.go#L365).
 
 `brief` does three things before any work starts:
 
 - takes `a.running`, a mutex, so a `/now` arriving mid-brief waits instead of
   starting a second run;
-- calls [`Relay.Begin`](../internal/relay/relay.go#L95), which creates a directory
+- calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L425), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L452), which is the pipeline.
 
 ### 2. Gathering
 
@@ -160,7 +160,7 @@ gathering — runs this sequence:
    judgment.
 6. [`Result.triage`](../internal/feed/collect.go#L170) hands everything to
    [`triage.Triager.Triage`](../internal/triage/triage.go#L100), which sends the
-   articles to Sonnet in batches of 60, two batches at a time, and gets back a
+   articles to Opus in batches of 60, two batches at a time, and gets back a
    rating of 1–5 and up to two sector placements for each, judged against the
    descriptions in [config/sectors.yaml](../config/sectors.yaml). Articles rated 1
    that no sector claims are dropped here. A triage failure is logged and the
@@ -188,7 +188,7 @@ The sorting judged sixty articles at a time, each on its own; the review is
 shown every article that could reach the brief — rated 3 or more, or left
 unrated by a failed batch — with where it now sits, and moves the ones that
 belong elsewhere: a broker's note on an oil company out of Financials. It is
-Sonnet too, may search the web to learn what an unfamiliar company does, and
+Opus too, may search the web to learn what an unfamiliar company does, and
 changes placements only, never ratings. A top-up is marked in its list, and
 stays only where the review names its section; silence, "-", another section
 or a failed batch withdraws it, so a section stays thin rather than padded.
@@ -196,6 +196,19 @@ What it moved, and which top-ups it kept, go into the run record, and `/stats`
 shows a few of each to judge it by.
 
 ### 3. Context, not content
+
+[`collectCalendar`](../internal/app/calendar.go#L38) runs beside the prices from
+the start, and reads what is due: the week's economic releases from
+ForexFactory's weekly export ([`calendar.ForexFactory.Week`](../internal/calendar/calendar.go#L41),
+kept to the US releases rated high or medium and the other large economies'
+high ones by [`calendar.Key`](../internal/calendar/calendar.go#L109)), each with its
+forecast and previous figure, and the companies due to report over the next
+five weekdays from Nasdaq's earnings calendar
+([`consensus.Client.Earnings`](../internal/consensus/earnings.go#L18)), the followed
+ones first, with what analysts expect a share. The writer gets it as a
+"Coming up" block and ends the overview with what to watch; the reader gets it
+as a block of its own under the overview. Added on 1 October 2026, after a
+brief named the PCE release and Micron's results only as "the day's tests".
 
 [`collectLevels`](../internal/app/filings.go#L88) reads FRED via
 [`prices.FRED.Fetch`](../internal/prices/fred.go#L147) for yields, the
@@ -212,17 +225,17 @@ Both are best-effort. A failure here costs the anchor numbers, never the brief.
 
 ### 4. Writing
 
-[`report.Generator.Generate`](../internal/report/generate.go#L64):
+[`report.Generator.Generate`](../internal/report/generate.go#L68):
 
 - [`splitByCoverage`](../internal/report/prompt.go#L82) decides which watchlists
   have enough news to deserve a section, and which are merely quiet.
-- [`buildPrompt`](../internal/report/prompt.go#L111) assembles the prompt: the
-  market levels ([`renderMarketData`](../internal/report/prompt.go#L332)), the
-  prices with the movers' history ([`renderPrices`](../internal/report/prompt.go#L355)),
+- [`buildPrompt`](../internal/report/prompt.go#L114) assembles the prompt: the
+  market levels ([`renderMarketData`](../internal/report/prompt.go#L339)), the
+  prices with the movers' history ([`renderPrices`](../internal/report/prompt.go#L362)),
   then each active section's articles under its line of biggest moves
   ([`sectionMoves`](../internal/report/moves.go#L30)), then the general news the
   overview may draw on. Every article gets a citation number from
-  [`numbering`](../internal/report/prompt.go#L237). The writer is told the reader
+  [`numbering`](../internal/report/prompt.go#L244). The writer is told the reader
   sees the moves line, so it explains the moves rather than listing them.
 - The call goes through `Completer`, which is the relay.
 - [`parseResponse`](../internal/report/parse.go#L20) splits the reply on
@@ -231,7 +244,7 @@ Both are best-effort. A failure here costs the anchor numbers, never the brief.
 
 ### 5. New names
 
-[`discover.Finder.Find`](../internal/discover/discover.go#L64) asks Haiku which
+[`discover.Finder.Find`](../internal/discover/discover.go#L64) asks Opus which
 companies the day's stories were about that no watchlist tracks. The reply is a
 pipe-delimited table, parsed by [`parse`](../internal/discover/discover.go#L135).
 
@@ -243,26 +256,35 @@ company ([`SameCompany`](../internal/discover/verify.go#L167)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
-name has been running, and [`priceCandidates`](../internal/app/prices.go#L284)
+name has been running, and [`priceCandidates`](../internal/app/prices.go#L267)
 attaches each one's move on the day — US names from the quote feed, everywhere
 else from the chart source.
 
 ### 6. Rendering and delivery
 
-[`telegram.RenderWith`](../internal/telegram/render.go#L87) turns the report into
+Since 1 October 2026 the brief is written in plainer English with about twice
+the room, an emoji on each sub-heading and sector heading
+([config/sectors.yaml](../config/sectors.yaml)), and the key figure of a bullet
+marked `**so**`, which [`highlight`](../internal/telegram/render.go#L388) sets in bold.
+[`linkTerms`](../internal/telegram/terms.go#L19) links the first mention of each
+term in [config/glossary.yaml](../config/glossary.yaml) in a section to a page
+that explains it, outside tags, links and bold.
+[`renderCalendar`](../internal/telegram/calendar.go#L25) lays out the look ahead.
+
+[`telegram.RenderWith`](../internal/telegram/render.go#L91) turns the report into
 Telegram HTML: the overview, each section under its line of biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L703)), the quiet watchlists,
+([`renderCandidates`](../internal/telegram/render.go#L724)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](../internal/telegram/render.go#L670). The brief is written as
+[`linkCitations`](../internal/telegram/render.go#L691). The brief is written as
 sub-headings, each a `### ` line, over one-sentence bullets;
-[`paragraphs`](../internal/telegram/render.go#L236) keeps each sub-heading with
-its bullets, [`bullets`](../internal/telegram/render.go#L331) bolds the
+[`paragraphs`](../internal/telegram/render.go#L250) keeps each sub-heading with
+its bullets, [`bullets`](../internal/telegram/render.go#L345) bolds the
 sub-heading and turns `- ` into a bullet with a blank line between each, and
 the section headings are set in capitals to stand above them. A block written
 the older way, as a label and a dash, still has its label bolded
-([`emphasizeLabel`](../internal/telegram/render.go#L275)).
+([`emphasizeLabel`](../internal/telegram/render.go#L289)).
 
-[`pack`](../internal/telegram/render.go#L385) then lays the pieces out across
+[`pack`](../internal/telegram/render.go#L409) then lays the pieces out across
 messages under Telegram's 4096-character cap, breaking between sections rather
 than mid-thought, and never leaving a heading alone at the end of a message.
 
@@ -277,7 +299,7 @@ records what the run cost and did, for `/stats`. When search is on,
 kept stories no feed carried, how many of the brief's citations came from
 search alone, and — by source — the cited stories no search found. The
 citations are read back out of the prose by
-[`Report.Referenced`](../internal/model/report.go#L95). Those numbers are what
+[`Report.Referenced`](../internal/model/report.go#L101). Those numbers are what
 decides whether search can take over from the media feeds.
 
 ### 7. The channel
@@ -291,7 +313,7 @@ commands from the owner's chat alone.
 
 ### 8. Worth a closer look
 
-The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L338)
+The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L365)
 queues it ([`queueLook`](../internal/app/look.go#L40)) in `pending-look.json` on the
 data volume, due `LookDelay` (twenty minutes) later, and
 [`RunLooks`](../internal/app/look.go#L73), which runs beside the scheduler and the
@@ -316,7 +338,7 @@ US listing ([`listings`](../internal/app/marketdata.go), kept a day), and then:
    [`market.Industries`](../internal/market/screen.go) scores every industry
    popular and early, with the headlines' mentions from
    [`market.Mentions`](../internal/market/names.go).
-   [`ideas.Sorter.Sort`](../internal/ideas/themes.go) — Sonnet — sorts the
+   [`ideas.Sorter.Sort`](../internal/ideas/themes.go) — Opus — sorts the
    leaders into up to three themes, and
    [`ideas.Scout.Find`](../internal/ideas/themes.go) — Opus **with the web** —
    finds up to two industries growing before their shares.
@@ -344,17 +366,21 @@ US listing ([`listings`](../internal/app/marketdata.go), kept a day), and then:
    assembles what a verdict should rest on: for a US SEC filer, what
    `/analyse` reads -- five years of accounts, the business description and
    recent filings, what analysts expect, the results release at the same
-   length, and the news feed's stories about it, without `/analyse`'s two
-   searches; for anything else, the price and trading history alone, and it
-   says so.
-4. [`ideas.Judge.Judge`](../internal/ideas/judge.go) — Opus, three companies a
-   call, two calls at a time, with the market backdrop above them — gives each
+   length, and the last fortnight's news -- the feed's stories and one news
+   search ([`addIdeaNews`](../internal/app/ideas.go#L375)); for anything else, the
+   price and trading history and the same news, and it says the accounts are
+   missing.
+4. [`ideas.Judge.Judge`](../internal/ideas/judge.go) — Opus with web search,
+   three companies a call, two calls at a time, with the market backdrop above
+   them, checking the claim each case rests on in two independent sources and
+   saying which in a CHECKED line — gives each
    a BUY, HOLD or SELL with its case, what is ahead, the lever it turns on, two
    to four numbers and the biggest risk; a theme pick its price against its
    theme and history, a reaction what changed, how the share moved and
    whether the move was justified. `hold` then applies the two rules that are
    the code's: a BUY the valuation has closed becomes a HOLD, and a verdict
-   without accounts is low confidence at most. HOLDs are not shown
+   without accounts, or whose case rests on "one source only", is low
+   confidence at most. HOLDs are not shown
    (`Idea.Shown`).
 5. [`telegram.RenderPicks`](../internal/telegram/ideas.go) renders them — the
    themes, each with its numbers and what the research found and labelled
@@ -384,7 +410,7 @@ fetched within minutes of being served.
 [`main`](../cmd/market-watch/main.go#L27) parses five flags — `--once`, `--share`,
 `--check`, `--clear`, `--fold` — and calls [`run`](../cmd/market-watch/main.go#L57), which:
 
-- [`config.Load`](../config/config.go#L180) reads the environment (and
+- [`config.Load`](../config/config.go#L179) reads the environment (and
   `.env` via [`LoadDotEnv`](../config/dotenv.go#L22)), reporting every
   missing variable at once rather than one per run;
 - [`config.LoadPrompts`](../config/prompts.go#L61) checks the prompts file
@@ -396,7 +422,7 @@ fetched within minutes of being served.
   as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
   credential the configuration holds (`config.Secrets`), and the error text
   sent to the chat is scrubbed of the same list;
-- [`app.New`](../internal/app/app.go#L141) builds the service, loading the lists
+- [`app.New`](../internal/app/app.go#L155) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
@@ -416,37 +442,38 @@ writes the watchlist and feed changes made from Telegram, as
 ### The bot loop
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) long-polls `getUpdates` and
-hands each message to [`HandleMessage`](../internal/app/commands.go#L61), which
+hands each message to [`HandleMessage`](../internal/app/commands.go#L63), which
 checks the sender is the owner and routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L137) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L157) | A brief to the owner only; waits for `/share` |
+| `/start` | [`handleStart`](../internal/app/commands.go#L141) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L161) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L165) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L459) | Reads a company's filings — below |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L409) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L621) | What recent runs found and did |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L240) | Follow or stop following a company; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L323) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L229) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L186) | Delete the bot's earlier messages |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L463) | Reads a company's filings — below |
+| `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L466) | How the verdicts have done against the index |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L625) | What recent runs found and did |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L244) | Follow or stop following a company; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L327) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L233) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L190) | Delete the bot's earlier messages |
 
 ### `/analyse <ticker>`
 
-[`handleAnalyse`](../internal/app/commands.go#L459), under its own budget so it
+[`handleAnalyse`](../internal/app/commands.go#L463), under its own budget so it
 does not inherit whatever the caller's context has left:
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L215) looks the
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L222) looks the
    ticker up in EDGAR, pulls five years of XBRL facts through
    [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L153), and assembles a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), picks the filer's own
    reporting currency, prefers later filings over restated earlier ones
-   ([`supersedes`](../internal/fundamentals/metrics.go#L431)) and builds the current
-   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L539)),
+   ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
+   year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L631) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L635) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -489,30 +516,51 @@ does not inherit whatever the caller's context has left:
    scorecard, marked as an analysis's; the same verdict on the same share
    within a day counts once.
 
+Since 1 October 2026 the accounts also carry the latest five quarters, each
+three months on its own, and the twelve months the last four make
+([`buildQuarters`](../internal/fundamentals/quarters.go#L43)): income as filed for
+the quarter, cash flow as the difference of two running totals, a fourth
+quarter as the year less its first nine months. The table shows them in a
+block of their own ([`quarterTable`](../internal/fundamentals/quarters.go#L142)), and
+the analysis leads with them. The analysis may search the web, for the last
+fortnight's news and a foreign filer's own latest results.
+
+### `/industry <words>`
+
+[`handleIndustry`](../internal/app/industry.go#L20) asks
+[`industry.Explainer.Explain`](../internal/industry/industry.go#L61) -- Opus with web
+search, under `industry.system` -- to explain how the industry fits together,
+part by part, and to list two to four listed companies to look into in each.
+[`industry.Split`](../internal/industry/industry.go#L86) cuts the
+`COMPANIES BY PART` table out, [`industry.Verify`](../internal/industry/industry.go#L113)
+checks every ticker against OpenFIGI through `VerifyRelated`, and
+[`RenderIndustry`](../internal/telegram/industry.go#L27) lays it out in the brief's
+style, the companies grouped by part. `/share` posts the channel's copy.
+
 ### Every model call
 
-There is one path, and this is it. [`Relay.Begin`](../internal/relay/relay.go#L95)
+There is one path, and this is it. [`Relay.Begin`](../internal/relay/relay.go#L96)
 opens a run directory and puts it on the context.
-[`Run.Ask`](../internal/relay/relay.go#L226):
+[`Run.Ask`](../internal/relay/relay.go#L227):
 
 1. writes `NN-stage-request.txt` — the system prompt and the prompt;
 2. notes it in the run's ledger, a markdown checklist;
 3. hands it to an `Answerer`;
 4. writes `NN-stage-reply.txt` beside it and ticks the ledger line.
 
-The answerer is normally [`Claude`](../internal/relay/answer.go#L76), which runs
+The answerer is normally [`Claude`](../internal/relay/answer.go#L83), which runs
 `claude -p` as a fresh process per call with `--no-session-persistence`, the
 system prompt in a temp file (Windows caps a command line at 32K characters),
 and the working directory set to the run's own so the call sees no `CLAUDE.md`
 and no project settings. `ANTHROPIC_API_KEY` is stripped from the child
-environment ([`childEnv`](../internal/relay/answer.go#L261)) so the subscription is
+environment ([`childEnv`](../internal/relay/answer.go#L268)) so the subscription is
 used rather than API credit.
 
 Tools are off for every stage except `scout`, `research` and `review`, which get
 web search and web fetch and nothing else — no shell, no files, no MCP. A headline in a feed should
 not be able to steer a model into running a command.
 
-The alternative answerer, [`Session`](../internal/relay/answer.go#L295), waits for
+The alternative answerer, [`Session`](../internal/relay/answer.go#L302), waits for
 a person to write the reply file. That is how a run is watched or answered by
 hand.
 
@@ -802,7 +850,7 @@ did not. Spends about fifteen credits and sends nothing.
 ### internal/triage
 
 **[triage.go](../internal/triage/triage.go)** — `Triager.Triage` batches the day's
-articles to Sonnet and applies what comes back. `describeSectors` writes the
+articles to Opus and applies what comes back. `describeSectors` writes the
 sectors the model files against, shared with the review; `parse` reads the
 `number|rating|watchlist ids` replies; `apply` writes the ratings and placements
 onto the articles, and keeps the placements it rated 3 in `Article.Reserve`.
@@ -967,6 +1015,17 @@ Nasdaq's screener: every US listing, its market value, sector and industry.
 a verdict or an analysis, turning the forecasts into multiples of today's
 price.
 
+### internal/calendar
+
+**[calendar.go](../internal/calendar/calendar.go)** — `ForexFactory.Week` reads
+the week's releases from ForexFactory's weekly export; `Key` keeps the ones a
+reader of the US market needs.
+
+### internal/industry
+
+**[industry.go](../internal/industry/industry.go)** — `Explainer.Explain` asks for
+an industry's map; `Split` and `Verify` take out and check its companies.
+
 ### internal/telegram
 
 **[client.go](../internal/telegram/client.go)** — the API client. `SendMessage`,
@@ -997,7 +1056,7 @@ answered and writes the reply, and copies both into the run cache the
 context carries; `Run.Note` maintains the ledger. `Stage` and
 `Plain` adapt a relay to the `Completer` interfaces the other packages expect.
 **[answer.go](../internal/relay/answer.go)** — who answers. `Claude.Answer` runs
-`claude -p`; `DefaultModels` maps a stage to Sonnet, Haiku or Opus;
+`claude -p`; `DefaultModels` maps every stage to Opus 5.5 (`claude-opus-5-5`);
 `webStages` are the two stages with web search; `childEnv` strips the API key. `Session.Answer` waits for
 a person.
 
@@ -1057,7 +1116,7 @@ down from Fly, keeping what they replace in `data/.backup/`.
 ## Configuration
 
 Everything is environment variables, read once by
-[`config.Load`](../config/config.go#L180). The deployed values are in
+[`config.Load`](../config/config.go#L179). The deployed values are in
 [fly.toml](../fly.toml); the secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](../scripts/fly-deploy.sh) without being printed.
 [.env.example](../.env.example) documents every one. What the service follows
