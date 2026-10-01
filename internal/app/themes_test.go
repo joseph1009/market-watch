@@ -71,7 +71,7 @@ func TestTheWeeksThemesRunOnceAWeek(t *testing.T) {
 	card, _ := ideas.LoadScorecard(a.Cfg.DataDir + "/scorecard.json")
 	a.Scorecard = card
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, true))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	for _, want := range []string{
@@ -104,7 +104,7 @@ func TestTheWeeksThemesRunOnceAWeek(t *testing.T) {
 	}
 
 	// The next day in the same week, the themes do not run again.
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, true))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true))
 	if sorts != 1 {
 		t.Errorf("the themes ran twice in a week")
 	}
@@ -122,7 +122,7 @@ func TestTheThemesWaitForTheMarketsHistory(t *testing.T) {
 	a.Judge = &ideas.Judge{Completer: stage(new(int))}
 	a.Themes, _ = ideas.LoadThemeLog(a.Cfg.DataDir + "/themes.json")
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, true))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true))
 
 	if sorts != 0 || a.Themes.Last() != nil {
 		t.Errorf("sorted %d times on a hundred sessions; log %+v", sorts, a.Themes.Last())

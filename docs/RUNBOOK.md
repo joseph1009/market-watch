@@ -354,12 +354,14 @@ oil price, the dollar and the cost of money are set above them all. BUY and
 SELL mean at least five percentage points better or worse than the S&P 500
 over the twelve months, in US dollars.
 
-It starts twenty minutes after the brief. A day's reactions take five to ten
+It starts as soon as the brief is sent. A day's reactions take five to ten
 minutes; a Monday with the themes forty or so, so it still arrives before the
-US open. The wait is kept on the data volume (`pending-look.json`), so a
-restart or a deploy in that time delays it rather than losing it; one more
-than six hours late is dropped. After `/now`, or `--once`, it follows at once,
-with the reactions alone: the week's themes go with the scheduled run.
+US open. The channel gets the brief and the closer look together, as one post
+with a button to each page, when the closer look is done; so the channel's
+brief arrives those minutes later than the owner's. A restart or a deploy
+during the closer look loses that day's closer look and the channel's post.
+After `/now`, or `--once`, it follows at once, with the reactions alone: the
+week's themes go with the scheduled run.
 `IDEAS=false` turns it off.
 
 To see the numbers the themes start from without asking a model,

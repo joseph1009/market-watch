@@ -98,7 +98,7 @@ func TestTheScheduledBriefIsPostedToTheChannel(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
 
-	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one", "two"}))
+	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one", "two"}), nil)
 
 	if got := messagesTo(*sent, testChannel); len(got) != 2 {
 		t.Fatalf("channel got %d messages, want the brief's 2", len(got))
@@ -119,7 +119,7 @@ func TestNoChannelMeansNoPost(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 
-	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one"}))
+	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one"}), nil)
 
 	if len(*sent) != 0 {
 		t.Errorf("sent %+v with no channel set", *sent)
@@ -156,7 +156,7 @@ func TestAFailedChannelPostIsReportedAndCanBeRetried(t *testing.T) {
 	defer srv.Close()
 	a.Bot = &telegram.Client{Token: "test", BaseURL: srv.URL, HTTP: srv.Client()}
 
-	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one", "two"}))
+	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one", "two"}), nil)
 
 	mu.Lock()
 	told := messagesTo(sent, 4242)

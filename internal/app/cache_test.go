@@ -80,7 +80,7 @@ func TestACloserLookKeepsItsDataInTheRunCache(t *testing.T) {
 	a.Cache = &runcache.Cache{Root: root}
 	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	for name, want := range map[string]string{
 		"look.json":      "Rambus soars on HBM win",

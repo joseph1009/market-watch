@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/joseph1009/market-watch/internal/fundamentals"
@@ -37,18 +38,9 @@ type outgoing struct {
 // first message, as a channel's posts are.
 func (a *App) send(ctx context.Context, chatID int64, out outgoing, broadcast bool) ([]int64, error) {
 	if a.Pages != nil && out.summary.Text != "" && telegram.Fits(out.summary.Text) {
-		url, err := a.Pages.Publish(pages.Page{
-			Title:       out.title,
-			Description: pages.Plain(out.summary.Text),
-			Doc:         out.doc,
-			Messages:    out.messages,
-		})
+		id, err := a.sendLinked(ctx, chatID, out.summary.Text, out)
 		if err == nil {
-			id, sendErr := a.Bot.SendLinked(ctx, chatID, out.summary.Text, out.summary.Button, url, false)
-			if sendErr == nil {
-				return []int64{id}, nil
-			}
-			err = sendErr
+			return []int64{id}, nil
 		}
 		a.Log.Warn("could not send a summary and a page; sending in full", "page", out.title, "error", err)
 	}
@@ -56,6 +48,58 @@ func (a *App) send(ctx context.Context, chatID int64, out outgoing, broadcast bo
 		return a.Bot.Broadcast(ctx, chatID, out.messages)
 	}
 	return a.Bot.SendReport(ctx, chatID, out.messages)
+}
+
+// sendTogether posts several things to the channel as one message: their
+// summaries one after another, and under them a button to each one's page.
+// The owner asked for the daily brief and its closer look to arrive that way
+// (2026-10-01), as one post rather than a summary each. When they cannot --
+// pages off, one with no summary, or summaries too long for one message
+// together -- each goes as send would post it on its own.
+func (a *App) sendTogether(ctx context.Context, chatID int64, outs ...outgoing) ([]int64, error) {
+	if len(outs) > 1 && a.Pages != nil {
+		var texts []string
+		for _, out := range outs {
+			texts = append(texts, out.summary.Text)
+		}
+		text := strings.Join(texts, "\n\n")
+		if !slices.Contains(texts, "") && telegram.Fits(text) {
+			id, err := a.sendLinked(ctx, chatID, text, outs...)
+			if err == nil {
+				return []int64{id}, nil
+			}
+			a.Log.Warn("could not send as one message; sending each on its own", "error", err)
+		} else {
+			a.Log.Info("sending each on its own: a summary is missing or they are too long together", "runes", len([]rune(text)))
+		}
+	}
+	var ids []int64
+	for _, out := range outs {
+		sent, err := a.send(ctx, chatID, out, true)
+		ids = append(ids, sent...)
+		if err != nil {
+			return ids, err
+		}
+	}
+	return ids, nil
+}
+
+// sendLinked publishes each page and sends text with a button to each.
+func (a *App) sendLinked(ctx context.Context, chatID int64, text string, outs ...outgoing) (int64, error) {
+	var links []telegram.Link
+	for _, out := range outs {
+		url, err := a.Pages.Publish(pages.Page{
+			Title:       out.title,
+			Description: pages.Plain(out.summary.Text),
+			Doc:         out.doc,
+			Messages:    out.messages,
+		})
+		if err != nil {
+			return 0, err
+		}
+		links = append(links, telegram.Link{Label: out.summary.Button, URL: url})
+	}
+	return a.Bot.SendLinked(ctx, chatID, text, links, false)
 }
 
 // gaugeNames are the brief's readings as a table row names them: the

@@ -21,8 +21,10 @@ import (
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/pages"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/report"
+	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
 // stubCompleter answers every call with the same text, or fails.
@@ -114,7 +116,7 @@ func TestACloserLookNotSharedStaysWithTheOwner(t *testing.T) {
 	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
 	a.remember("the brief of Thu 10 Sep", []string{"the brief"})
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	// No accounts could be read here, so the verdict is held to low
@@ -150,7 +152,8 @@ func TestTheDailyCloserLookReachesTheChannelUnderItsWarning(t *testing.T) {
 	a.Cfg.TelegramChannelID = testChannel
 	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true, false))
+	look := a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
+	a.shareBrief(context.Background(), a.remember("the brief of Thu 10 Sep", []string{"one"}), look)
 
 	channel := strings.Join(messagesTo(*sent, testChannel), "\n")
 	for _, want := range []string{"Reacting to the news", "Rambus", "<b>BUY</b>", "AI-written, unchecked, not advice."} {
@@ -178,7 +181,7 @@ func TestFollowedAndUnexplainedMovesAreNotJudged(t *testing.T) {
 	var calls []string
 	a.Judge = &ideas.Judge{Completer: askedFor{reply: rambusBuy, mu: &sync.Mutex{}, calls: &calls}}
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	if len(calls) != 0 || len(*sent) != 0 {
 		t.Errorf("verdicts asked for %q, sent %+v", calls, *sent)
@@ -192,7 +195,7 @@ func TestADayOfMatchedMovesSendsNothing(t *testing.T) {
 	a.prefs.ChatID = 4242
 	rambusMoved(t, a, stubCompleter{reply: "=== RMBS\nVERDICT: HOLD\nCONFIDENCE: medium\nREACTION: Matched."})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	if len(*sent) != 0 {
 		t.Errorf("sent %+v with nothing to show", *sent)
@@ -206,7 +209,7 @@ func TestFailedVerdictsSendNothing(t *testing.T) {
 	a.prefs.ChatID = 4242
 	rambusMoved(t, a, stubCompleter{err: errors.New("claude: timed out")})
 
-	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false, false))
+	a.sendIdeas(context.Background(), lookFrom(todaysBrief, false))
 
 	if len(*sent) != 0 {
 		t.Errorf("sent %+v after the verdicts failed", *sent)
@@ -320,14 +323,17 @@ func TestAUSListingKeepsItsLiveQuote(t *testing.T) {
 	}
 }
 
-// The daily brief is sent at once and its closer look LookDelay later: queued on
-// the data volume, where a restart in the wait does not lose it, and sent to
-// the owner and the channel once it falls due.
-func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
+// publishRambus runs the daily brief on a day Rambus moved, with pages on or
+// off.
+func publishRambus(t *testing.T, withPages bool) (*App, *[]sentMessage, *keptPages) {
+	t.Helper()
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
-	now := a.Now()
+	kept := &keptPages{}
+	if withPages {
+		a.Pages = kept
+	}
 
 	feedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel><title>Stub</title>
@@ -335,58 +341,117 @@ func TestTheDailyCloserLookFollowsTheBriefAfterItsDelay(t *testing.T) {
 <description>Rambus won an order.</description><pubDate>Thu, 10 Sep 2026 10:00:00 GMT</pubDate></item>
 </channel></rss>`))
 	}))
-	defer feedSrv.Close()
+	t.Cleanup(feedSrv.Close)
 	a.prefs.Sources = []model.Source{{ID: "stub-feed", Name: "Stub", URL: feedSrv.URL, Weight: 8, Enabled: true}}
 	a.Fetcher = &feed.Fetcher{Client: feedSrv.Client(), Now: a.Now}
-	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nRambus soared on an HBM order [1].\n"}}
+	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nRambus soared on an HBM order [1].\n\n## IN SHORT\n- Rambus soared on an HBM order.\n"}}
 	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
 
 	if err := a.publishScheduled(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(messagesTo(*sent, 4242), "\n"); !strings.Contains(got, "Rambus soared") || strings.Contains(got, "Reacting to the news") {
-		t.Fatalf("after the brief the owner has:\n%s", got)
-	}
-	lk, err := a.pendingLook()
-	if err != nil || lk == nil || !lk.Due.Equal(now.Add(LookDelay)) || !lk.Share || !lk.Scheduled || len(lk.Cited) != 1 {
-		t.Fatalf("queued %+v (err %v), want the brief's look due after LookDelay, for the channel too", lk, err)
+	return a, sent, kept
+}
+
+// The daily run gives the owner the brief and then the closer look, and the
+// channel the two as one post, once the closer look is done: both summaries,
+// a button to each one's page, and the closer look's warning (2026-10-01).
+func TestTheChannelGetsTheBriefAndCloserLookAsOnePost(t *testing.T) {
+	_, sent, kept := publishRambus(t, true)
+
+	owner := messagesTo(*sent, 4242)
+	if len(owner) != 2 || !strings.Contains(owner[0], "Rambus soared") || !strings.Contains(owner[1], "Reacting to the news") {
+		t.Fatalf("the owner has %q, want the brief and then the closer look", owner)
 	}
 
-	// Not yet due: nothing is sent, and the wait is until it is, or the poll.
-	a.Now = func() time.Time { return now.Add(LookDelay - time.Minute) }
-	if wait := a.sendDueLook(context.Background()); wait != lookPoll {
-		t.Errorf("a minute early, wait %v", wait)
-	}
-	a.Now = func() time.Time { return now.Add(LookDelay + time.Minute) }
-	a.sendDueLook(context.Background())
-
-	for _, chat := range []int64{4242, testChannel} {
-		if got := strings.Join(messagesTo(*sent, chat), "\n"); !strings.Contains(got, "Reacting to the news") || !strings.Contains(got, "Rambus") {
-			t.Errorf("chat %d has no closer look:\n%s", chat, got)
+	var posts []sentMessage
+	for _, m := range *sent {
+		if m.ChatID == testChannel {
+			posts = append(posts, m)
 		}
 	}
-	if lk, _ := a.pendingLook(); lk != nil {
-		t.Error("the look was sent and is still queued")
+	if len(posts) != 1 {
+		t.Fatalf("the channel got %d posts, want one", len(posts))
+	}
+	post := posts[0]
+	for _, want := range []string{"Rambus soared", "Reacting to the news", "<b>BUY</b>", "AI-written, unchecked, not advice."} {
+		if !strings.Contains(post.Text, want) {
+			t.Errorf("the post is missing %q:\n%s", want, post.Text)
+		}
+	}
+	if strings.Index(post.Text, "Rambus soared") > strings.Index(post.Text, "Reacting to the news") {
+		t.Errorf("the closer look comes before the brief:\n%s", post.Text)
+	}
+	rows := post.ReplyMarkup.Rows
+	if len(rows) != 2 || !strings.Contains(rows[0][0].Text, "brief") || !strings.Contains(rows[1][0].Text, "cases") {
+		t.Fatalf("buttons = %+v, want the brief's then the closer look's", rows)
+	}
+	if rows[0][0].URL == rows[1][0].URL {
+		t.Errorf("both buttons open %s", rows[0][0].URL)
+	}
+	// The owner's two pages, then the channel's two.
+	if len(kept.pages) != 4 || !strings.Contains(pages.Fragment(kept.pages[3]), "AI-written, unchecked, not advice.") {
+		t.Errorf("the channel's closer look page does not carry its note: %d pages", len(kept.pages))
 	}
 }
 
-// A look that waited through most of a day, the process being down, is
-// dropped rather than sent: yesterday's verdicts are not news.
-func TestAStaleCloserLookIsDropped(t *testing.T) {
+// Without pages the channel gets what it always did: the brief in full, then
+// the closer look in full.
+func TestWithoutPagesTheChannelGetsBothInFull(t *testing.T) {
+	_, sent, _ := publishRambus(t, false)
+
+	channel := messagesTo(*sent, testChannel)
+	joined := strings.Join(channel, "\n")
+	if !strings.Contains(joined, "Rambus soared") || !strings.Contains(joined, "AI-written, unchecked, not advice.") {
+		t.Fatalf("the channel got:\n%s", joined)
+	}
+	if strings.Contains(channel[0], "Reacting to the news") {
+		t.Errorf("the closer look came first:\n%s", joined)
+	}
+	for _, m := range *sent {
+		if len(m.ReplyMarkup.Rows) > 0 {
+			t.Errorf("a button with pages off: %+v", m)
+		}
+	}
+}
+
+// Summaries too long for one message together go as two posts, each with
+// its own button, rather than one cut short.
+func TestSummariesTooLongTogetherGoAsTwoPosts(t *testing.T) {
 	a, sent := newTestApp(t)
-	a.prefs.ChatID = 4242
-	rambusMoved(t, a, stubCompleter{reply: rambusBuy})
-	lk := lookFrom(todaysBrief, false, false)
-	lk.Due = a.now().Add(-lookStale - time.Minute)
-	if err := a.queueLook(lk); err != nil {
+	a.Pages = &keptPages{}
+	long := strings.Repeat("word ", 500)
+	brief := outgoing{title: "Brief", messages: []string{"brief"}, summary: telegram.Summary{Text: "brief " + long, Button: "Read the brief"}}
+	look := outgoing{title: "Look", messages: []string{"look"}, summary: telegram.Summary{Text: "look " + long, Button: "Read the cases"}}
+
+	if _, err := a.sendTogether(context.Background(), testChannel, brief, look); err != nil {
 		t.Fatal(err)
 	}
-	a.sendDueLook(context.Background())
-	if len(*sent) != 0 {
-		t.Errorf("sent %+v", *sent)
+	if len(*sent) != 2 || len((*sent)[0].ReplyMarkup.Rows) != 1 || len((*sent)[1].ReplyMarkup.Rows) != 1 {
+		t.Fatalf("sent %d posts, want two with a button each", len(*sent))
 	}
-	if lk, _ := a.pendingLook(); lk != nil {
-		t.Error("the stale look is still queued")
+	if !strings.HasPrefix((*sent)[0].Text, "brief") {
+		t.Errorf("the brief did not go first")
+	}
+}
+
+// A /share while the closer look was being researched posted the brief by
+// itself. The closer look then goes alone, not with a second brief.
+func TestACloserLookAfterAnEarlyShareGoesAlone(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.Cfg.TelegramChannelID = testChannel
+	d := a.remember("the brief of Thu 10 Sep", []string{"the brief"})
+	a.HandleMessage(context.Background(), message("/share"))
+	*sent = nil
+
+	a.shareBrief(context.Background(), d, &outgoing{messages: []string{"the closer look"}})
+
+	if got := messagesTo(*sent, testChannel); len(got) != 1 || got[0] != "the closer look" {
+		t.Errorf("the channel got %q, want the closer look alone", got)
+	}
+	if got := messagesTo(*sent, 4242); len(got) != 0 {
+		t.Errorf("the owner was told %q", got)
 	}
 }
 

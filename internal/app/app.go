@@ -364,27 +364,27 @@ func (a *App) SendReportTo(ctx context.Context, chat int64) error {
 	return a.brief(ctx, chat, false, false)
 }
 
-// Publish sends the brief to the owner, then the same brief to the channel if
-// there is one, then the closer look to both, straight after. It is what
-// -once -share does; the schedule does the same with the closer look
-// LookDelay later (publishScheduled). A channel that refuses either is reported to the
-// owner rather than returned, since the owner's copy arrived.
+// Publish sends the brief to the owner, then the closer look, then both to
+// the channel if there is one, as one post. It is what -once -share does. A
+// channel that refuses is reported to the owner rather than returned, since
+// the owner's copy arrived.
 func (a *App) Publish(ctx context.Context) error {
 	return a.brief(ctx, 0, true, false)
 }
 
-// publishScheduled is the daily run: Publish, with the closer look queued for
-// LookDelay after the brief, which RunLooks then sends.
+// publishScheduled is the daily run: Publish, and on the week's first, the
+// week's themes in the closer look.
 func (a *App) publishScheduled(ctx context.Context) error {
 	return a.brief(ctx, 0, true, true)
 }
 
-// brief is one whole run. The channel gets the brief before the research
-// starts, so readers are not kept waiting on minutes of web searches whose
-// result they will never see. With later, the closer look is queued for
-// LookDelay's time instead of run now. A brief sent to another chat (to is
-// neither 0 nor the owner's) ends once delivered.
-func (a *App) brief(ctx context.Context, to int64, share, later bool) (err error) {
+// brief is one whole run. The owner gets the brief at once and the closer
+// look after its research; the channel gets the two together, as one post,
+// when the closer look is done (until 2026-10-01 the brief went at once and
+// the closer look twenty minutes after it, two posts of their own). A brief
+// sent to another chat (to is neither 0 nor the owner's) ends once
+// delivered.
+func (a *App) brief(ctx context.Context, to int64, share, scheduled bool) (err error) {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
@@ -413,21 +413,10 @@ func (a *App) brief(ctx context.Context, to int64, share, later bool) (err error
 	if done == nil || done.elsewhere {
 		return nil // a day with no news, or another chat's: nothing to share or look into
 	}
+	look := a.sendIdeas(ctx, lookFrom(done.rep, scheduled))
 	if share {
-		a.shareBrief(ctx, done.sent)
+		a.shareBrief(ctx, done.sent, look)
 	}
-	lk := lookFrom(done.rep, share, later)
-	if later && a.Judge != nil {
-		lk.Due = a.now().Add(LookDelay)
-		err := a.queueLook(lk)
-		if err == nil {
-			a.Log.Info("closer look queued", "at", lk.Due.In(a.Cfg.DisplayLocation).Format(time.RFC1123))
-			return nil
-		}
-		// Sent now rather than not at all.
-		a.Log.Warn("could not queue the closer look; sending it now", "error", err)
-	}
-	a.sendIdeas(ctx, lk)
 	return nil
 }
 
@@ -823,7 +812,7 @@ func (a *App) Serve(ctx context.Context) error {
 
 	errs := make(chan error, 5)
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(3)
 	if a.pageStore != nil {
 		wg.Add(1)
 		go func() {
@@ -836,10 +825,6 @@ func (a *App) Serve(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		errs <- a.RunScheduler(ctx)
-	}()
-	go func() {
-		defer wg.Done()
-		errs <- a.RunLooks(ctx)
 	}()
 	go func() {
 		defer wg.Done()

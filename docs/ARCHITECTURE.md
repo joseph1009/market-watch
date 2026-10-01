@@ -27,13 +27,13 @@ share that moved well beyond the market — and reads the SEC's recent filings.
 It throws away what is stale or duplicated, has a model rate every article and
 file it in the sectors it bears on, has a second pass check where each one
 landed, has a large model write a brief from what survived, renders that into
-Telegram messages and sends them to one chat. Then it posts
-the same brief to a channel for other readers, and twenty minutes later
-starts a closer look for both: on Mondays up to ten companies found from two
+Telegram messages and sends them to one chat. Then it
+starts a closer look: on Mondays up to ten companies found from two
 years of the whole market's prices -- under the themes the market has been
 paying for, and the industries growing before their shares have followed --
 and every day up to three shares that moved far beyond their usual on the
-news, each with a buy, hold or sell verdict. In the background it keeps those
+news, each with a buy, hold or sell verdict. When that is done it posts the
+brief and the closer look to a channel for other readers, as one post. In the background it keeps those
 two years of the market's daily bars on its disk. In between it answers commands in the
 chat, the largest of which reads a company's SEC filings, results and
 analysts' expectations and writes them up. Every call
@@ -80,10 +80,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L775) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L764) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L372) → [`brief(ctx, share: true)`](../internal/app/app.go#L387).
+[`Publish`](../internal/app/app.go#L371) → [`brief(ctx, share: true)`](../internal/app/app.go#L387).
 
 `brief` does three things before any work starts:
 
@@ -92,7 +92,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 - calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L478), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L467), which is the pipeline.
 
 ### 2. Gathering
 
@@ -289,14 +289,14 @@ the older way, as a label and a dash, still has its label bolded
 messages under Telegram's 4096-character cap, breaking between sections rather
 than mid-thought, and never leaving a heading alone at the end of a message.
 
-[`send`](../internal/app/pages.go#L38) sends them. Since 1 October 2026, with
+[`send`](../internal/app/pages.go#L39) sends them. Since 1 October 2026, with
 `PAGES_URL` set, that is one message: a summary
 ([`BriefSummary`](../internal/telegram/summary.go#L56): the overview's opening
 line, the writer's `## IN SHORT` bullets, and the next 24 hours' releases and
 results, each "… @ time") with a "📖 Read the full brief" button to the whole
 brief as a web page. The page is laid out from the report, not the messages, by
 [`BriefDoc`](../internal/telegram/pagedocs.go#L42): the markets as a table and a
-bar chart (from the FRED readings and the benchmark funds, [`pageMarket`](../internal/app/pages.go#L79)),
+bar chart (from the FRED readings and the benchmark funds, [`pageMarket`](../internal/app/pages.go#L123)),
 the overview, what is coming up as a table a day, and each sector with its
 biggest moves and its own sources. The prose is the messages' prose, and
 [`pages.Render`](../internal/pages/render.go#L35) lets through only Telegram's
@@ -322,9 +322,14 @@ decides whether search can take over from the media feeds.
 
 ### 7. The channel
 
-[`shareBrief`](../internal/app/channel.go#L123) posts the same brief to the
-channel (with pages on, the same summary and its own copy of the page), before the research starts, so readers are not kept waiting on minutes
-of web searches whose result they will never see.
+Once the closer look is done, [`shareBrief`](../internal/app/channel.go#L127)
+posts the brief and the closer look to the channel as one post: both
+summaries, one after the other, and a button under them to each one's page
+([`sendTogether`](../internal/app/pages.go)). The owner asked for one post in
+place of two (2026-10-01). On a day with no closer look the brief goes alone;
+with pages off, or summaries too long for one message together, each goes as
+before. A `/share` that posted the brief while the closer look was running
+leaves the closer look to go alone ([`shareIdeas`](../internal/app/channel.go)).
 
 The channel is one-way. Its readers cannot reach `HandleMessage`; the bot takes
 commands from the owner's chat, and from the owner's other chats listed in
@@ -333,13 +338,10 @@ says which command takes which).
 
 ### 8. Worth a closer look
 
-The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L387)
-queues it ([`queueLook`](../internal/app/look.go#L40)) in `pending-look.json` on the
-data volume, due `LookDelay` (twenty minutes) later, and
-[`RunLooks`](../internal/app/look.go#L73), which runs beside the scheduler and the
-bot, sends it when it falls due: a restart in that time delays it rather than
-losing it, and one more than six hours late is dropped. A brief asked for with
-`/now`, or sent with `--once`, is followed at once.
+[`brief`](../internal/app/app.go#L387) starts it as soon as the owner has the
+brief, and posts both to the channel when it is done. Until 2026-10-01 it
+waited twenty minutes after the brief, queued on the data volume; the channel
+then had the brief at once and the closer look as a post of its own.
 
 [`sendIdeas`](../internal/app/ideas.go) brings the market's history up to date
 ([`topUpMarket`](../internal/app/marketdata.go)), reads Nasdaq's list of every
@@ -387,7 +389,7 @@ US listing ([`listings`](../internal/app/marketdata.go), kept a day), and then:
    `/analyse` reads -- five years of accounts, the business description and
    recent filings, what analysts expect, the results release at the same
    length, and the last fortnight's news -- the feed's stories and one news
-   search ([`addIdeaNews`](../internal/app/ideas.go#L387)); for anything else, the
+   search ([`addIdeaNews`](../internal/app/ideas.go#L377)); for anything else, the
    price and trading history and the same news, and it says the accounts are
    missing.
 4. [`ideas.Judge.Judge`](../internal/ideas/judge.go) — Opus with web search,
@@ -469,10 +471,10 @@ checks the sender is the owner and routes on the command:
 |---|---|---|
 | `/start` | [`handleStart`](../internal/app/commands.go#L190) | Registers the chat as the owner's, once |
 | `/now` | [`handleNow`](../internal/app/commands.go#L210) | A brief to the owner only; waits for `/share` |
-| `/share` | [`handleShare`](../internal/app/channel.go#L179) | Posts whatever arrived last to the channel |
+| `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L512) | Reads a company's filings — below |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L478) | How the verdicts have done against the index |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
 | `/stats` | [`handleStats`](../internal/app/commands.go#L699) | What recent runs found and did |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L293) | Follow or stop following a company; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L376) | Turn a feed on or off |
@@ -603,10 +605,10 @@ which model answers which stage.
 `App` holds every collaborator, most of them nil-able so a missing key disables
 one feature rather than the run. `New` builds it. `Prefs`/`UpdatePrefs` guard
 the preferences behind a mutex. `SendReport`, `Publish`, `publishScheduled`
-and `brief` are the entry points to a run; the scheduled one queues its closer
-look for `LookDelay` later. `sendReport` is the pipeline itself. `RunScheduler`
-fires the daily brief; `Serve` runs it alongside `RunLooks` and the bot poller
-and returns when any of them fails. `reportFailure` tells the owner when a brief failed. Helpers:
+and `brief` are the entry points to a run: the brief, its closer look, then
+both to the channel. `sendReport` is the pipeline itself. `RunScheduler`
+fires the daily brief; `Serve` runs it alongside the market sync and the bot
+poller and returns when any of them fails. `reportFailure` tells the owner when a brief failed. Helpers:
 `sourceMode`, `watchedNames`, `companyNames`, `newRelay`, `placedExamples`,
 `movedExamples`, `clipRunes`, `namesRemembered`, `now`.
 
@@ -656,20 +658,15 @@ before a look, `listings` reads Nasdaq's list at most once a day,
 `singaporeStocks` measures the Straits Times Index in dollars, and `panelPath`
 turns a stored series into a scorecard path.
 
-**[look.go](../internal/app/look.go)** — the wait between the brief and its
-closer look. `queueLook` and `pendingLook` keep the waiting look on the data
-volume; `RunLooks` and `sendDueLook` send it when due, and drop one more than
-`lookStale` (six hours) late; `runLook` holds the run lock and opens its relay
-run.
-
 **[research.go](../internal/app/research.go)** — what `/analyse` and the closer
 look read beside the accounts: `addExpectations`, `addRelease`, `backdrop`, and
 `searchCompany`, `/analyse`'s two searches.
 
 **[channel.go](../internal/app/channel.go)** — the channel for other readers.
 `remember` and `latest` hold the last delivery in memory; `share` posts it once,
-guarding against a double post; `shareBrief` is what the scheduler calls;
-`handleShare` is the command.
+guarding against a double post, and with it anything sent alongside;
+`shareBrief` is what the daily run calls, with the closer look;
+`shareIdeas` posts a closer look alone; `handleShare` is the command.
 
 **[search.go](../internal/app/search.go)** — news search beside the feeds.
 `collectSearch` runs the searches under a two-minute budget and logs what they
@@ -1135,7 +1132,6 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 | `runs.json` | [history/runs.go](../internal/history/runs.go) | The last thirty runs, for `/stats` |
 | `candidates.json` | [discover/store.go](../internal/discover/store.go) | New names and how many days each has been running |
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, and once its next session has opened, the prices it is measured from |
-| `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its twenty minutes after the brief, when there is one |
 | `themes.json` | [ideas/themelog.go](../internal/ideas/themelog.go) | The last half-year of weekly themes, with what each one's research said and what was picked |
 | `market/` | [market/store.go](../internal/market/store.go) | Two years of the US market's daily bars, a file a session, forty megabytes; the splits since; and Nasdaq's list, a day old at most |
 | `pages/` | [pages/pages.go](../internal/pages/pages.go) | The web pages the summaries link to, one file each, deleted after 30 days |

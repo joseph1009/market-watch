@@ -22,7 +22,9 @@ import (
 // chooses to put the result.
 //
 // The daily brief goes there by itself, and since the closer look was opened
-// to readers, so does that. /now and /analyse go to the owner first, and
+// to readers, so does that: the two as one post once the closer look is
+// done, with a button to each one's page. /now and /analyse go to the owner
+// first, and
 // /share posts whichever arrived last, so a brief asked for to check
 // something, or an analysis the owner has not read yet, stays private until
 // the owner says otherwise.
@@ -82,10 +84,11 @@ func (a *App) latest() *delivery {
 	return a.last
 }
 
-// share posts a delivery to the channel, once. The scheduler and /share can
-// reach the same brief at the same moment, so the check and the claim happen
-// together under the lock, and a failed post gives the claim back.
-func (a *App) share(ctx context.Context, d *delivery) error {
+// share posts a delivery to the channel, once, and with it anything in with:
+// one post where they fit together. The scheduler and /share can reach the
+// same brief at the same moment, so the check and the claim happen together
+// under the lock, and a failed post gives the claim back.
+func (a *App) share(ctx context.Context, d *delivery, with ...outgoing) error {
 	channel := a.Cfg.TelegramChannelID
 	if channel == 0 {
 		return errNoChannel
@@ -103,7 +106,7 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	if d.channel != nil {
 		out = *d.channel
 	}
-	ids, err := a.send(ctx, channel, out, true)
+	ids, err := a.sendTogether(ctx, channel, append([]outgoing{out}, with...)...)
 
 	a.lastMu.Lock()
 	d.sharing = false
@@ -117,14 +120,24 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	return nil
 }
 
-// shareBrief is the scheduler's half: the daily brief goes to the channel as
-// soon as the owner has it. A failure costs the channel one brief, never the
-// owner's copy, so it is reported to the owner with the way to retry.
-func (a *App) shareBrief(ctx context.Context, d *delivery) {
+// shareBrief is the scheduler's half: the daily brief goes to the channel
+// once the owner has it and its closer look, look, which is nil on a day
+// with none. A failure costs the channel one brief, never the owner's copy,
+// so it is reported to the owner with the way to retry.
+func (a *App) shareBrief(ctx context.Context, d *delivery, look *outgoing) {
 	if d == nil || a.Cfg.TelegramChannelID == 0 {
 		return
 	}
-	err := a.share(ctx, d)
+	var with []outgoing
+	if look != nil {
+		with = append(with, *look)
+	}
+	err := a.share(ctx, d, with...)
+	if errors.Is(err, errAlreadyShared) && look != nil {
+		// A /share during the closer look's research posted the brief alone.
+		a.shareIdeas(ctx, *look)
+		return
+	}
 	if err == nil || errors.Is(err, errAlreadyShared) {
 		return
 	}
@@ -135,19 +148,23 @@ func (a *App) shareBrief(ctx context.Context, d *delivery) {
 		return
 	}
 	clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
+	what, again := "Today's brief", "Send /share to post it again."
+	if look != nil {
+		what, again = "Today's brief and closer look", "Send /share to post the brief again; the closer look goes with the daily run or not at all."
+	}
 	text := fmt.Sprintf(
-		"Today's brief reached you but not the channel.\n\n<i>%s</i>\n\nSend /share to post it again. If part of it did arrive, that part will appear twice.",
-		escape(clean))
+		"%s reached you but not the channel.\n\n<i>%s</i>\n\n%s If part of it did arrive, that part will appear twice.",
+		what, escape(clean), again)
 	if err := a.Bot.SendMessage(ctx, owner, text); err != nil {
 		a.Log.Error("could not report the channel failure either", "error", err)
 	}
 }
 
-// shareIdeas posts the closer look to the channel, which the daily run does
-// once the owner has it. It does not go through share and remember: those exist
-// so /share can pass on the last thing delivered, and /share passes on briefs
-// and analyses only. A verdict reaches the channel with the daily run or not at
-// all.
+// shareIdeas posts the closer look to the channel on its own, which the daily
+// run does when the brief it would have gone with is already there. It does
+// not go through share and remember: those exist so /share can pass on the
+// last thing delivered, and /share passes on briefs and analyses only. A
+// verdict reaches the channel with the daily run or not at all.
 //
 // Like the brief, a failure here costs the channel and never the owner's copy.
 func (a *App) shareIdeas(ctx context.Context, out outgoing) {

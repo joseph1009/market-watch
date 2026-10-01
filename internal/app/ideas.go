@@ -29,15 +29,14 @@ import (
 // with neither sends nothing. Only companies the watchlists do not follow are
 // shown; the brief covers those.
 //
-// The daily run's closer look starts twenty minutes after the brief (look.go),
-// so the brief is never held up by it and the plan's allowance is not asked
-// for both at once. A brief asked for with /now, or sent with -once, is
-// followed at once, with the reactions alone: the week's themes belong to the
+// The closer look starts as soon as the owner has the brief. After /now, or
+// -once, it has the reactions alone: the week's themes belong to the
 // scheduled run, which the channel reads.
 //
 // It follows the brief to the same places: the owner always, and the channel
 // on the days the brief goes there, which is the scheduled run and -once
-// -share. A brief asked for with /now still keeps both to the owner.
+// -share, in the same post as the brief. A brief asked for with /now still
+// keeps both to the owner.
 //
 // This used to be owner-only, and the change was made deliberately and with
 // the trade understood: verdicts published to other people are advice given to
@@ -71,33 +70,28 @@ const (
 	factWorkers = 4
 )
 
-// look is what the closer look starts from: the brief's articles, whether
-// the channel is reading today, and whether this is the scheduled run, the
-// one the week's themes go with. It is written to the data volume while it
-// waits, so it carries the articles rather than the report, whose citations
-// are not kept on disk.
+// look is what the closer look starts from: the brief's articles, and
+// whether this is the scheduled run, the one the week's themes go with.
 type look struct {
-	Due       time.Time       `json:"due"`
-	Share     bool            `json:"share"`
 	Scheduled bool            `json:"scheduled,omitempty"`
 	Cited     []model.Article `json:"cited"`
 }
 
-func lookFrom(rep model.Report, share, scheduled bool) look {
-	return look{Share: share, Scheduled: scheduled, Cited: rep.Cited}
+func lookFrom(rep model.Report, scheduled bool) look {
+	return look{Scheduled: scheduled, Cited: rep.Cited}
 }
 
-// sendIdeas finds, judges and delivers. Every failure costs this section only:
-// the brief has already arrived. lk.Share says whether the channel gets it
-// too, and carries the value the brief was sent with, so the two never
-// disagree about who is reading today.
-func (a *App) sendIdeas(ctx context.Context, lk look) {
+// sendIdeas finds, judges and delivers to the owner, and returns the
+// channel's copy, which the caller posts with the brief, or nil when there is
+// nothing to post. Every failure costs this section only: the brief has
+// already arrived.
+func (a *App) sendIdeas(ctx context.Context, lk look) *outgoing {
 	if a.Judge == nil || a.MarketStore == nil {
-		return
+		return nil
 	}
 	prefs := a.Prefs()
 	if prefs.ChatID == 0 {
-		return
+		return nil
 	}
 
 	weekly := lk.Scheduled && a.Themes != nil && a.Sorter != nil && a.Researcher != nil &&
@@ -119,7 +113,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	if err != nil {
 		a.Log.Warn("no closer look: Nasdaq's listings could not be read", "error", err)
 		cached.Fail(err)
-		return
+		return nil
 	}
 	backdrop := a.backdrop(ctx)
 	cached.Save("backdrop", backdrop)
@@ -158,7 +152,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	}
 	if picks.Empty() {
 		a.Log.Info("closer look: nothing to show today", "weekly", weekly, "took", time.Since(started).Round(time.Second))
-		return
+		return nil
 	}
 
 	title := "Closer look · " + a.now().In(a.Cfg.DisplayLocation).Format("Mon 2 Jan")
@@ -189,13 +183,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	if err != nil {
 		a.Log.Warn("could not deliver the closer look", "error", err)
 		cached.Fail(err)
-		return
-	}
-
-	// The channel is posted before the verdicts are scored, for the reason the
-	// brief is: the reader's copy should not wait on bookkeeping.
-	if lk.Share {
-		a.shareIdeas(ctx, picksFor(telegram.IdeasOptions{ForChannel: true}))
+		return nil
 	}
 
 	a.recordVerdicts(ctx, shown, charts)
@@ -205,6 +193,8 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 		"reactions", len(picks.Reactions),
 		"messages", len(messages),
 		"took", time.Since(started).Round(time.Second))
+	channel := picksFor(telegram.IdeasOptions{ForChannel: true})
+	return &channel
 }
 
 // following is what the watchlists follow, which the closer look leaves to

@@ -12,7 +12,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 ## What the reader sees
 
-**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L478).
+**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L467).
 
 **Sector, section, watchlist.** The brief's sections, such as chips or banks. Each is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). "Followed" means listed there.
 
@@ -24,7 +24,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **New names in the news.** Companies the day's stories were about that no sector follows. Each ticker is checked against the exchange before it is shown ([discover](../internal/discover/)).
 
-**Worth a closer look, the closer look, recommendations.** The message sent about 20 minutes after the brief, with BUY, HOLD or SELL verdicts on companies no sector follows. It has two parts, *themes* (weekly) and *reactions* (daily). [`sendIdeas`](../internal/app/ideas.go#L94).
+**Worth a closer look, the closer look, recommendations.** The message sent straight after the brief (in the channel, in the same post as the brief), with BUY, HOLD or SELL verdicts on companies no sector follows. It has two parts, *themes* (weekly) and *reactions* (daily). [`sendIdeas`](../internal/app/ideas.go#L88).
 
 **Theme.** A group of companies with one story behind them, such as "AI memory demand". There are up to 3 **popular** themes each week, sorted by Opus from the market's leaders, and up to 2 **early** themes, found by Opus with the web from industries that are starting to turn. [`runThemes`](../internal/app/themes.go#L72).
 
@@ -178,7 +178,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **Data volume, data folder.** Where everything the service keeps lives: `/data` on Fly, `./data` locally (not in git). See the table in [ARCHITECTURE.md, "What lives on disk"](ARCHITECTURE.md#what-lives-on-disk).
 
-**Look, pending look.** The closer look waiting its 20 minutes after the brief, in `pending-look.json` ([look.go](../internal/app/look.go)).
+**Look.** What the closer look starts from: the brief's articles, and whether it is the scheduled run ([ideas.go](../internal/app/ideas.go)). Until 2026-10-01 it waited 20 minutes after the brief, in `pending-look.json`; that wait is gone.
 
 **Market store, panel, series.** The market store is the two years of daily bars on disk, one file per session. A panel is a stretch of them loaded into memory, and a series is one share's row ([market](../internal/market/)).
 
