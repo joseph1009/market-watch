@@ -594,7 +594,7 @@ own, such as your own bots, can be let in as well, by id, comma-separated:
 
 | Setting | May use |
 |---|---|
-| `TELEGRAM_COMMAND_CHATS` | `/analyse`, `/industry`, `/help`, `/stats`, `/scorecard`, `/schedule` |
+| `TELEGRAM_COMMAND_CHATS` | `/analyse`, `/industry`, `/help`, `/stats`, `/usage`, `/scorecard`, `/schedule` |
 | `TELEGRAM_CONTROL_CHATS` | all of those, and `/now`, `/watchlist` and `/sources` |
 
 - Each reply goes to the chat that asked. A `/now` from a control chat is

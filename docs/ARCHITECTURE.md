@@ -80,10 +80,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L769) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L775) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L376) → [`brief(ctx, share: true)`](../internal/app/app.go#L392).
+[`Publish`](../internal/app/app.go#L382) → [`brief(ctx, share: true)`](../internal/app/app.go#L398).
 
 `brief` does three things before any work starts:
 
@@ -92,7 +92,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 - calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L472), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L478), which is the pipeline.
 
 ### 2. Gathering
 
@@ -333,12 +333,12 @@ leaves the closer look to go alone ([`shareIdeas`](../internal/app/channel.go)).
 
 The channel is one-way. Its readers cannot reach `HandleMessage`; the bot takes
 commands from the owner's chat, and from the owner's other chats listed in
-`TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS` ([`needs`](../internal/app/commands.go#L171)
+`TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS` ([`needs`](../internal/app/commands.go#L175)
 says which command takes which).
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L392) starts it as soon as the owner has the
+[`brief`](../internal/app/app.go#L398) starts it as soon as the owner has the
 brief, and posts both to the channel when it is done. Until 2026-10-01 it
 waited twenty minutes after the brief, queued on the data volume; the channel
 then had the brief at once and the closer look as a post of its own.
@@ -444,7 +444,7 @@ fetched within minutes of being served.
   as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
   credential the configuration holds (`config.Secrets`), and the error text
   sent to the chat is scrubbed of the same list;
-- [`app.New`](../internal/app/app.go#L169) builds the service, loading the lists
+- [`app.New`](../internal/app/app.go#L172) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
@@ -464,22 +464,23 @@ writes the watchlist and feed changes made from Telegram, as
 ### The bot loop
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) long-polls `getUpdates` and
-hands each message to [`HandleMessage`](../internal/app/commands.go#L64), which
+hands each message to [`HandleMessage`](../internal/app/commands.go#L66), which
 checks the sender is the owner and routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L198) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L218) | A brief to the owner only; waits for `/share` |
+| `/start` | [`handleStart`](../internal/app/commands.go#L202) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L222) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L520) | Reads a company's filings — below |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L524) | Reads a company's filings — below |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L713) | What recent runs found and did |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L301) | Follow or stop following a company; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L384) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L290) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L247) | Delete the bot's earlier messages |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L717) | What recent runs found and did |
+| `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L305) | Follow or stop following a company; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L388) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L294) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L251) | Delete the bot's earlier messages |
 
 ### `/analyse`
 
@@ -489,7 +490,7 @@ reply, which also lets the answer through in a group, waits ten minutes, and
 is dropped by any command sent instead. An answer that is not shaped like a
 ticker is asked again. `/analyse NVDA` still works in one line.
 
-[`handleAnalyse`](../internal/app/commands.go#L520), under its own budget so it
+[`handleAnalyse`](../internal/app/commands.go#L524), under its own budget so it
 does not inherit whatever the caller's context has left:
 
 1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L222) looks the
@@ -501,7 +502,7 @@ does not inherit whatever the caller's context has left:
    ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
    year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L723) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L727) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -585,14 +586,19 @@ The answerer is normally [`Claude`](../internal/relay/answer.go#L83), which runs
 system prompt in a temp file (Windows caps a command line at 32K characters),
 and the working directory set to the run's own so the call sees no `CLAUDE.md`
 and no project settings. `ANTHROPIC_API_KEY` is stripped from the child
-environment ([`childEnv`](../internal/relay/answer.go#L268)) so the subscription is
-used rather than API credit.
+environment ([`childEnv`](../internal/relay/answer.go#L382)) so the subscription is
+used rather than API credit. Its output is Claude Code's stream
+(`--output-format stream-json`), read by [`parseStream`](../internal/relay/answer.go#L225):
+the result, and the plan's standing (`rate_limit_event`: each window's use and
+when it resets), which `OnLimits` hands to `/usage`. When the last reading is
+more than five minutes old, `/usage` takes a new one with
+[`CheckLimits`](../internal/relay/answer.go#L291), a one-word call to Haiku.
 
 Tools are off for every stage except `scout`, `research` and `review`, which get
 web search and web fetch and nothing else — no shell, no files, no MCP. A headline in a feed should
 not be able to steer a model into running a command.
 
-The alternative answerer, [`Session`](../internal/relay/answer.go#L302), waits for
+The alternative answerer, [`Session`](../internal/relay/answer.go#L416), waits for
 a person to write the reply file. That is how a run is watched or answered by
 hand.
 
@@ -676,6 +682,10 @@ instead; `asTicker` reads a ticker as people type it.
 **[research.go](../internal/app/research.go)** — what `/analyse` and the closer
 look read beside the accounts: `addExpectations`, `addRelease`, `backdrop`, and
 `searchCompany`, `/analyse`'s two searches.
+
+**[usage.go](../internal/app/usage.go)** — `/usage`. `planWatch` keeps the plan's
+latest standing from any call; `planNow` takes a new reading when it is more
+than five minutes old; `planText` and `searchText` write the two blocks.
 
 **[channel.go](../internal/app/channel.go)** — the channel for other readers.
 `remember` and `latest` hold the last delivery in memory; `share` posts it once,
@@ -1101,7 +1111,9 @@ context carries; `Run.Note` maintains the ledger. `Stage` and
 `Plain` adapt a relay to the `Completer` interfaces the other packages expect.
 **[answer.go](../internal/relay/answer.go)** — who answers. `Claude.Answer` runs
 `claude -p`; `DefaultModels` maps every stage to Opus 5.5 (`claude-opus-5-5`);
-`webStages` are the two stages with web search; `childEnv` strips the API key. `Session.Answer` waits for
+`webStages` are the stages with web search; `childEnv` strips the API key;
+`parseStream` reads the result and the plan's `Limits` from the stream;
+`CheckLimits` takes a reading for `/usage`. `Session.Answer` waits for
 a person.
 
 ### internal/history

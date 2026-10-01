@@ -297,7 +297,7 @@ func TestClaudeRunsHeadlessWithTheStagesModelAndNoTools(t *testing.T) {
 		t.Errorf("stdin = %q, want the request", got.Stdin)
 	}
 	joined := strings.Join(got.Args, " ")
-	for _, want := range []string{"-p", "--disallowedTools *", "--no-session-persistence", "--output-format json"} {
+	for _, want := range []string{"-p", "--disallowedTools *", "--no-session-persistence", "--output-format stream-json --verbose"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("args are missing %q: %v", want, got.Args)
 		}
@@ -424,7 +424,9 @@ func TestLiveClaude(t *testing.T) {
 	if os.Getenv("LIVE_CLAUDE") == "" {
 		t.Skip("set LIVE_CLAUDE=1 to ask the installed Claude Code a question")
 	}
-	r := &Relay{Root: t.TempDir(), Answer: Claude{}}
+	var seen []Limits
+	claude := Claude{OnLimits: func(l Limits) { seen = append(seen, l) }}
+	r := &Relay{Root: t.TempDir(), Answer: claude}
 	ctx, run, err := r.Begin(context.Background(), "live-check")
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
@@ -442,6 +444,14 @@ func TestLiveClaude(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(text), "1|") {
 		t.Errorf("reply is not in the requested form: %q", text)
 	}
+	if len(seen) != 1 || len(seen[0].Windows) == 0 {
+		t.Errorf("the call reported limits %+v, want the plan's windows", seen)
+	}
+	limits, err := claude.CheckLimits(context.Background())
+	if err != nil || len(limits.Windows) == 0 {
+		t.Errorf("CheckLimits = %+v, %v", limits, err)
+	}
+	t.Logf("limits: %+v", limits)
 }
 
 // A run the plan's limit stops still calls itself a success and puts the
@@ -510,6 +520,34 @@ func TestClaudeThatIsNotInstalledSaysSo(t *testing.T) {
 	_, err := r.Stage(Brief).Complete(context.Background(), "s", "p")
 	if err == nil || !strings.Contains(err.Error(), "not installed") {
 		t.Errorf("err = %v, want it to say Claude Code is missing", err)
+	}
+}
+
+// Every call reports the plan's limits, which /usage shows: the stream's
+// rate_limit_event, each window's use and when it resets.
+func TestEachCallReportsThePlansLimits(t *testing.T) {
+	bin := fakeClaude(t)
+	t.Setenv("FAKE_CLAUDE_RECORD", "")
+	t.Setenv("FAKE_CLAUDE_MODE", "ok")
+
+	var got []Limits
+	r := &Relay{Root: t.TempDir(), Answer: Claude{Bin: bin, OnLimits: func(l Limits) { got = append(got, l) }}}
+	if _, _, err := r.Plain(Brief).Complete(context.Background(), "s", "p"); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("limits reported %d times, want once", len(got))
+	}
+	l := got[0]
+	if l.Status != "allowed" || l.Overage != "rejected" || l.Windows["five_hour"].Utilization != 0.43 ||
+		l.Windows["seven_day"].Resets().Unix() != 1791345600 {
+		t.Errorf("limits = %+v", l)
+	}
+
+	got = nil
+	checked, err := Claude{Bin: bin, OnLimits: func(l Limits) { got = append(got, l) }}.CheckLimits(context.Background())
+	if err != nil || checked.Windows["seven_day"].Utilization != 0.21 || len(got) != 1 {
+		t.Errorf("CheckLimits = %+v, %v; reported %d", checked, err, len(got))
 	}
 }
 

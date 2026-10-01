@@ -32,6 +32,7 @@ const helpText = `<b>📊 Market Watch</b>
 /sources on|off &lt;id&gt; — enable or disable a feed
 /schedule — when the next brief is due
 /stats — what recent briefs found and did
+/usage — how much of the Claude plan and the search credits is left
 /share — post the latest brief or analysis to the channel
 /scorecard — how past buy, hold and sell verdicts have done
 /clear — remove the bot's earlier messages from this chat
@@ -51,6 +52,7 @@ func BotCommands() []telegram.Command {
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "stats", Description: "What recent briefs found and did"},
+		{Command: "usage", Description: "How much of the Claude plan and the search credits is left"},
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
 		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
@@ -119,6 +121,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleSchedule(ctx, msg)
 	case "stats":
 		err = a.handleStats(ctx, msg)
+	case "usage", "credits":
+		err = a.handleUsage(ctx, msg)
 	case "share":
 		err = a.handleShare(ctx, msg)
 	case "scorecard":
@@ -145,7 +149,7 @@ type access int
 
 const (
 	noAccess      access = iota
-	commandAccess        // TELEGRAM_COMMAND_CHATS: the commands that only answer
+	commandAccess        // TELEGRAM_COMMAND_CHATS: the commands that only answer, /usage among them
 	controlAccess        // TELEGRAM_CONTROL_CHATS: also /now, /watchlist, /sources
 	ownerAccess          // the owner's chat: everything
 )

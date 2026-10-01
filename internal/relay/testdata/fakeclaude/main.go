@@ -44,14 +44,18 @@ func main() {
 		_ = os.WriteFile(path, record, 0o644)
 	}
 
+	// The stream opens as Claude Code's does, with the plan's limits.
+	fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1790849400,"rateLimitType":"five_hour","overageStatus":"rejected","unifiedWindows":{"five_hour":{"utilization":0.43,"resetsAt":1790849400},"seven_day":{"utilization":0.21,"resetsAt":1791345600}}}}`)
+	fmt.Println(`{"type":"system","subtype":"init"}`)
+
 	switch os.Getenv("FAKE_CLAUDE_MODE") {
 	case "error":
-		fmt.Print(`{"result":"Not logged in · Please run /login","is_error":true,"subtype":"error_during_execution"}`)
+		fmt.Print(`{"type":"result","result":"Not logged in · Please run /login","is_error":true,"subtype":"error_during_execution"}`)
 		os.Exit(1)
 	case "limit":
 		// A run stopped by the plan's limit: the reason is in the result, but
 		// the run still calls itself a success and exits 1.
-		fmt.Print(`{"result":"You've hit your session limit · resets 2:40am","is_error":false,"subtype":"success"}`)
+		fmt.Print(`{"type":"result","result":"You've hit your session limit · resets 2:40am","is_error":false,"subtype":"success"}`)
 		os.Exit(1)
 	case "crash":
 		fmt.Fprint(os.Stderr, "unknown option --frobnicate")
@@ -60,6 +64,7 @@ func main() {
 		time.Sleep(30 * time.Second)
 	default:
 		out, _ := json.Marshal(map[string]any{
+			"type":     "result",
 			"result":   "answered: " + string(stdin),
 			"is_error": false,
 			"subtype":  "success",

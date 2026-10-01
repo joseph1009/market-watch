@@ -155,6 +155,9 @@ type App struct {
 	lastMu sync.Mutex
 	last   *delivery
 
+	// plan is the Claude plan's latest standing, for /usage. See usage.go.
+	plan *planWatch
+
 	// asked is the question each chat was last asked and not yet answered,
 	// such as /analyse's "which company?". See ask.go.
 	askMu sync.Mutex
@@ -182,12 +185,15 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
-	rel := newRelay(cfg, log)
+	// Every call to Claude Code reports the plan's standing, kept for /usage.
+	plan := &planWatch{}
+	rel := newRelay(cfg, log, plan.note)
 
 	a := &App{
 		Cfg:   cfg,
 		Log:   log,
 		Relay: rel,
+		plan:  plan,
 		Cache: &runcache.Cache{
 			Root:    filepath.Join(cfg.DataDir, "cache"),
 			Secrets: cfg.Secrets(),
@@ -901,14 +907,15 @@ func companyNames(groups []model.Group) map[string]string {
 
 // newRelay builds the relay the service's model calls go through, answered as
 // the configuration says: by Claude Code headless, or by a person.
-func newRelay(cfg *config.Config, log *slog.Logger) *relay.Relay {
+func newRelay(cfg *config.Config, log *slog.Logger, onLimits func(relay.Limits)) *relay.Relay {
 	note := func(format string, args ...any) {
 		log.Info("relay", "detail", fmt.Sprintf(format, args...))
 	}
 	var answer relay.Answerer = relay.Claude{
-		Bin:     cfg.ClaudeBin,
-		Models:  cfg.StageModels,
-		Timeout: cfg.CallTimeout,
+		Bin:      cfg.ClaudeBin,
+		Models:   cfg.StageModels,
+		Timeout:  cfg.CallTimeout,
+		OnLimits: onLimits,
 	}
 	if cfg.RelayAnswer == config.AnswerSession {
 		answer = relay.Session{Log: note}

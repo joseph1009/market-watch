@@ -90,6 +90,10 @@ type Claude struct {
 
 	// Timeout bounds one call. Zero means DefaultCallTimeout.
 	Timeout time.Duration
+
+	// OnLimits, when set, is told the plan's standing each time a call
+	// reports it, which is what /usage shows.
+	OnLimits func(Limits)
 }
 
 // strippedEnv are variables a child process must not inherit. Both outrank the
@@ -129,7 +133,9 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 		// Nothing written to the session history: each call stands alone, and
 		// a year of them would otherwise pile up under ~/.claude.
 		"--no-session-persistence",
-		"--output-format", "json",
+		// The stream rather than one JSON object: only the stream carries the
+		// plan's limits (rate_limit_event), which /usage reports.
+		"--output-format", "stream-json", "--verbose",
 	}
 	if webStages[q.Stage] {
 		// Exactly these two tools exist for the call, and no MCP server is
@@ -163,8 +169,11 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 		return Reply{}, fmt.Errorf("%s: no answer from %s within %s", q.Stage, modelName, c.timeout())
 	}
 
-	var out result
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+	out, limits, err := parseStream(stdout.Bytes())
+	if limits != nil && c.OnLimits != nil {
+		c.OnLimits(*limits)
+	}
+	if err != nil {
 		// Claude Code reports a failure inside the run as JSON on stdout; one
 		// that never started -- a bad flag, a crash -- leaves only stderr.
 		if runErr != nil {
@@ -208,6 +217,111 @@ type result struct {
 		CacheReadInputTokens int64 `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 	ModelUsage map[string]json.RawMessage `json:"modelUsage"`
+}
+
+// parseStream reads Claude Code's stream: one JSON object a line, of which
+// the result and the plan's limits are wanted. A single JSON object, as
+// --output-format json gives, is read as the result.
+func parseStream(stdout []byte) (result, *Limits, error) {
+	var (
+		out    result
+		limits *Limits
+		found  bool
+	)
+	for _, line := range bytes.Split(stdout, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var head struct {
+			Type string          `json:"type"`
+			Info json.RawMessage `json:"rate_limit_info"`
+		}
+		if json.Unmarshal(line, &head) != nil {
+			continue
+		}
+		switch head.Type {
+		case "rate_limit_event":
+			var l Limits
+			if json.Unmarshal(head.Info, &l) == nil {
+				limits = &l
+			}
+		case "result", "":
+			if json.Unmarshal(line, &out) == nil {
+				found = true
+			}
+		}
+	}
+	if !found {
+		return result{}, limits, errors.New("no result in its output")
+	}
+	return out, limits, nil
+}
+
+// Limits is the plan's standing as Claude Code reports it with a call: whether
+// calls are allowed, and how much of each window is used.
+type Limits struct {
+	// Status is "allowed", "allowed_warning" near a limit, or "rejected".
+	Status string `json:"status"`
+
+	// Type names the window that limits now, such as "five_hour".
+	Type string `json:"rateLimitType"`
+
+	// Windows is each window's use, keyed "five_hour", "seven_day" and so on.
+	Windows map[string]Window `json:"unifiedWindows"`
+
+	// Overage is whether usage past the plan is allowed: "rejected" when the
+	// plan has none.
+	Overage string `json:"overageStatus"`
+}
+
+// Window is one limit window: the share of it used, usually 0 to 1, and when
+// it starts again.
+type Window struct {
+	Utilization float64 `json:"utilization"`
+	ResetsAt    int64   `json:"resetsAt"`
+}
+
+// Resets is when the window starts again.
+func (w Window) Resets() time.Time { return time.Unix(w.ResetsAt, 0) }
+
+// CheckLimits asks the cheapest model for one word, for the limits that come
+// back with the answer: a few hundred tokens of Haiku, where waiting for the
+// next real call could mean a day-old figure.
+func (c Claude) CheckLimits(ctx context.Context) (Limits, error) {
+	dir, err := os.MkdirTemp("", "limits")
+	if err != nil {
+		return Limits{}, err
+	}
+	defer os.RemoveAll(dir)
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, c.bin(), "-p",
+		"--model", "haiku",
+		"--system-prompt", "Answer with one word.",
+		"--no-session-persistence",
+		"--output-format", "stream-json", "--verbose",
+		"--disallowedTools", "*",
+		"--settings", noThinking)
+	cmd.Dir = dir
+	cmd.Env = childEnv()
+	cmd.Stdin = strings.NewReader("Say ok.")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	runErr := cmd.Run()
+
+	_, limits, _ := parseStream(stdout.Bytes())
+	if limits != nil {
+		if c.OnLimits != nil {
+			c.OnLimits(*limits)
+		}
+		return *limits, nil
+	}
+	if runErr != nil {
+		return Limits{}, fmt.Errorf("claude failed: %v: %s", runErr, tail(stderr.String()))
+	}
+	return Limits{}, errors.New("claude reported no limits")
 }
 
 // resolvedModel is the full model name the alias became, when the output says
