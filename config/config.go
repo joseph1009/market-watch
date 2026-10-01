@@ -58,14 +58,24 @@ const (
 // Secrets live here; user-editable preferences live in Prefs on the data
 // volume, because the bot rewrites those at runtime.
 type Config struct {
-	TelegramBotToken string
-	TelegramChatID   int64 // 0 until /start records it into Prefs
+	TelegramBotToken     string
+	TelegramMasterChatID int64 // the owner's chat; 0 until /start records it into Prefs
 
 	// TelegramChannelID is a channel the bot is an admin of, where the daily
 	// brief is posted for other people to read, and where /share posts a brief
 	// or an analysis on request. 0 means no channel. Readers of a channel can
 	// only read: the bot still takes commands from the owner's chat alone.
 	TelegramChannelID int64
+
+	// TelegramCommandChats may send commands as well as the owner's chat:
+	// /analyse, /industry, /help and the others that only answer. Each reply
+	// goes back to the chat that asked; the daily brief, the closer look and
+	// the failure reports still go to the owner alone.
+	TelegramCommandChats []int64
+
+	// TelegramControlChats may do all that, and also run /now and change the
+	// watchlist and the feeds. A brief asked for from one is delivered there.
+	TelegramControlChats []int64
 
 	// Every model call goes through the relay: written to a file under
 	// RelayDir, answered, and the answer written beside it. RelayAnswer says who
@@ -254,10 +264,21 @@ func Load() (*Config, error) {
 	if cfg.ReportAt, err = ParseClockTime(envOr("REPORT_AT", DefaultReportAt)); err != nil {
 		return nil, fmt.Errorf("parse REPORT_AT: %w", err)
 	}
-	if cfg.TelegramChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
+	// TELEGRAM_CHAT_ID is the earlier name, still read so a machine whose
+	// secrets predate the rename keeps its owner.
+	if cfg.TelegramMasterChatID, err = envInt64("TELEGRAM_CHAT_ID", 0); err != nil {
+		return nil, err
+	}
+	if cfg.TelegramMasterChatID, err = envInt64("TELEGRAM_MASTER_CHAT_ID", cfg.TelegramMasterChatID); err != nil {
 		return nil, err
 	}
 	if cfg.TelegramChannelID, err = envInt64("TELEGRAM_CHANNEL_ID", 0); err != nil {
+		return nil, err
+	}
+	if cfg.TelegramCommandChats, err = envInt64s("TELEGRAM_COMMAND_CHATS"); err != nil {
+		return nil, err
+	}
+	if cfg.TelegramControlChats, err = envInt64s("TELEGRAM_CONTROL_CHATS"); err != nil {
 		return nil, err
 	}
 	switch links := strings.ToLower(envOr("SOURCE_LINKS", SourceLinksShort)); links {
@@ -454,6 +475,23 @@ func envInt64(key string, fallback int64) (int64, error) {
 		return 0, fmt.Errorf("%s: want an integer, got %q", key, raw)
 	}
 	return v, nil
+}
+
+// envInt64s reads a comma-separated list of integers, such as chat ids.
+func envInt64s(key string) ([]int64, error) {
+	var out []int64
+	for _, field := range strings.Split(os.Getenv(key), ",") {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		v, err := strconv.ParseInt(field, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%s: want comma-separated integers, got %q", key, field)
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 func envDuration(key string, fallback time.Duration) (time.Duration, error) {

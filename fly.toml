@@ -9,9 +9,12 @@
 # Secrets, set with `fly secrets set` or scripts/fly-deploy.sh, never here:
 #   TELEGRAM_BOT_TOKEN       from @BotFather
 #   CLAUDE_CODE_OAUTH_TOKEN  from `claude setup-token` on your own machine
-#   TELEGRAM_CHAT_ID         the chat the brief goes to, and the only one the
-#                            bot will answer
+#   TELEGRAM_MASTER_CHAT_ID  the chat the brief goes to, and the owner's: the
+#                            only one with every command
 #   TELEGRAM_CHANNEL_ID      optional: a channel the brief is also posted to
+#   TELEGRAM_COMMAND_CHATS   optional: other chats that may send commands
+#   TELEGRAM_CONTROL_CHATS   optional: those that may also /now, /watchlist,
+#                            /sources
 #   USER_AGENT               "Market Watch you@example.com"; the SEC requires it
 #   FRED_API_KEY             market levels
 #   FINNHUB_API_KEY          share prices and company news

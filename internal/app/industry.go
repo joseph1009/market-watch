@@ -74,8 +74,11 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 		return err
 	}
 	// /share posts the channel's copy, which says a model wrote it.
-	channel := industryFor(telegram.IdeasOptions{ForChannel: true})
-	a.rememberSent("the "+exp.Topic+" industry", owner, &channel)
+	// Only what the owner was sent: /share passes on the owner's latest.
+	if msg.Chat.ID == a.Prefs().ChatID {
+		channel := industryFor(telegram.IdeasOptions{ForChannel: true})
+		a.rememberSent("the "+exp.Topic+" industry", owner, &channel)
+	}
 	a.Log.Info("industry explained", "topic", exp.Topic, "companies", len(companies),
 		"input_tokens", exp.Usage.InputTokens, "output_tokens", exp.Usage.OutputTokens)
 	return nil

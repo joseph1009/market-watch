@@ -80,10 +80,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L750) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L775) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L364) → [`brief(ctx, share: true)`](../internal/app/app.go#L378).
+[`Publish`](../internal/app/app.go#L372) → [`brief(ctx, share: true)`](../internal/app/app.go#L387).
 
 `brief` does three things before any work starts:
 
@@ -92,7 +92,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 - calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L465), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L478), which is the pipeline.
 
 ### 2. Gathering
 
@@ -327,11 +327,13 @@ channel (with pages on, the same summary and its own copy of the page), before t
 of web searches whose result they will never see.
 
 The channel is one-way. Its readers cannot reach `HandleMessage`; the bot takes
-commands from the owner's chat alone.
+commands from the owner's chat, and from the owner's other chats listed in
+`TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS` ([`needs`](../internal/app/commands.go#L163)
+says which command takes which).
 
 ### 8. Worth a closer look
 
-The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L378)
+The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L387)
 queues it ([`queueLook`](../internal/app/look.go#L40)) in `pending-look.json` on the
 data volume, due `LookDelay` (twenty minutes) later, and
 [`RunLooks`](../internal/app/look.go#L73), which runs beside the scheduler and the
@@ -428,7 +430,7 @@ fetched within minutes of being served.
 [`main`](../cmd/market-watch/main.go#L27) parses five flags — `--once`, `--share`,
 `--check`, `--clear`, `--fold` — and calls [`run`](../cmd/market-watch/main.go#L57), which:
 
-- [`config.Load`](../config/config.go#L190) reads the environment (and
+- [`config.Load`](../config/config.go#L200) reads the environment (and
   `.env` via [`LoadDotEnv`](../config/dotenv.go#L22)), reporting every
   missing variable at once rather than one per run;
 - [`config.LoadPrompts`](../config/prompts.go#L61) checks the prompts file
@@ -460,26 +462,26 @@ writes the watchlist and feed changes made from Telegram, as
 ### The bot loop
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) long-polls `getUpdates` and
-hands each message to [`HandleMessage`](../internal/app/commands.go#L63), which
+hands each message to [`HandleMessage`](../internal/app/commands.go#L64), which
 checks the sender is the owner and routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L141) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L161) | A brief to the owner only; waits for `/share` |
+| `/start` | [`handleStart`](../internal/app/commands.go#L190) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L210) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L179) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L463) | Reads a company's filings — below |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L512) | Reads a company's filings — below |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L478) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L647) | What recent runs found and did |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L244) | Follow or stop following a company; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L327) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L233) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L190) | Delete the bot's earlier messages |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L699) | What recent runs found and did |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L293) | Follow or stop following a company; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L376) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L282) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L239) | Delete the bot's earlier messages |
 
 ### `/analyse <ticker>`
 
-[`handleAnalyse`](../internal/app/commands.go#L463), under its own budget so it
+[`handleAnalyse`](../internal/app/commands.go#L512), under its own budget so it
 does not inherit whatever the caller's context has left:
 
 1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L222) looks the
@@ -491,7 +493,7 @@ does not inherit whatever the caller's context has left:
    ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
    year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L657) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L709) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -1147,7 +1149,7 @@ down from Fly, keeping what they replace in `data/.backup/`.
 ## Configuration
 
 Everything is environment variables, read once by
-[`config.Load`](../config/config.go#L190). The deployed values are in
+[`config.Load`](../config/config.go#L200). The deployed values are in
 [fly.toml](../fly.toml); the secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](../scripts/fly-deploy.sh) without being printed.
 [.env.example](../.env.example) documents every one. What the service follows

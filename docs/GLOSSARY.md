@@ -12,7 +12,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 ## What the reader sees
 
-**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L465).
+**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L478).
 
 **Sector, section, watchlist.** The brief's sections, such as chips or banks. Each is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). "Followed" means listed there.
 
@@ -34,7 +34,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 **Earlier picks.** The last 8 weeks' theme picks, listed under the week's themes with how each has done since.
 
-**Owner.** The one Telegram chat the bot answers: the first chat to send `/start`. Commands from any other chat are ignored.
+**Owner.** The Telegram chat the brief goes to and the only one with every command: `TELEGRAM_MASTER_CHAT_ID`, or the first chat to send `/start`. The owner's other chats in `TELEGRAM_COMMAND_CHATS` may use the commands that only answer, and those in `TELEGRAM_CONTROL_CHATS` also `/now`, `/watchlist` and `/sources`. Commands from any other chat are ignored.
 
 **Channel.** A Telegram channel other people can read but not write to (`TELEGRAM_CHANNEL_ID`). The daily brief and its closer look are posted there; `/share` posts the last brief or analysis.
 

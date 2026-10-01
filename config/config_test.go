@@ -126,3 +126,49 @@ func TestSecretsNameEveryCredential(t *testing.T) {
 		}
 	}
 }
+
+// The chats besides the owner's that may send commands are lists, and a typo
+// in one stops the service rather than quietly letting nobody in.
+func TestTheCommandChatsAreLists(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "123456:token")
+	t.Setenv("TELEGRAM_COMMAND_CHATS", " 111, -100222 ,")
+	t.Setenv("TELEGRAM_CONTROL_CHATS", "333")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.TelegramCommandChats, []int64{111, -100222}) {
+		t.Errorf("TelegramCommandChats = %v, want [111 -100222]", cfg.TelegramCommandChats)
+	}
+	if !slices.Equal(cfg.TelegramControlChats, []int64{333}) {
+		t.Errorf("TelegramControlChats = %v, want [333]", cfg.TelegramControlChats)
+	}
+
+	t.Setenv("TELEGRAM_CONTROL_CHATS", "333,@mybot")
+	if _, err := Load(); err == nil {
+		t.Error("Load accepted a chat id that is not a number")
+	}
+}
+
+// The owner's chat was TELEGRAM_CHAT_ID before it was TELEGRAM_MASTER_CHAT_ID.
+// A machine whose secrets predate the rename keeps its owner, and the new name
+// wins where both are set.
+func TestTheMasterChatKeepsItsEarlierName(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "123456:token")
+	t.Setenv("TELEGRAM_CHAT_ID", "4242")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TelegramMasterChatID != 4242 {
+		t.Errorf("TelegramMasterChatID = %d, want 4242 from TELEGRAM_CHAT_ID", cfg.TelegramMasterChatID)
+	}
+
+	t.Setenv("TELEGRAM_MASTER_CHAT_ID", "777")
+	if cfg, err = Load(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TelegramMasterChatID != 777 {
+		t.Errorf("TelegramMasterChatID = %d, want 777 from TELEGRAM_MASTER_CHAT_ID", cfg.TelegramMasterChatID)
+	}
+}

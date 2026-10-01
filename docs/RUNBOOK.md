@@ -584,6 +584,34 @@ Setting one up:
 5. `--check` says `channel ok` with the channel's title, or says what is
    missing.
 
+## Other chats that may send commands
+
+The owner's chat (`TELEGRAM_MASTER_CHAT_ID`) is where the brief, the closer look and
+every failure report go, and it alone has every command. Other chats of your
+own, such as your own bots, can be let in as well, by id, comma-separated:
+
+| Setting | May use |
+|---|---|
+| `TELEGRAM_COMMAND_CHATS` | `/analyse`, `/industry`, `/help`, `/stats`, `/scorecard`, `/schedule` |
+| `TELEGRAM_CONTROL_CHATS` | all of those, and `/now`, `/watchlist` and `/sources` |
+
+- Each reply goes to the chat that asked. A `/now` from a control chat is
+  written and delivered there alone: your copy of the day's brief, the
+  channel, the closer look and what the next brief counts as already covered
+  are left as they were.
+- `/start`, `/clear` and `/share` stay the owner's. An analysis or industry
+  another chat asked for is not what `/share` posts.
+- A listed chat that sends a command it may not use is told where it works.
+  Any chat not listed still gets no reply at all.
+- These must be your own chats. Every command runs on your Claude plan, which
+  is for your own use only (see "A channel for other readers").
+- A bot only receives another bot's messages if both have turned on
+  bot-to-bot messaging (Telegram's Bot API 10.0, May 2026).
+
+Put the ids in `.env` and on Fly run `scripts/fly-deploy.sh` again, which sends
+them as secrets. A bot's chat id with this one is the bot's own user id: the
+number before the colon in its token.
+
 ## Deploying to Fly
 
 The image carries Claude Code, installed from Anthropic's signed apt
@@ -593,8 +621,9 @@ repository, and runs every call through it as on a desktop. It logs in with
 1. Install flyctl and log in: `fly auth login`.
 2. On your own machine, run `claude setup-token` and put the token in `.env` as
    `CLAUDE_CODE_OAUTH_TOKEN=...`.
-3. Make sure `.env` has `TELEGRAM_CHAT_ID`. It pins the one chat the bot will
-   answer; without it, whoever sends `/start` first becomes the owner.
+3. Make sure `.env` has `TELEGRAM_MASTER_CHAT_ID` (`TELEGRAM_CHAT_ID`, its
+   earlier name, also works). It pins the owner's chat; without it, whoever
+   sends `/start` first becomes the owner.
 4. Stop any copy of the service running elsewhere. Two copies polling one bot
    token fight over every message, and two schedulers send two briefs. A local
    `--once` or `LIVE_BRIEF` run is fine; `market-watch` left running is not,

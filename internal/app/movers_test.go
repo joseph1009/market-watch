@@ -115,7 +115,7 @@ func TestABriefPricesTheWatchlistAndSearchesForTheMover(t *testing.T) {
 	}
 	a.Runs = runs
 
-	if _, err := a.sendReport(context.Background()); err != nil {
+	if _, err := a.sendReport(context.Background(), 0); err != nil {
 		t.Fatalf("sendReport: %v", err)
 	}
 

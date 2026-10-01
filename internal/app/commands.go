@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,13 +67,23 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		return // ordinary chatter, not addressed to the bot
 	}
 
-	// Only the owner's chat is answered. The bot is public -- anyone can find it
-	// by name and send it a command -- and every one that writes something
-	// draws on the owner's Claude subscription, which is the owner's alone to
-	// use. Once a chat is registered, a command from any other chat is dropped
+	// Only the owner's chat and the chats the owner listed are answered. The bot
+	// is public -- anyone can find it by name and send it a command -- and every
+	// one that writes something draws on the owner's Claude subscription, which
+	// is the owner's alone to give out. A command from any other chat is dropped
 	// without a reply, so the bot does not even confirm it is listening.
-	if owner := a.Prefs().ChatID; owner != 0 && msg.Chat.ID != owner {
+	has, want := a.accessOf(msg.Chat.ID), needs(command)
+	if has == noAccess {
 		a.Log.Warn("ignored a command from another chat", "command", command, "chat", msg.Chat.ID)
+		return
+	}
+	if has < want {
+		a.Log.Warn("refused a command", "command", command, "chat", msg.Chat.ID)
+		where := "the owner's chat"
+		if want == controlAccess {
+			where += " and the control chats"
+		}
+		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf("/%s works in %s only.", escape(command), where))
 		return
 	}
 
@@ -119,6 +130,44 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
 		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
 	}
+}
+
+// access is what a chat may ask of the bot, least first.
+type access int
+
+const (
+	noAccess      access = iota
+	commandAccess        // TELEGRAM_COMMAND_CHATS: the commands that only answer
+	controlAccess        // TELEGRAM_CONTROL_CHATS: also /now, /watchlist, /sources
+	ownerAccess          // the owner's chat: everything
+)
+
+// accessOf is what one chat may do. Before anyone owns the bot, every chat is
+// treated as the owner, so the first to /start becomes it.
+func (a *App) accessOf(chat int64) access {
+	owner := a.Prefs().ChatID
+	switch {
+	case owner == 0 || chat == owner:
+		return ownerAccess
+	case slices.Contains(a.Cfg.TelegramControlChats, chat):
+		return controlAccess
+	case slices.Contains(a.Cfg.TelegramCommandChats, chat):
+		return commandAccess
+	}
+	return noAccess
+}
+
+// needs is the least access a command takes. /start would move the daily
+// brief, /clear and /share act on the owner's deliveries, and the control
+// commands spend the most or change what everyone reads.
+func needs(command string) access {
+	switch command {
+	case "start", "clear", "share":
+		return ownerAccess
+	case "now", "watchlist", "sources":
+		return controlAccess
+	}
+	return commandAccess
 }
 
 // splitCommand parses "/watchlist add semis-ai NVDA" into its parts. Telegram
@@ -174,7 +223,7 @@ func (a *App) handleNow(ctx context.Context, msg telegram.Message) error {
 			return err
 		}
 	}
-	return a.SendReport(ctx)
+	return a.SendReportTo(ctx, msg.Chat.ID)
 }
 
 // DefaultSweepWindow is how many message ids back /clear reaches. Roughly a
@@ -560,8 +609,11 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	}
 	// /share posts the channel's copy, whose verdict carries the warning a
 	// reader there needs.
-	channel := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true})
-	a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
+	// Only what the owner was sent: /share passes on the owner's latest.
+	if msg.Chat.ID == a.Prefs().ChatID {
+		channel := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true})
+		a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
+	}
 	a.recordAnalysis(snapshot, verdict)
 	return nil
 }

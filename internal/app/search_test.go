@@ -139,7 +139,7 @@ func TestABriefCarriesSearchResultsAndRecordsThem(t *testing.T) {
 	}
 	a.Runs = runs
 
-	done, err := a.sendReport(context.Background())
+	done, err := a.sendReport(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("sendReport: %v", err)
 	}

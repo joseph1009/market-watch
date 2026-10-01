@@ -170,8 +170,8 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 	// The chat can be pinned by environment for a first deployment; otherwise
 	// /start records it. The stored value wins once set, so redeploying with a
 	// stale variable cannot silently redirect the brief.
-	if prefs.ChatID == 0 && cfg.TelegramChatID != 0 {
-		prefs.ChatID = cfg.TelegramChatID
+	if prefs.ChatID == 0 && cfg.TelegramMasterChatID != 0 {
+		prefs.ChatID = cfg.TelegramMasterChatID
 		if err := prefs.Save(cfg.PrefsPath()); err != nil {
 			return nil, err
 		}
@@ -353,7 +353,15 @@ var ErrNoChat = errors.New("no chat configured: send /start to the bot")
 // SendReport runs the whole pipeline and delivers the result to the owner:
 // the brief, and after it the companies worth a closer look.
 func (a *App) SendReport(ctx context.Context) error {
-	return a.brief(ctx, false, false)
+	return a.brief(ctx, 0, false, false)
+}
+
+// SendReportTo writes a brief for a chat other than the owner's, a control
+// chat that sent /now, and delivers it there alone. Nothing the owner has is
+// touched: their copy of the day's brief, the channel, the closer look, and
+// what tomorrow's brief counts as already covered all stay as they were.
+func (a *App) SendReportTo(ctx context.Context, chat int64) error {
+	return a.brief(ctx, chat, false, false)
 }
 
 // Publish sends the brief to the owner, then the same brief to the channel if
@@ -362,20 +370,21 @@ func (a *App) SendReport(ctx context.Context) error {
 // LookDelay later (publishScheduled). A channel that refuses either is reported to the
 // owner rather than returned, since the owner's copy arrived.
 func (a *App) Publish(ctx context.Context) error {
-	return a.brief(ctx, true, false)
+	return a.brief(ctx, 0, true, false)
 }
 
 // publishScheduled is the daily run: Publish, with the closer look queued for
 // LookDelay after the brief, which RunLooks then sends.
 func (a *App) publishScheduled(ctx context.Context) error {
-	return a.brief(ctx, true, true)
+	return a.brief(ctx, 0, true, true)
 }
 
 // brief is one whole run. The channel gets the brief before the research
 // starts, so readers are not kept waiting on minutes of web searches whose
 // result they will never see. With later, the closer look is queued for
-// LookDelay's time instead of run now.
-func (a *App) brief(ctx context.Context, share, later bool) (err error) {
+// LookDelay's time instead of run now. A brief sent to another chat (to is
+// neither 0 nor the owner's) ends once delivered.
+func (a *App) brief(ctx context.Context, to int64, share, later bool) (err error) {
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
@@ -397,12 +406,12 @@ func (a *App) brief(ctx context.Context, share, later bool) (err error) {
 		a.Log.Info("relay run", "dir", run.Dir)
 	}
 
-	done, err := a.sendReport(ctx)
+	done, err := a.sendReport(ctx, to)
 	if err != nil {
 		return err
 	}
-	if done == nil {
-		return nil // a day with no news: nothing to share or look into
+	if done == nil || done.elsewhere {
+		return nil // a day with no news, or another chat's: nothing to share or look into
 	}
 	if share {
 		a.shareBrief(ctx, done.sent)
@@ -458,14 +467,22 @@ func joinMessages(messages []string) string {
 type briefDone struct {
 	sent *delivery
 	rep  model.Report
+
+	// elsewhere is a brief another chat asked for, which went there alone.
+	elsewhere bool
 }
 
-// sendReport writes the brief and delivers it to the owner. It returns nil,
-// with no error, on a day with no news. The caller holds the run lock.
-func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
+// sendReport writes the brief and delivers it to the owner, or to the chat to
+// when that is another. It returns nil, with no error, on a day with no news.
+// The caller holds the run lock.
+func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	prefs := a.Prefs()
 	if prefs.ChatID == 0 {
 		return nil, ErrNoChat
+	}
+	elsewhere := to != 0 && to != prefs.ChatID
+	if !elsewhere {
+		to = prefs.ChatID
 	}
 
 	started := a.now()
@@ -618,7 +635,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	if errors.Is(err, report.ErrNoArticles) {
 		// A genuinely empty day is worth saying out loud, rather than leaving
 		// the reader wondering whether the service died.
-		return nil, a.Bot.SendMessage(ctx, prefs.ChatID,
+		return nil, a.Bot.SendMessage(ctx, to,
 			"<b>📊 Market Watch</b>\nNo news was collected today. The feeds returned nothing usable.")
 	}
 	if err != nil {
@@ -674,6 +691,14 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	cached.Save("report", rep)
 	cached.Text("messages.html", joinMessages(messages))
 	cached.Text("summary.html", out.summary.Text)
+
+	if elsewhere {
+		if _, err := a.send(ctx, to, out, false); err != nil {
+			return nil, err
+		}
+		a.Log.Info("delivered", "messages", len(messages), "chat", to)
+		return &briefDone{rep: rep, elsewhere: true}, nil
+	}
 
 	// Clearing happens after generation, not before: a run that fails to
 	// produce a brief must not also have thrown away the last one.
