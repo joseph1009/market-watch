@@ -153,6 +153,13 @@ type Snapshot struct {
 	YTD      *Year
 	PriorYTD *Year
 
+	// Quarters are the latest quarters, each three months on its own, newest
+	// first, and TTM the twelve months the last four make (quarters.go).
+	// Empty for a filer that files no interim figures in XBRL, as most
+	// foreign ones do not.
+	Quarters []Year
+	TTM      *Year
+
 	// Business is what the company says it does, from the annual report, and
 	// Events what it has told the SEC lately. The accounts describe a shape;
 	// these say whose shape it is. Empty where neither could be read.
@@ -262,6 +269,7 @@ func (c *Client) Fetch(ctx context.Context, ticker string, years int) (Snapshot,
 		lastYear = snap.Years[0].End
 	}
 	snap.YTD, snap.PriorYTD = buildYTD(byKey, snap.Currency, lastYear)
+	snap.Quarters, snap.TTM = buildQuarters(byKey, snap.Currency)
 	snap.Balance = buildBalance(byKey, snap.Currency)
 	if len(snap.Years) == 0 && len(snap.Balance.Figures) == 0 {
 		return Snapshot{}, fmt.Errorf("%s files with the SEC but reports no figures this reads", snap.Ticker)

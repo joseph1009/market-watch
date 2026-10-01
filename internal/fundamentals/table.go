@@ -132,6 +132,8 @@ func (s Snapshot) Table() string {
 		b.WriteString("\n")
 	}
 
+	b.WriteString(s.quarterTable())
+
 	if len(s.Balance.Figures) > 0 {
 		fmt.Fprintf(&b, "\nBalance sheet as at %s, from a %s filing:\n", s.Balance.AsOf.Format("2 January 2006"), s.Balance.Form)
 		for _, row := range balanceRows {

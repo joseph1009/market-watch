@@ -339,9 +339,10 @@ func TestClaudeUsesTheModelConfiguredForAStage(t *testing.T) {
 	}
 }
 
-// The scout, the research, the review and the verdicts may search the web and
-// read pages, and nothing else: no shell, no files, no connectors. Every
-// other stage, the sorting of themes included, still gets no tools at all.
+// The scout, the research, the review, the verdicts and the analysis may
+// search the web and read pages, and nothing else: no shell, no files, no
+// connectors. Every other stage, the sorting of themes included, still gets
+// no tools at all.
 func TestOnlyTheResearchingStagesMaySearchTheWeb(t *testing.T) {
 	bin := fakeClaude(t)
 	rec := filepath.Join(t.TempDir(), "record.json")
@@ -390,12 +391,15 @@ func TestOnlyTheResearchingStagesMaySearchTheWeb(t *testing.T) {
 		t.Errorf("scout args = %v, model %q; want web search and Opus 5.5", got.Args, got.Model)
 	}
 
-	// The verdicts check a case against a second source.
-	if _, _, err := r.Plain(Verdicts).Complete(context.Background(), "s", "p"); err != nil {
-		t.Fatalf("Complete: %v", err)
-	}
-	if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") {
-		t.Errorf("verdicts args = %v; want web search", got.Args)
+	// The verdicts check a case against a second source, and the analysis
+	// looks for the last fortnight's news.
+	for _, stage := range []string{Verdicts, Analysis} {
+		if _, _, err := r.Plain(stage).Complete(context.Background(), "s", "p"); err != nil {
+			t.Fatalf("Complete: %v", err)
+		}
+		if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") {
+			t.Errorf("%s args = %v; want web search", stage, got.Args)
+		}
 	}
 
 	for _, stage := range []string{Triage, Themes} {
