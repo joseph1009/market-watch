@@ -37,6 +37,11 @@ type Report struct {
 	// claimed. The overview is written partly from these, so without them a
 	// claim in the overview cannot be traced back to anything.
 	General []Article `json:"general,omitempty"`
+
+	// Calendar is what is due today and in the rest of the week, shown
+	// after the overview so the reader knows what is coming, not only what
+	// happened.
+	Calendar Calendar `json:"calendar,omitempty"`
 }
 
 // Usage is how much text one run sent and got back.
@@ -59,6 +64,7 @@ func (u Usage) Total() int64 { return u.InputTokens + u.OutputTokens }
 type Section struct {
 	GroupID   string    `json:"group_id"`
 	GroupName string    `json:"group_name"`
+	Emoji     string    `json:"emoji,omitempty"`
 	Body      string    `json:"body"`
 	Articles  []Article `json:"articles"`
 

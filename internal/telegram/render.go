@@ -59,6 +59,10 @@ const (
 type Options struct {
 	Display *time.Location
 	Sources SourceMode
+
+	// Terms are the glossary's jargon, each linked to its explanation the
+	// first time it appears in a section.
+	Terms []model.Term
 }
 
 // segment is a run of blocks that reads as one unit -- a section's heading and
@@ -97,7 +101,13 @@ func RenderWith(rep model.Report, opts Options) []string {
 
 	if rep.Overview != "" {
 		segs = append(segs, segment{blocks: append(
-			[]string{divider + "\n<b>OVERVIEW</b>"}, cite(paragraphs(rep.Overview), rep.Cited)...)})
+			[]string{divider + "\n<b>OVERVIEW</b>"}, linkTerms(cite(paragraphs(rep.Overview), rep.Cited), opts.Terms)...)})
+	}
+
+	// What is due comes straight after the overview: the reader has just
+	// read what happened, and this is what to watch next.
+	if blocks := renderCalendar(rep.Calendar, rep.GeneratedAt, display); len(blocks) > 0 {
+		segs = append(segs, segment{blocks: blocks})
 	}
 
 	// Every category's prose runs uninterrupted, and the links follow at the
@@ -106,7 +116,11 @@ func RenderWith(rep model.Report, opts Options) []string {
 	// headlines to reach the next piece of analysis.
 	for _, s := range rep.Sections {
 		// In capitals, to stand above the bold sub-headings inside it.
-		heading := fmt.Sprintf("%s\n<b>%s</b>", divider, escape(strings.ToUpper(s.GroupName)))
+		title := strings.ToUpper(s.GroupName)
+		if s.Emoji != "" {
+			title = s.Emoji + " " + title
+		}
+		heading := fmt.Sprintf("%s\n<b>%s</b>", divider, escape(title))
 		// The biggest moves sit under the heading, in the same block so a
 		// message break never parts them: what the exchange did, before what
 		// was written about it.
@@ -115,7 +129,7 @@ func RenderWith(rep model.Report, opts Options) []string {
 		}
 		blocks := []string{heading}
 		if s.Body != "" {
-			blocks = append(blocks, cite(paragraphs(s.Body), rep.Cited)...)
+			blocks = append(blocks, linkTerms(cite(paragraphs(s.Body), rep.Cited), opts.Terms)...)
 		}
 		segs = append(segs, segment{blocks: blocks})
 	}
@@ -346,12 +360,12 @@ func bullets(paragraph string) string {
 		}
 		switch group := strings.TrimSpace(line); {
 		case isBullet:
-			out = append(out, "• "+emphasizeBulletLabel(strings.TrimSpace(trimmed[2:])))
+			out = append(out, "• "+emphasizeBulletLabel(highlight(strings.TrimSpace(trimmed[2:]))))
 		case strings.HasPrefix(group, subheadingMarker):
 			if previousWasBullet {
 				out = append(out, "")
 			}
-			out = append(out, "<b>"+strings.TrimSpace(group[len(subheadingMarker):])+"</b>")
+			out = append(out, "<b>"+strings.ReplaceAll(strings.TrimSpace(group[len(subheadingMarker):]), "**", "")+"</b>")
 		case groupLabels[group]:
 			if previousWasBullet {
 				out = append(out, "")
@@ -363,6 +377,16 @@ func bullets(paragraph string) string {
 		previousWasBullet = isBullet
 	}
 	return strings.Join(out, "\n")
+}
+
+// highlights are the figure or short phrase the writer marks as the one that
+// matters most in a bullet, as **5.55%**.
+var highlights = regexp.MustCompile(`\*\*([^*\n]{1,80}?)\*\*`)
+
+// highlight bolds what the writer marked, and drops a stray marker that
+// closes nothing, so no asterisks reach the reader.
+func highlight(line string) string {
+	return strings.ReplaceAll(highlights.ReplaceAllString(line, "<b>$1</b>"), "**", "")
 }
 
 // groupLabels divide the analysis's case for and case against into the

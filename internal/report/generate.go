@@ -55,6 +55,10 @@ type Generator struct {
 	// session that brief already reported, and is not shown as today's move.
 	MovesSince time.Time
 
+	// Calendar is what is due today and in the rest of the week, for the
+	// overview's look ahead and the block shown after it.
+	Calendar model.Calendar
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -74,7 +78,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// articles produces filler -- "the watchlist was thin today" -- rather than
 	// anything worth the space.
 	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
-	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince}
+	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince, calendar: g.Calendar}
 	prompt := buildPrompt(articles, active, m, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
@@ -99,6 +103,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 		rep.Sections = append(rep.Sections, model.Section{
 			GroupID:   grp.ID,
 			GroupName: grp.Name,
+			Emoji:     grp.Emoji,
 			Body:      body,
 			// The same set the prompt showed, capped included: the rendered
 			// sources are meant to be what the section was written from, and
@@ -120,6 +125,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// The same order newNumbering used, so citation [n] resolves to the article
 	// the model was looking at.
 	rep.Cited = articles
+	rep.Calendar = g.Calendar
 
 	if rep.IsEmpty() {
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))

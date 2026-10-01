@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/config"
+	"github.com/joseph1009/market-watch/internal/calendar"
 	"github.com/joseph1009/market-watch/internal/consensus"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/feed"
@@ -70,8 +71,17 @@ type App struct {
 	// keeps two years of. The first informs every verdict and analysis; the
 	// others are where the closer look's companies are found. Without them
 	// there is no closer look.
-	Consensus   *consensus.Client
-	Movers      *prices.Massive
+	Consensus *consensus.Client
+	Movers    *prices.Massive
+
+	// Calendar reads the week's economic releases from ForexFactory, for
+	// the brief's look ahead. It needs no key.
+	Calendar *calendar.ForexFactory
+
+	// Terms are config/glossary.yaml's jargon, linked to an explanation in
+	// the brief.
+	Terms []model.Term
+
 	MarketStore *market.Store
 
 	// Runs records what each brief cost and did, so the numbers that only ever
@@ -200,12 +210,20 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			HTTP:      &http.Client{Timeout: 30 * time.Second},
 			UserAgent: cfg.UserAgent,
 		},
+		Calendar: &calendar.ForexFactory{
+			HTTP: &http.Client{Timeout: 20 * time.Second},
+		},
 		Movers: &prices.Massive{
 			APIKey: cfg.MassiveAPIKey,
 			HTTP:   &http.Client{Timeout: 60 * time.Second},
 		},
 		prefs: prefs,
 	}
+	terms, err := config.Glossary()
+	if err != nil {
+		return nil, err
+	}
+	a.Terms = terms
 	if cfg.Consensus {
 		a.Consensus = &consensus.Client{HTTP: &http.Client{Timeout: 20 * time.Second}}
 	}
@@ -437,6 +455,11 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	priced := make(chan []model.Quote, 1)
 	go func() { priced <- a.collectPrices(ctx, watched) }()
 
+	// What is due today and this week, for the look ahead: a handful of
+	// requests, read beside the prices so the brief waits on neither.
+	due := make(chan model.Calendar, 1)
+	go func() { due <- a.collectCalendar(ctx, watched) }()
+
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
 	// bolted on afterwards.
@@ -564,6 +587,8 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	a.Generator.Quotes = quotes
 	a.Generator.Trends = a.trendsFor(ctx, moved)
 	a.Generator.MovesSince = since
+	a.Generator.Calendar = <-due
+	cached.Save("calendar", a.Generator.Calendar)
 	cached.Save("levels", a.Generator.Levels)
 	cached.Save("trends", a.Generator.Trends)
 
@@ -618,6 +643,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	messages := telegram.RenderWith(rep, telegram.Options{
 		Display: a.Cfg.DisplayLocation,
 		Sources: sourceMode(a.Cfg.SourceLinks),
+		Terms:   a.Terms,
 	})
 	cached.Save("report", rep)
 	cached.Text("messages.html", joinMessages(messages))

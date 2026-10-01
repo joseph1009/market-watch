@@ -1,0 +1,137 @@
+# Terms the brief links to a plain explanation.
+#
+# The first time one of these words appears in a section of the brief, the
+# reader can tap it to read what it means. The writer is still told to say
+# what a term means in plain words; the link is for the reader who wants
+# more than a few words.
+#
+# Each entry is a page and the words that lead to it. A word written in
+# capitals (EPS, VIX) matches only in capitals, so "eps" inside another word,
+# or an ordinary word that happens to share the letters, is left alone; any
+# other word matches whatever its case. Every link was checked to open the
+# right page when it was added (2026-10-01): check a new one the same way.
+
+- url: https://www.investopedia.com/terms/t/treasury-yield.asp
+  words: [Treasury yield, Treasury yields, bond yield, bond yields]
+- url: https://www.investopedia.com/terms/y/yieldcurve.asp
+  words: [yield curve, 2s10s]
+- url: https://www.investopedia.com/terms/i/invertedyieldcurve.asp
+  words: [inverted yield curve, inverted curve, curve inversion]
+- url: https://www.investopedia.com/terms/b/basispoint.asp
+  words: [basis point, basis points]
+- url: https://www.investopedia.com/terms/p/pce.asp
+  words: [PCE, personal consumption expenditures]
+- url: https://www.investopedia.com/terms/c/consumerpriceindex.asp
+  words: [CPI, consumer price index]
+- url: https://www.investopedia.com/terms/p/ppi.asp
+  words: [PPI, producer price index]
+- url: https://www.investopedia.com/terms/p/pmi.asp
+  words: [PMI, purchasing managers index, purchasing managers' index]
+- url: https://www.investopedia.com/terms/i/ism-mfg.asp
+  words: [ISM]
+- url: https://www.investopedia.com/terms/n/nonfarmpayroll.asp
+  words: [nonfarm payrolls, non-farm payrolls, payrolls report]
+- url: https://www.investopedia.com/terms/j/jolts.asp
+  words: [JOLTS, job openings]
+- url: https://www.investopedia.com/terms/i/initialclaims.asp
+  words: [jobless claims, initial claims]
+- url: https://www.investopedia.com/terms/g/gdp.asp
+  words: [GDP, gross domestic product]
+- url: https://www.investopedia.com/terms/f/federalfundsrate.asp
+  words: [federal funds rate, fed funds rate, fed funds]
+- url: https://www.investopedia.com/terms/f/fomc.asp
+  words: [FOMC, Federal Open Market Committee]
+- url: https://en.wikipedia.org/wiki/Quantitative_tightening
+  words: [quantitative tightening]
+- url: https://www.investopedia.com/terms/q/quantitative-easing.asp
+  words: [quantitative easing]
+- url: https://www.investopedia.com/terms/h/hawk.asp
+  words: [hawkish, hawks]
+- url: https://www.investopedia.com/terms/d/dove.asp
+  words: [dovish, doves]
+- url: https://www.investopedia.com/terms/s/softlanding.asp
+  words: [soft landing]
+- url: https://www.investopedia.com/terms/r/recession.asp
+  words: [recession]
+- url: https://www.investopedia.com/terms/s/stagflation.asp
+  words: [stagflation]
+- url: https://www.investopedia.com/terms/c/coreinflation.asp
+  words: [core inflation]
+- url: https://www.investopedia.com/terms/c/cci.asp
+  words: [consumer confidence]
+- url: https://www.investopedia.com/terms/v/vix.asp
+  words: [VIX, volatility index]
+- url: https://www.investopedia.com/terms/u/usdx.asp
+  words: [dollar index, DXY]
+- url: https://www.investopedia.com/terms/g/gilts.asp
+  words: [gilts, gilt yields]
+- url: https://www.investopedia.com/terms/c/creditspread.asp
+  words: [credit spread, credit spreads]
+- url: https://www.investopedia.com/terms/j/junkbond.asp
+  words: [junk bond, junk bonds, high-yield bonds]
+- url: https://www.investopedia.com/terms/c/clo.asp
+  words: [CLO, CLOs, collateralised loan obligation, collateralized loan obligation]
+- url: https://en.wikipedia.org/wiki/Private_credit
+  words: [private credit]
+- url: https://www.investopedia.com/terms/c/currencycarrytrade.asp
+  words: [carry trade]
+- url: https://www.investopedia.com/terms/b/backwardation.asp
+  words: [backwardation]
+- url: https://www.investopedia.com/terms/c/contango.asp
+  words: [contango]
+- url: https://www.investopedia.com/terms/b/brentblend.asp
+  words: [Brent]
+- url: https://www.investopedia.com/terms/w/wti.asp
+  words: [WTI, West Texas Intermediate]
+- url: https://www.investopedia.com/terms/o/opec.asp
+  words: [OPEC, OPEC+]
+- url: https://en.wikipedia.org/wiki/Strategic_Petroleum_Reserve_(United_States)
+  words: [Strategic Petroleum Reserve, strategic reserve]
+- url: https://www.investopedia.com/terms/t/tariff.asp
+  words: [tariff, tariffs]
+- url: https://www.investopedia.com/terms/e/eps.asp
+  words: [EPS, earnings per share]
+- url: https://www.investopedia.com/terms/p/price-earningsratio.asp
+  words: [price-to-earnings, P/E]
+- url: https://www.investopedia.com/terms/c/consensusestimate.asp
+  words: [consensus estimate, consensus forecast]
+- url: https://www.investopedia.com/terms/g/guidance.asp
+  words: [guidance]
+- url: https://www.investopedia.com/terms/f/freecashflow.asp
+  words: [free cash flow]
+- url: https://www.investopedia.com/terms/e/ebitda.asp
+  words: [EBITDA]
+- url: https://www.investopedia.com/terms/g/grossmargin.asp
+  words: [gross margin, gross margins]
+- url: https://www.investopedia.com/terms/o/operatingmargin.asp
+  words: [operating margin, operating margins]
+- url: https://www.investopedia.com/terms/m/marketcapitalization.asp
+  words: [market capitalisation, market capitalization, market value]
+- url: https://www.investopedia.com/terms/s/shortinterest.asp
+  words: [short interest, short sellers, short selling]
+- url: https://www.investopedia.com/terms/s/shortsqueeze.asp
+  words: [short squeeze]
+- url: https://www.investopedia.com/terms/b/buyback.asp
+  words: [buyback, buybacks, share repurchase]
+- url: https://www.investopedia.com/terms/d/dividend.asp
+  words: [dividend, dividends]
+- url: https://www.investopedia.com/terms/i/ipo.asp
+  words: [IPO, initial public offering]
+- url: https://www.investopedia.com/terms/e/etf.asp
+  words: [ETF, exchange-traded fund]
+- url: https://www.investopedia.com/terms/s/stablecoin.asp
+  words: [stablecoin, stablecoins]
+- url: https://www.investopedia.com/terms/d/downgrade.asp
+  words: [downgrade, downgraded]
+- url: https://www.investopedia.com/terms/p/pricetarget.asp
+  words: [price target, price targets]
+- url: https://www.investopedia.com/terms/m/movingaverage.asp
+  words: [50-day average, 200-day average, moving average]
+- url: https://en.wikipedia.org/wiki/Annual_recurring_revenue
+  words: [annual recurring revenue, ARR]
+- url: https://en.wikipedia.org/wiki/High_Bandwidth_Memory
+  words: [high-bandwidth memory, HBM]
+- url: https://en.wikipedia.org/wiki/Extreme_ultraviolet_lithography
+  words: [EUV, extreme ultraviolet]
+- url: https://en.wikipedia.org/wiki/Foundry_model
+  words: [foundry, foundries]

@@ -618,15 +618,19 @@ func TestSectionSourcesAreOnlyWhatTheModelWasShown(t *testing.T) {
 }
 
 // The reader asked not to be handed trade shorthand: the brief has to explain
-// its terms rather than assume them. And later for it sharp: sub-headings and
-// one-sentence bullets, keeping what carries each point.
+// its terms rather than assume them, in sub-headings and bullets. On
+// 2026-10-01 they asked for plain English over brevity, about twice the room,
+// an emoji on each sub-heading, the key figure highlighted, and a look at
+// what is coming as well as what happened.
 func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
 	for _, want := range []string{
 		"not a market professional",
+		"plain English",
 		"25bp",
-		"the numbers, attributions and caveats that carry each point",
-		`a line starting "### "`,
-		"at most about twenty-five words",
+		`a line starting "### ", then one emoji`,
+		"up to about forty-five words",
+		"double asterisks",
+		"### 🔭 What to watch",
 	} {
 		if !strings.Contains(systemPrompt, want) {
 			t.Errorf("the system prompt no longer carries %q", want)

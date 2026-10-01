@@ -6,6 +6,8 @@
 # sentence names the sector's ground, and the ones after it add the detail --
 # the themes that belong here, and what belongs in another section instead.
 #
+# Each has an emoji, shown beside its heading in the brief.
+#
 # The companies in each sector are in companies.yaml. A sector needs none:
 # Macro & Rates and Geopolitics & Trade are followed by subject alone.
 #
@@ -14,6 +16,7 @@
 
 - id: semis-ai
   name: Semiconductors & AI
+  emoji: "🧠"
   about: >-
     Chips and the hardware artificial intelligence runs on: design,
     manufacturing, memory, equipment and packaging, data centre build-outs, and
@@ -24,6 +27,7 @@
 
 - id: big-tech
   name: Big Tech
+  emoji: "📱"
   about: >-
     The largest software and internet companies: cloud, advertising, AI models
     and assistants, devices and app stores, and the competition cases and
@@ -33,6 +37,7 @@
 
 - id: energy
   name: Energy
+  emoji: "🛢️"
   about: >-
     Oil, gas, fuel and power: production, refining, pipelines and shipping,
     inventories and prices, the producer decisions behind them, and anything
@@ -43,6 +48,7 @@
 
 - id: financials
   name: Financials & Banks
+  emoji: "🏦"
   about: >-
     Banks, insurers, payments and asset managers: lending and deposits, credit
     quality, trading and dealmaking, capital rules, and the regulators that
@@ -54,6 +60,7 @@
 
 - id: healthcare
   name: Healthcare & Pharma
+  emoji: "💊"
   about: >-
     Medicines, devices and care: trial results and regulatory decisions,
     pricing and reimbursement, insurers and providers, and the companies
@@ -63,6 +70,7 @@
 
 - id: industrials-defense
   name: Industrials & Defense
+  emoji: "🏭"
   about: >-
     Things that are built and moved: machinery, aerospace, defense contracts and
     budgets, factory orders and production, freight and logistics, and large
@@ -73,6 +81,7 @@
 
 - id: consumer-retail
   name: Consumer & Retail
+  emoji: "🛍️"
   about: >-
     What households buy and what it costs them: retailers and restaurants, food,
     drink, clothing and household goods, spending, confidence and wages as a
@@ -82,6 +91,7 @@
 
 - id: autos-ev
   name: Autos & EV
+  emoji: "🚗"
   about: >-
     Cars and the shift to electric ones: vehicle sales and production, batteries
     and their supply chain, charging, self-driving, and the tariffs and
@@ -91,6 +101,7 @@
 
 - id: crypto
   name: Crypto & Digital Assets
+  emoji: "🪙"
   about: >-
     Digital assets and the businesses around them: prices and flows, exchanges
     and custodians, stablecoins, listed funds that hold them, mining, and the
@@ -99,6 +110,7 @@
 
 - id: macro-rates
   name: Macro & Rates
+  emoji: "🏛️"
   about: >-
     The economy as a whole and the price of money: central bank decisions and
     speeches, inflation, jobs, growth and confidence data, government borrowing
@@ -109,6 +121,7 @@
 
 - id: geopolitics-trade
   name: Geopolitics & Trade
+  emoji: "🌍"
   about: >-
     Politics that moves trade: tariffs, export controls and sanctions,
     industrial policy and subsidies, supply chains that cross borders, the
@@ -121,6 +134,7 @@
 
 - id: media
   name: Media & Entertainment
+  emoji: "🎬"
   about: >-
     Film and television, streaming services, broadcasters and networks, music,
     and the deals and rules that shape who owns them. That takes in subscribers

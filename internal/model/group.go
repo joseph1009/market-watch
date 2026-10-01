@@ -12,6 +12,9 @@ type Group struct {
 	ID   string `yaml:"id" json:"id"`
 	Name string `yaml:"name" json:"name"`
 
+	// Emoji marks the sector's heading in the brief.
+	Emoji string `yaml:"emoji,omitempty" json:"emoji,omitempty"`
+
 	// About says in a few sentences what the sector covers. It is what the
 	// sorting and the review judge an article against, and its first sentence
 	// is what the news search asks for, so that sentence names the sector's

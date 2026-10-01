@@ -103,6 +103,9 @@ type market struct {
 	// since is the previous brief: a price from before it is a session that
 	// brief reported, not today's move.
 	since time.Time
+
+	// calendar is what is due, for the look ahead.
+	calendar model.Calendar
 }
 
 // buildPrompt renders the articles into the user turn. Articles are ordered by
@@ -144,6 +147,10 @@ func buildPrompt(articles []model.Article, groups []model.Group, m market, now t
 		b.WriteString("\n")
 	}
 	if block := renderPrices(m.quotes, m.trends, display); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n")
+	}
+	if block := renderCalendar(m.calendar, display); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
