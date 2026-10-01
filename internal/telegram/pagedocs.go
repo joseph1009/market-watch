@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -655,7 +656,7 @@ func accountsParts(acc Accounts) []pages.Part {
 }
 
 func accountsTable(caption string, periods []Period, currency string) pages.Table {
-	t := pages.Table{Caption: caption, Head: []string{""}, Align: "l"}
+	t := pages.Table{Caption: caption, Head: []string{""}, Align: "l", Labels: true}
 	for _, p := range periods {
 		t.Head = append(t.Head, shortPeriod(p.Label))
 		t.Align += "r"
@@ -686,16 +687,35 @@ func accountsTable(caption string, periods []Period, currency string) pages.Tabl
 	return t
 }
 
-// fiscalYear finds the year in "FY to 31 Dec 2025".
-var fiscalYear = regexp.MustCompile(`(\w{3}) (\d{4})$`)
+// periodEnd finds the end in "FY to 31 Dec 2025" or "3 months to Jun 2026".
+var periodEnd = regexp.MustCompile(`to (\d{1,2} )?(\w{3} \d{4})$`)
 
 // shortPeriod is a period's label as a column head: "FY to 31 Dec 2025" is
-// "FY Dec 2025".
+// "FY Dec 2025", and a quarter, "3 months to 30 Jun 2026", is its months,
+// "Apr–Jun 2026". The owner read "3m to Jun 2026" on 1 October 2026 and
+// asked what it meant.
+//
+// A company whose year is weeks rather than months ends it on a weekday:
+// Micron's quarter of June, July and August ended on 3 September 2026. A
+// period ending in a month's first week is named for the month before, as
+// the company names it.
 func shortPeriod(label string) string {
-	if strings.HasPrefix(label, "FY") {
-		if m := fiscalYear.FindStringSubmatch(label); m != nil {
-			return "FY " + m[1] + " " + m[2]
-		}
+	m := periodEnd.FindStringSubmatch(label)
+	if m == nil {
+		return label
+	}
+	end, err := time.Parse("Jan 2006", m[2])
+	if err != nil {
+		return label
+	}
+	if day, _ := strconv.Atoi(strings.TrimSpace(m[1])); day > 0 && day <= 7 {
+		end = end.AddDate(0, -1, 0)
+	}
+	switch {
+	case strings.HasPrefix(label, "FY"):
+		return "FY " + end.Format("Jan 2006")
+	case strings.HasPrefix(label, "3m to") || strings.HasPrefix(label, "3 months to"):
+		return end.AddDate(0, -2, 0).Format("Jan") + "–" + end.Format("Jan 2006")
 	}
 	return label
 }

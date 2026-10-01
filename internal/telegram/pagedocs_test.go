@@ -102,6 +102,45 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 	}
 }
 
+// A quarter's column is headed by its months, and the rows' names stay in
+// view while the figures scroll on a phone.
+func TestTheAnalysisPageNamesQuartersByTheirMonths(t *testing.T) {
+	acc := Accounts{Currency: "USD", Quarters: []Period{
+		{Label: "3 months to 31 Jan 2026", Figures: map[string]float64{"revenue": 9e8}},
+		{Label: "3m to Oct 2025", Figures: map[string]float64{"revenue": 8e8}},
+	}, TTM: &Period{Label: "12 months to 31 Jan 2026", Figures: map[string]float64{"revenue": 3.4e9}}}
+	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{
+		`<table class="labelled">`,
+		"<th class=\"num\">Aug–Oct 2025</th><th class=\"num\">Nov–Jan 2026</th><th class=\"num\">Last 12 months</th>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+	if strings.Contains(page, "3m to") || strings.Contains(page, "3 months to") {
+		t.Error("a quarter is still headed by its label")
+	}
+}
+
+// A year of weeks ends on a weekday, sometimes in a month's first days:
+// Micron's quarter of June to August ended on 3 September 2026.
+func TestAPeriodEndingInAMonthsFirstWeekIsNamedForTheMonthBefore(t *testing.T) {
+	for label, want := range map[string]string{
+		"3 months to 3 Sep 2026":  "Jun–Aug 2026",
+		"3 months to 28 May 2026": "Mar–May 2026",
+		"FY to 1 Sep 2022":        "FY Aug 2022",
+		"FY to 28 Aug 2025":       "FY Aug 2025",
+		"FY to 31 Dec 2025":       "FY Dec 2025",
+		"3 months to 4 Jan 2026":  "Oct–Dec 2025",
+		"Last 12 months":          "Last 12 months",
+	} {
+		if got := shortPeriod(label); got != want {
+			t.Errorf("shortPeriod(%q) = %q, want %q", label, got, want)
+		}
+	}
+}
+
 // An industry's parts are drawn as a chain, in the order the explanation
 // gives them, each with its companies.
 func TestTheIndustryPageDrawsTheChain(t *testing.T) {

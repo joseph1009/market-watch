@@ -344,7 +344,7 @@ code {
 figure { margin: 18px 0; }
 figcaption { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); }
-table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: normal; }
 th, td { padding: 8px 12px; text-align: left; vertical-align: top; }
 th { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--rule); white-space: nowrap; }
 td { border-bottom: 1px solid var(--rule); }
@@ -352,6 +352,10 @@ tbody tr:last-child td { border-bottom: 0; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 tr.marked td { background: var(--box); }
 td i { color: var(--muted); }
+table.labelled th:first-child, table.labelled td:first-child {
+  position: sticky; left: 0; z-index: 1; min-width: 8.5em; background: var(--card); box-shadow: inset -1px 0 0 var(--rule);
+}
+table.labelled tr.marked td:first-child { background: var(--box); }
 
 .up { color: var(--up); } .down { color: var(--down); }
 .chart { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }

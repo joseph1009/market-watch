@@ -66,6 +66,9 @@ type Table struct {
 	Rows    [][]string // Telegram HTML cells
 	Marked  []bool     // rows to stand out, where set
 	Note    string     // Telegram HTML, under the table
+	// Labels keeps the first column, the rows' names, in view while a wide
+	// table scrolls sideways on a phone.
+	Labels bool
 }
 
 // Bar is one value in a chart.
@@ -254,7 +257,11 @@ func (t Table) write(w *writer) {
 	if t.Caption != "" {
 		w.WriteString("<figcaption>" + text(t.Caption) + "</figcaption>\n")
 	}
-	w.WriteString("<div class=\"scroll\"><table>\n")
+	if t.Labels {
+		w.WriteString("<div class=\"scroll\"><table class=\"labelled\">\n")
+	} else {
+		w.WriteString("<div class=\"scroll\"><table>\n")
+	}
 	if len(t.Head) > 0 {
 		w.WriteString("<thead><tr>")
 		for i, h := range t.Head {

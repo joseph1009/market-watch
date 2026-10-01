@@ -65,7 +65,7 @@ func TestQuartersAreReadOnTheirOwn(t *testing.T) {
 	}
 
 	table := Snapshot{Currency: "USD", Quarters: quarters, TTM: ttm}.quarterTable()
-	for _, w := range []string{"3m to Jun 2026", "12m to Jun 2026", "Revenue vs a year earlier", "20.0%"} {
+	for _, w := range []string{"3 months to 30 Jun 2026", "12 months to 30 Jun 2026", "Revenue vs a year earlier", "20.0%"} {
 		if !strings.Contains(table, w) {
 			t.Errorf("table is missing %q:\n%s", w, table)
 		}
