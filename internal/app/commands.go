@@ -22,8 +22,8 @@ import (
 const helpText = `<b>📊 Market Watch</b>
 
 /now — build and send a brief right now
-/analyse &lt;ticker&gt; — analyse a company from its filings, e.g. /analyse NVDA
-/industry &lt;words&gt; — how an industry fits together, and companies to look into in each part, e.g. /industry robotics
+/analyse — analyse a company from its filings: I ask which one (or send /analyse NVDA)
+/industry — how an industry fits together, and companies to look into in each part: I ask which one (or send /industry robotics)
 /watchlist — show the companies you follow, by sector
 /watchlist add &lt;sector&gt; &lt;TICKER&gt; [name] — follow a company, e.g. /watchlist add industrials-defense PLTR Palantir
 /watchlist remove &lt;sector&gt; &lt;ticker or name&gt; — stop following it
@@ -46,8 +46,8 @@ func BotCommands() []telegram.Command {
 	return []telegram.Command{
 		{Command: "now", Description: "Build and send a brief right now"},
 		{Command: "watchlist", Description: "Show or change the companies you follow"},
-		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
-		{Command: "industry", Description: "How an industry fits together, and companies to look into: /industry robotics"},
+		{Command: "analyse", Description: "Analyse a company from its filings; I ask which one"},
+		{Command: "industry", Description: "How an industry fits together, and companies to look into; I ask which one"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "stats", Description: "What recent briefs found and did"},
@@ -64,7 +64,15 @@ func BotCommands() []telegram.Command {
 func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 	command, args := splitCommand(msg.Text)
 	if command == "" {
-		return // ordinary chatter, not addressed to the bot
+		// The answer to a question the bot asked this chat, such as the
+		// ticker /analyse waits for; otherwise ordinary chatter, not
+		// addressed to the bot.
+		if command = a.answering(msg.Chat.ID); command == "" {
+			return
+		}
+		args = []string{strings.TrimSpace(msg.Text)} // the whole message is the answer
+	} else {
+		a.forget(msg.Chat.ID) // a command instead of the answer
 	}
 
 	// Only the owner's chat and the chats the owner listed are answered. The bot
@@ -515,14 +523,20 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 			"Reading filings is not configured on this instance.")
 	}
 	if len(args) == 0 {
-		return a.Bot.SendMessage(ctx, msg.Chat.ID,
-			"Which company? Send a ticker, for example /analyse NVDA.\n\n"+
+		return a.ask(ctx, msg.Chat.ID, "analyse",
+			"🔬 <b>Which company?</b> Send me its ticker, for example NVDA.\n\n"+
 				"I read what the company filed with the SEC — revenue, margins, cash and the balance sheet — then what the share has been doing and what has been written about it lately. "+
 				"Any SEC filer works, including foreign companies with a US listing such as TSM or BABA. "+
-				"It ends with a verdict — BUY, HOLD or SELL against the S&amp;P 500 over twelve months — which /scorecard keeps score of.")
+				"It ends with a verdict — BUY, HOLD or SELL against the S&amp;P 500 over twelve months — which /scorecard keeps score of.",
+			"Ticker, e.g. NVDA")
 	}
 
-	ticker := strings.ToUpper(strings.TrimSpace(args[0]))
+	ticker, ok := asTicker(args[0])
+	if !ok {
+		return a.ask(ctx, msg.Chat.ID, "analyse",
+			fmt.Sprintf("%s is not a ticker. Send one such as NVDA or BRK.B, or any command to stop.", escape(args[0])),
+			"Ticker, e.g. NVDA")
+	}
 	ctx, cached := a.Cache.Start(ctx, runcache.Analysis, ticker)
 	defer func() { cached.Finish(err) }()
 	if err := a.Bot.SendMessage(ctx, msg.Chat.ID,

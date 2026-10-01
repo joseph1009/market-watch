@@ -58,13 +58,21 @@ func TestIndustryExplainsAndListsCompaniesByPart(t *testing.T) {
 	}
 }
 
-// Asked with no industry, it says how to ask.
-func TestIndustryWithoutATopicSaysHow(t *testing.T) {
+// /industry on its own asks which industry, and the next message, however
+// many words, is the topic (2026-10-01).
+func TestIndustryAsksWhichThenTakesTheAnswer(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
-	a.Industry = &industry.Explainer{Completer: industryModel{}}
+	explainingRobotics(a)
+
 	a.HandleMessage(context.Background(), message("/industry"))
-	if got := strings.Join(messagesTo(*sent, 4242), "\n"); !strings.Contains(got, "/industry robotics") {
-		t.Errorf("reply = %q", got)
+	if len(*sent) != 1 || !strings.Contains((*sent)[0].Text, "Which industry?") || !(*sent)[0].ReplyMarkup.ForceReply {
+		t.Fatalf("asked %+v", *sent)
+	}
+
+	a.HandleMessage(context.Background(), message("industrial robots"))
+	owner := strings.Join(messagesTo(*sent, 4242), "\n")
+	if !strings.Contains(owner, "Mapping industrial robots") || !strings.Contains(owner, "Fanuc") {
+		t.Errorf("after the answer:\n%s", owner)
 	}
 }

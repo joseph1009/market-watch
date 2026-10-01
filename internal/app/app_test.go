@@ -31,6 +31,7 @@ type sentMessage struct {
 			Text string `json:"text"`
 			URL  string `json:"url"`
 		} `json:"inline_keyboard"`
+		ForceReply bool `json:"force_reply"`
 	} `json:"reply_markup"`
 }
 
@@ -533,10 +534,11 @@ func TestSourceModeMapsEveryConfiguredValue(t *testing.T) {
 	}
 }
 
-// Asking without a ticker should teach the command rather than error.
-func TestAnalyseWithoutATickerExplainsItself(t *testing.T) {
+// /analyse on its own asks which company, explaining what it reads, and the
+// next message is taken as the ticker (2026-10-01).
+func TestAnalyseAsksWhichCompanyThenTakesTheAnswer(t *testing.T) {
 	a, sent := newTestApp(t)
-	a.Accounts = &fundamentals.Client{}
+	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
 	a.HandleMessage(context.Background(), message("/analyse"))
@@ -544,10 +546,70 @@ func TestAnalyseWithoutATickerExplainsItself(t *testing.T) {
 	if len(*sent) != 1 {
 		t.Fatalf("got %d replies, want 1", len(*sent))
 	}
-	for _, want := range []string{"/analyse NVDA", "SEC", "verdict", "/scorecard"} {
-		if !strings.Contains((*sent)[0].Text, want) {
-			t.Errorf("reply is missing %q: %s", want, (*sent)[0].Text)
+	question := (*sent)[0]
+	for _, want := range []string{"Which company?", "SEC", "verdict", "/scorecard"} {
+		if !strings.Contains(question.Text, want) {
+			t.Errorf("question is missing %q: %s", want, question.Text)
 		}
+	}
+	if !question.ReplyMarkup.ForceReply {
+		t.Error("the question does not open a reply, so a group would not pass the answer on")
+	}
+
+	a.HandleMessage(context.Background(), message("$tencent"))
+	if len(*sent) != 3 || !strings.Contains((*sent)[1].Text, "Reading TENCENT") || !strings.Contains((*sent)[2].Text, "does not file with the SEC") {
+		t.Fatalf("after the answer: %+v", *sent)
+	}
+
+	// Answered once: the next message is chatter again.
+	a.HandleMessage(context.Background(), message("thanks"))
+	if len(*sent) != 3 {
+		t.Errorf("a second answer was taken: %+v", (*sent)[3:])
+	}
+}
+
+// An answer that is not a ticker is asked again; a command instead of the
+// answer, or an answer after the wait, drops the question.
+func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	a.HandleMessage(context.Background(), message("/analyse"))
+	a.HandleMessage(context.Background(), message("which one is good?"))
+	if len(*sent) != 2 || !strings.Contains((*sent)[1].Text, "is not a ticker") || !(*sent)[1].ReplyMarkup.ForceReply {
+		t.Fatalf("a non-ticker answer got %+v", *sent)
+	}
+
+	a.HandleMessage(context.Background(), message("/help"))
+	a.HandleMessage(context.Background(), message("NVDA"))
+	if len(*sent) != 3 {
+		t.Errorf("an answer after another command was taken: %+v", (*sent)[3:])
+	}
+
+	*sent = nil
+	start := a.now()
+	a.HandleMessage(context.Background(), message("/analyse"))
+	a.Now = func() time.Time { return start.Add(answerWithin + time.Minute) }
+	a.HandleMessage(context.Background(), message("NVDA"))
+	if len(*sent) != 1 {
+		t.Errorf("an answer after the wait was taken: %+v", (*sent)[1:])
+	}
+}
+
+// Other chats are still ignored: only a chat that was asked has its next
+// message read.
+func TestAnAnswerFromAChatNotAskedIsChatter(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	a.Cfg.TelegramCommandChats = []int64{commandChat}
+	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	a.HandleMessage(context.Background(), message("/analyse"))
+	a.HandleMessage(context.Background(), from(commandChat, "NVDA"))
+	if got := repliesTo(*sent, commandChat); len(got) != 0 {
+		t.Errorf("a chat that was not asked got %q", got)
 	}
 }
 

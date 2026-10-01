@@ -155,6 +155,11 @@ type App struct {
 	lastMu sync.Mutex
 	last   *delivery
 
+	// asked is the question each chat was last asked and not yet answered,
+	// such as /analyse's "which company?". See ask.go.
+	askMu sync.Mutex
+	asked map[int64]question
+
 	// Now is injected for tests.
 	Now func() time.Time
 }

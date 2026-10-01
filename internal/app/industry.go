@@ -23,10 +23,11 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 	}
 	topic := strings.TrimSpace(strings.Join(args, " "))
 	if topic == "" {
-		return a.Bot.SendMessage(ctx, msg.Chat.ID,
-			"Which industry? Send a word or two, for example /industry robotics, /industry AI or /industry automobiles.\n\n"+
+		return a.ask(ctx, msg.Chat.ID, "industry",
+			"🧭 <b>Which industry?</b> Send me a word or two, for example robotics, AI or automobiles.\n\n"+
 				"I explain how it fits together -- its building blocks from raw materials to the customer, how each part makes money and who leads it -- "+
-				"and suggest listed companies to look into in each part. Send /analyse with any of their tickers to read one's accounts.")
+				"and suggest listed companies to look into in each part. Send /analyse with any of their tickers to read one's accounts.",
+			"Industry, e.g. robotics")
 	}
 	topic = clipRunes(topic, maxIndustryRunes)
 

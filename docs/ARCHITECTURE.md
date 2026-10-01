@@ -80,10 +80,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L764) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L769) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L371) → [`brief(ctx, share: true)`](../internal/app/app.go#L387).
+[`Publish`](../internal/app/app.go#L376) → [`brief(ctx, share: true)`](../internal/app/app.go#L392).
 
 `brief` does three things before any work starts:
 
@@ -92,7 +92,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 - calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L467), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L472), which is the pipeline.
 
 ### 2. Gathering
 
@@ -333,12 +333,12 @@ leaves the closer look to go alone ([`shareIdeas`](../internal/app/channel.go)).
 
 The channel is one-way. Its readers cannot reach `HandleMessage`; the bot takes
 commands from the owner's chat, and from the owner's other chats listed in
-`TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS` ([`needs`](../internal/app/commands.go#L163)
+`TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS` ([`needs`](../internal/app/commands.go#L171)
 says which command takes which).
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L387) starts it as soon as the owner has the
+[`brief`](../internal/app/app.go#L392) starts it as soon as the owner has the
 brief, and posts both to the channel when it is done. Until 2026-10-01 it
 waited twenty minutes after the brief, queued on the data volume; the channel
 then had the brief at once and the closer look as a post of its own.
@@ -444,7 +444,7 @@ fetched within minutes of being served.
   as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
   credential the configuration holds (`config.Secrets`), and the error text
   sent to the chat is scrubbed of the same list;
-- [`app.New`](../internal/app/app.go#L164) builds the service, loading the lists
+- [`app.New`](../internal/app/app.go#L169) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
@@ -469,21 +469,27 @@ checks the sender is the owner and routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L190) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L210) | A brief to the owner only; waits for `/share` |
+| `/start` | [`handleStart`](../internal/app/commands.go#L198) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L218) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L512) | Reads a company's filings — below |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L520) | Reads a company's filings — below |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L699) | What recent runs found and did |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L293) | Follow or stop following a company; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L376) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L282) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L239) | Delete the bot's earlier messages |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L713) | What recent runs found and did |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L301) | Follow or stop following a company; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L384) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L290) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L247) | Delete the bot's earlier messages |
 
-### `/analyse <ticker>`
+### `/analyse`
 
-[`handleAnalyse`](../internal/app/commands.go#L512), under its own budget so it
+`/analyse` on its own asks which company, and the chat's next message is the
+ticker ([`ask`](../internal/app/ask.go), `answering`): the question opens a
+reply, which also lets the answer through in a group, waits ten minutes, and
+is dropped by any command sent instead. An answer that is not shaped like a
+ticker is asked again. `/analyse NVDA` still works in one line.
+
+[`handleAnalyse`](../internal/app/commands.go#L520), under its own budget so it
 does not inherit whatever the caller's context has left:
 
 1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L222) looks the
@@ -495,7 +501,7 @@ does not inherit whatever the caller's context has left:
    ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
    year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L709) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L723) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -547,7 +553,11 @@ block of their own ([`quarterTable`](../internal/fundamentals/quarters.go#L142))
 the analysis leads with them. The analysis may search the web, for the last
 fortnight's news and a foreign filer's own latest results.
 
-### `/industry <words>`
+### `/industry`
+
+`/industry` on its own asks which industry, the same way `/analyse` asks which
+company, and the next message, however many words, is the topic.
+`/industry robotics` still works in one line.
 
 [`handleIndustry`](../internal/app/industry.go#L20) asks
 [`industry.Explainer.Explain`](../internal/industry/industry.go#L61) -- Opus with web
@@ -657,6 +667,11 @@ market's history filled in the background, `topUpMarket` brings it up to date
 before a look, `listings` reads Nasdaq's list at most once a day,
 `singaporeStocks` measures the Straits Times Index in dollars, and `panelPath`
 turns a stored series into a scorecard path.
+
+**[ask.go](../internal/app/ask.go)** — a command that asks for what it needs:
+`ask` sends the question and remembers it for the chat, `answering` takes it
+back when the next message comes, `forget` drops it when a command comes
+instead; `asTicker` reads a ticker as people type it.
 
 **[research.go](../internal/app/research.go)** — what `/analyse` and the closer
 look read beside the accounts: `addExpectations`, `addRelease`, `backdrop`, and

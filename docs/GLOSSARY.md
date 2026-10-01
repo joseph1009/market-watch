@@ -12,7 +12,7 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 
 ## What the reader sees
 
-**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L467).
+**Brief.** The daily message. It is sent on weekdays at 07:30 New York time, two hours before the US market opens. That is 19:30 in Singapore while the US is on daylight saving time (until 1 November), and 20:30 after. It has an overview, then one section per sector, and every claim carries a numbered link to its article. Built by [`sendReport`](../internal/app/app.go#L472).
 
 **Sector, section, watchlist.** The brief's sections, such as chips or banks. Each is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). "Followed" means listed there.
 
@@ -179,6 +179,8 @@ Skim this once. Then keep it open beside the other pages and come back whenever 
 **Data volume, data folder.** Where everything the service keeps lives: `/data` on Fly, `./data` locally (not in git). See the table in [ARCHITECTURE.md, "What lives on disk"](ARCHITECTURE.md#what-lives-on-disk).
 
 **Look.** What the closer look starts from: the brief's articles, and whether it is the scheduled run ([ideas.go](../internal/app/ideas.go)). Until 2026-10-01 it waited 20 minutes after the brief, in `pending-look.json`; that wait is gone.
+
+**Question, answer.** A command that asks for what it needs: `/analyse` on its own asks which company, and the chat's next message within 10 minutes is the ticker ([ask.go](../internal/app/ask.go)).
 
 **Market store, panel, series.** The market store is the two years of daily bars on disk, one file per session. A panel is a stretch of them loaded into memory, and a series is one share's row ([market](../internal/market/)).
 

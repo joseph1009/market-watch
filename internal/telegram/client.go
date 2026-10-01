@@ -71,13 +71,21 @@ type sendMessageRequest struct {
 	DisableWebPagePreview bool   `json:"disable_web_page_preview"`
 	DisableNotification   bool   `json:"disable_notification,omitempty"`
 
-	ReplyMarkup *inlineKeyboard `json:"reply_markup,omitempty"`
+	// ReplyMarkup is an *inlineKeyboard or a *forceReply.
+	ReplyMarkup any `json:"reply_markup,omitempty"`
 }
 
 // inlineKeyboard is the buttons under a message, one to a row; here, only
 // ever ones that open a web page.
 type inlineKeyboard struct {
 	Rows [][]urlButton `json:"inline_keyboard"`
+}
+
+// forceReply opens the reader's reply to the message, with a hint in the box
+// of what to type.
+type forceReply struct {
+	ForceReply  bool   `json:"force_reply"`
+	Placeholder string `json:"input_field_placeholder,omitempty"`
 }
 
 // Link is a button under a message that opens a web page.
@@ -143,6 +151,19 @@ func (c *Client) SendLinked(ctx context.Context, chatID int64, html string, link
 		ReplyMarkup:           keyboard,
 	}, &sent)
 	return sent.MessageID, err
+}
+
+// Ask sends a question and opens the reader's reply to it, with placeholder
+// in the box. The answer comes back as a reply to the bot, which is what lets
+// it through in a group: there a bot sees only commands and replies to it.
+func (c *Client) Ask(ctx context.Context, chatID int64, html, placeholder string) error {
+	return c.call(ctx, "sendMessage", sendMessageRequest{
+		ChatID:                chatID,
+		Text:                  html,
+		ParseMode:             "HTML",
+		DisableWebPagePreview: true,
+		ReplyMarkup:           &forceReply{ForceReply: true, Placeholder: placeholder},
+	}, nil)
 }
 
 // SendReport delivers the rendered brief in order and returns the ids of what

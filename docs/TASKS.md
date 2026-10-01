@@ -137,7 +137,7 @@ you, and why it is worth doing.
 - Market levels from FRED: yields, the curve, fed funds, S&P 500, VIX.
 - `SOURCE_LINKS=off|short|full`.
 - The brief written for a non-specialist, with terms explained, in bullets.
-- `/analyse <ticker>`: SEC filings read and written up, any SEC filer
+- `/analyse` (asks which company): SEC filings read and written up, any SEC filer
   including foreign ones with a US listing, in their own currency, with the
   current year so far beside the full years, and the share price against them,
   read with the method in `config/method.md`.
