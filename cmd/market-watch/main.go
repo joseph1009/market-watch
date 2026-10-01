@@ -177,7 +177,7 @@ func stageModels(cfg *config.Config) string {
 	if cfg.Triage && cfg.Review {
 		stages = append(stages, relay.Review)
 	}
-	stages = append(stages, relay.Brief, relay.Names, relay.Analysis)
+	stages = append(stages, relay.Brief, relay.Names, relay.Analysis, relay.Industry)
 	if cfg.Ideas {
 		stages = append(stages, relay.Themes, relay.Scout, relay.Research, relay.Verdicts)
 	}

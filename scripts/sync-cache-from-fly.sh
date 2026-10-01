@@ -3,9 +3,9 @@
 # change from what the last brief, analysis or closer look gathered instead of
 # running it again.
 #
-#   scripts/sync-cache-from-fly.sh                    all three
+#   scripts/sync-cache-from-fly.sh                    all four
 #   scripts/sync-cache-from-fly.sh analysis           or any of: brief,
-#                                                     analysis, recommendations
+#                                                     analysis, recommendations, industry
 #
 # The server keeps one folder per kind, holding only its latest run (see
 # internal/runcache): the data at each step as JSON, the messages as sent, the
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 APP="${FLY_APP:-joseph-market-watch}"
-KINDS="${*:-brief analysis recommendations}"
+KINDS="${*:-brief analysis recommendations industry}"
 
 die() { echo "sync-cache-from-fly: $*" >&2; exit 1; }
 
@@ -32,8 +32,8 @@ FLY="$(command -v fly || command -v flyctl || true)"
 mkdir -p data/cache
 for kind in $KINDS; do
   case "$kind" in
-    brief|analysis|recommendations) ;;
-    *) die "no such kind '$kind': use brief, analysis or recommendations" ;;
+    brief|analysis|recommendations|industry) ;;
+    *) die "no such kind '$kind': use brief, analysis, recommendations or industry" ;;
   esac
 
   tmp="$(mktemp -d)"

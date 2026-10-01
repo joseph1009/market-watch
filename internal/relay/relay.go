@@ -42,6 +42,7 @@ const (
 	Research = "research" // researching a theme for companies worth a look
 	Verdicts = "verdicts" // judging each of them
 	Analysis = "analysis" // writing up one company's accounts
+	Industry = "industry" // explaining how an industry fits together
 )
 
 // DefaultKeep is how many run directories are kept. A month of daily briefs

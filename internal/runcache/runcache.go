@@ -39,6 +39,7 @@ const (
 	Brief           = "brief"
 	Analysis        = "analysis"
 	Recommendations = "recommendations"
+	Industry        = "industry"
 )
 
 // Cache is the directory the folders live in.

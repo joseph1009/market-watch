@@ -22,6 +22,7 @@ const helpText = `<b>📊 Market Watch</b>
 
 /now — build and send a brief right now
 /analyse &lt;ticker&gt; — analyse a company from its filings, e.g. /analyse NVDA
+/industry &lt;words&gt; — how an industry fits together, and companies to look into in each part, e.g. /industry robotics
 /watchlist — show the companies you follow, by sector
 /watchlist add &lt;sector&gt; &lt;TICKER&gt; [name] — follow a company, e.g. /watchlist add industrials-defense PLTR Palantir
 /watchlist remove &lt;sector&gt; &lt;ticker or name&gt; — stop following it
@@ -45,6 +46,7 @@ func BotCommands() []telegram.Command {
 		{Command: "now", Description: "Build and send a brief right now"},
 		{Command: "watchlist", Description: "Show or change the companies you follow"},
 		{Command: "analyse", Description: "Analyse a company from its filings: /analyse NVDA"},
+		{Command: "industry", Description: "How an industry fits together, and companies to look into: /industry robotics"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
 		{Command: "schedule", Description: "When the next brief is due"},
 		{Command: "stats", Description: "What recent briefs found and did"},
@@ -88,6 +90,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 	// only to one spelling reads as broken to whoever typed the other.
 	case "analyse", "analyze", "accounts":
 		err = a.handleAnalyse(ctx, msg, args)
+	case "industry":
+		err = a.handleIndustry(ctx, msg, args)
 	case "watchlist":
 		err = a.handleWatchlist(ctx, msg, args)
 	case "sources":

@@ -526,7 +526,7 @@ func TestVersionAsksNothingOfAModel(t *testing.T) {
 
 func TestEveryStageIsAnsweredByOpus55(t *testing.T) {
 	c := Claude{}
-	for _, stage := range []string{Triage, Review, Names, Brief, Themes, Scout, Research, Verdicts, Analysis, "unknown"} {
+	for _, stage := range []string{Triage, Review, Names, Brief, Themes, Scout, Research, Verdicts, Analysis, Industry, "unknown"} {
 		if got := c.ModelFor(stage); got != "claude-opus-5-5" {
 			t.Errorf("%s answered by %q, want claude-opus-5-5", stage, got)
 		}

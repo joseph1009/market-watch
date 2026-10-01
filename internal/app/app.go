@@ -21,6 +21,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
 	"github.com/joseph1009/market-watch/internal/ideas"
+	"github.com/joseph1009/market-watch/internal/industry"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
@@ -118,6 +119,9 @@ type App struct {
 	// the writing up of them. Nil on either disables the command.
 	Accounts *fundamentals.Client
 	Analyzer *fundamentals.Analyzer
+
+	// Industry explains how an industry fits together, for /industry.
+	Industry *industry.Explainer
 
 	// Relay carries every model call: sorting, writing, spotting names, and
 	// the analysis. Each brief and each analysis is a run of its own, a
@@ -245,6 +249,11 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		UserAgent: cfg.UserAgent,
 	}
 	a.Analyzer = &fundamentals.Analyzer{Completer: rel.Stage(relay.Analysis)}
+	a.Industry = &industry.Explainer{
+		Completer: rel.Plain(relay.Industry),
+		Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
+		Now:       a.now,
+	}
 	if cfg.Triage {
 		a.Triage = &triage.Triager{
 			Completer:   rel.Plain(relay.Triage),
