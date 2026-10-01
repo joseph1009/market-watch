@@ -339,10 +339,10 @@ func TestClaudeUsesTheModelConfiguredForAStage(t *testing.T) {
 	}
 }
 
-// The scout and the research may search the web and read pages, and nothing
-// else: no shell, no files, no connectors. Every other stage, the verdicts and
-// the sorting of themes included, still gets no tools at all.
-func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
+// The scout, the research, the review and the verdicts may search the web and
+// read pages, and nothing else: no shell, no files, no connectors. Every
+// other stage, the sorting of themes included, still gets no tools at all.
+func TestOnlyTheResearchingStagesMaySearchTheWeb(t *testing.T) {
 	bin := fakeClaude(t)
 	rec := filepath.Join(t.TempDir(), "record.json")
 	t.Setenv("FAKE_CLAUDE_RECORD", rec)
@@ -390,7 +390,15 @@ func TestOnlyResearchAndTheReviewMaySearchTheWeb(t *testing.T) {
 		t.Errorf("scout args = %v, model %q; want web search and Opus 5.5", got.Args, got.Model)
 	}
 
-	for _, stage := range []string{Verdicts, Triage, Themes} {
+	// The verdicts check a case against a second source.
+	if _, _, err := r.Plain(Verdicts).Complete(context.Background(), "s", "p"); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if got = recorded(t, rec); !strings.Contains(strings.Join(got.Args, " "), "--tools WebSearch,WebFetch") {
+		t.Errorf("verdicts args = %v; want web search", got.Args)
+	}
+
+	for _, stage := range []string{Triage, Themes} {
 		if _, _, err := r.Plain(stage).Complete(context.Background(), "s", "p"); err != nil {
 			t.Fatalf("Complete: %v", err)
 		}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/runcache"
+	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -52,15 +54,16 @@ import (
 const (
 	// ideasBudget bounds a day's closer look: the market's latest sessions,
 	// the facts for six companies, and their verdicts, which takes five to
-	// ten minutes. The run lock is held throughout, so a /now sent meanwhile
-	// waits; this is what keeps that wait finite.
-	ideasBudget = 25 * time.Minute
+	// ten minutes, and since the verdicts search the web to check their case
+	// (2026-10-01) a few more. The run lock is held throughout, so a /now
+	// sent meanwhile waits; this is what keeps that wait finite.
+	ideasBudget = 35 * time.Minute
 
 	// themesBudget bounds the week's: the sorting, the scout, five themes
 	// researched two at a time, the facts for their companies and their
-	// peers, and up to sixteen verdicts, on top of the day's. Forty minutes
-	// or so, done before the open.
-	themesBudget = 75 * time.Minute
+	// peers, and up to sixteen verdicts that search the web, on top of the
+	// day's. Under an hour, done before the open.
+	themesBudget = 90 * time.Minute
 
 	// factWorkers is how many companies' facts are read at once. Each is SEC
 	// reads, paced across all of them by the accounts client, and six Nasdaq
@@ -332,7 +335,7 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, sheet
 				for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snap, a.now()) {
 					a.Log.Info("idea context", "ticker", idea.Ticker, "error", problem)
 				}
-				a.addPressNews(ctx, &snap)
+				a.addIdeaNews(ctx, &snap, idea.Name, true)
 				expect := a.addExpectations(ctx, &snap)
 				a.addRelease(ctx, &snap, analysisReleaseRunes)
 				idea.Accounts = true
@@ -349,7 +352,61 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, sheet
 		b.WriteString("No price history could be read for it.\n")
 	}
 	b.WriteString("\nNo SEC accounts were read for it: it does not file with the SEC, or its filings could not be read. Say that the accounts are missing, and weigh your confidence accordingly.\n")
+	// What has been written about it, so even a company without accounts is
+	// judged on more than its chart and one article.
+	news := fundamentals.Snapshot{Ticker: idea.Ticker, Company: idea.Name}
+	a.addIdeaNews(ctx, &news, idea.Name, idea.Exchange == "US" || idea.Exchange == "")
+	b.WriteString(news.NewsFacts())
 	return idea, sheet{chart: chart, facts: b.String()}
+}
+
+// ideaSearchWindow is how far back a company judged by the closer look is
+// searched for: the last fortnight, which is the news a verdict should not
+// miss.
+const ideaSearchWindow = 14 * 24 * time.Hour
+
+// addIdeaNews attaches what has been written about a company the closer
+// look judges: the news feed's stories where it is a US listing, and one
+// news search, so a verdict can check its case in more than one source
+// rather than lean on the single article that brought the company in. One
+// search rather than /analyse's two: the closer look judges up to sixteen
+// companies a week and six a day, and the search allowance is shared with
+// the brief.
+func (a *App) addIdeaNews(ctx context.Context, snap *fundamentals.Snapshot, name string, us bool) {
+	var (
+		fromFeed []model.Article
+		wg       sync.WaitGroup
+	)
+	if us && a.Press.Enabled() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ctx, newsBudget)
+			defer cancel()
+			found, err := a.Press.Company(ctx, snap.Ticker, a.now())
+			if err != nil {
+				a.Log.Info("company news", "ticker", snap.Ticker, "error", err)
+			}
+			fromFeed = found
+		}()
+	}
+	var fromSearch []model.Article
+	if a.Search.Enabled() {
+		if name == "" {
+			name = snap.Ticker
+		}
+		query := search.Query{Label: "idea:" + snap.Ticker, Text: fmt.Sprintf("%s (%s) news, results and outlook", search.PlainName(name), snap.Ticker)}
+		sctx, cancel := context.WithTimeout(ctx, newsBudget)
+		found := a.Search.Collect(sctx, []search.Query{query}, a.now().Add(-ideaSearchWindow))
+		cancel()
+		for _, err := range found.Errors {
+			a.Log.Warn("idea search", "ticker", snap.Ticker, "error", err)
+		}
+		fromSearch = found.Articles
+	}
+	wg.Wait()
+	fundamentals.SetNews(snap, fromSearch, fromFeed)
+	a.Log.Info("idea news", "ticker", snap.Ticker, "from_feed", len(fromFeed), "from_search", len(fromSearch), "kept", len(snap.News))
 }
 
 // recordVerdicts writes each verdict shown to the scorecard, with the chart

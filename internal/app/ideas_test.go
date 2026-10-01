@@ -153,14 +153,14 @@ func TestTheDailyCloserLookReachesTheChannelUnderItsWarning(t *testing.T) {
 	a.sendIdeas(context.Background(), lookFrom(todaysBrief, true, false))
 
 	channel := strings.Join(messagesTo(*sent, testChannel), "\n")
-	for _, want := range []string{"Reacting to the news", "Rambus", "<b>BUY</b>", "not financial advice", "nobody checking its work", "someone licensed"} {
+	for _, want := range []string{"Reacting to the news", "Rambus", "<b>BUY</b>", "AI-written, unchecked, not advice."} {
 		if !strings.Contains(channel, want) {
 			t.Errorf("the channel's closer look is missing %q:\n%s", want, channel)
 		}
 	}
 	// The owner's copy is headed for the owner, not with the reader's warning.
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
-	if !strings.Contains(owner, "/scorecard") || strings.Contains(owner, "not financial advice") {
+	if !strings.Contains(owner, "at least 5 percentage points over 12 months") || strings.Contains(owner, "not advice") {
 		t.Errorf("the owner's copy took the channel's note:\n%s", owner)
 	}
 }

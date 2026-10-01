@@ -43,10 +43,10 @@ func TestAnAnalysisShowsItsVerdictFirstAndWarnsTheChannel(t *testing.T) {
 			t.Errorf("%s: the verdict is missing:\n%s", name, text)
 		}
 	}
-	if !strings.Contains(owner, "/scorecard") || strings.Contains(owner, "not financial advice") {
+	if !strings.Contains(owner, "at least 5 percentage points over 12 months") || strings.Contains(owner, "not advice") {
 		t.Errorf("owner's note:\n%s", owner)
 	}
-	for _, want := range []string{"an AI model", "nobody checking its work", "This is not financial advice", "talk to someone licensed"} {
+	for _, want := range []string{"AI-written, unchecked, not advice."} {
 		if !strings.Contains(channel, want) {
 			t.Errorf("the channel's copy is missing %q:\n%s", want, channel)
 		}

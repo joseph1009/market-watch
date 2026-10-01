@@ -84,6 +84,11 @@ type Idea struct {
 	// far a point of margin or of revenue moves the earnings.
 	Catalyst    string
 	Sensitivity string
+
+	// Checked names the independent sources the case was checked in and
+	// whether they agree. A case found in one source only says so, and is
+	// held to low confidence.
+	Checked string
 }
 
 // How an idea was found.

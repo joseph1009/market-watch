@@ -126,7 +126,13 @@ func sits(short, long float64) string {
 	}
 }
 
-// news is what has been written about the company lately.
+// NewsFacts is the news block on its own, for a company whose accounts were
+// not read.
+func (s Snapshot) NewsFacts() string { return s.news() }
+
+// news is what has been written about the company lately. Its items are
+// numbered "News 1", not "[1]": a verdict cites the brief's articles in
+// square brackets, and the two must not be confused.
 func (s Snapshot) news() string {
 	if len(s.News) == 0 {
 		return ""
@@ -143,7 +149,7 @@ func (s Snapshot) news() string {
 		if source == "" {
 			source = "unattributed"
 		}
-		fmt.Fprintf(&b, "[%d] %s — %s, %s\n", i+1, a.Title, source, when)
+		fmt.Fprintf(&b, "News %d: %s — %s, %s\n", i+1, a.Title, source, when)
 		if summary := trimSummary(a.Summary); summary != "" {
 			fmt.Fprintf(&b, "    %s\n", summary)
 		}

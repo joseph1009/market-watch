@@ -55,8 +55,10 @@ const noThinking = `{"alwaysThinkingEnabled":false}`
 // nothing more.
 //
 // The review may search too, to learn what an unfamiliar company does when an
-// article does not say and its section depends on it.
-var webStages = map[string]bool{Scout: true, Research: true, Review: true}
+// article does not say and its section depends on it. And since 2026-10-01
+// the verdicts, at the owner's request: a verdict had rested on one article,
+// and it now checks its case in a second, independent source.
+var webStages = map[string]bool{Scout: true, Research: true, Review: true, Verdicts: true}
 
 // webTools are the tools a web stage is given, and pre-approved for, since a
 // headless call has nobody to ask.

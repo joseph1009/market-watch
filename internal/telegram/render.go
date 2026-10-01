@@ -615,15 +615,12 @@ type AnalysisVerdict struct {
 // channel's is not decoration: a verdict posted to other people must say that
 // a model wrote it, that nobody checked it, and that it is not advice to act
 // on. /share is the only way an analysis reaches the channel, and it posts
-// the channel's copy.
+// the channel's copy. Since 2026-10-01 both are the closer look's one line,
+// without its first clause: an analysis is of a company the owner chose.
 const (
-	analysisOwnerNote = "<i>Claude's view of the share, from the accounts below. " +
-		"BUY and SELL mean at least 5 points better or worse than the S&amp;P 500 over twelve months, in US dollars. /scorecard shows how past verdicts have done.</i>"
+	analysisOwnerNote = "<i>" + verdictMeaning + "</i>"
 
-	analysisChannelNote = "<i>This verdict was written by Claude — an AI model, working from public filings and share prices with nobody checking its work. " +
-		"BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over twelve months. " +
-		"This is not financial advice and not a recommendation to buy or sell anything. It is often wrong. " +
-		"Do your own research, and talk to someone licensed before you act on any of it.</i>"
+	analysisChannelNote = "<i>" + verdictMeaning + " " + disclosure + "</i>"
 )
 
 // RenderAnalysis lays out /analyse: the heading, then the verdict, then the

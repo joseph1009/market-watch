@@ -339,3 +339,30 @@ func TestTheThemeLog(t *testing.T) {
 		t.Errorf("early names = %v", l.Names(ThemeEarly))
 	}
 }
+
+// A verdict says which sources it checked its case in. One whose case was
+// found in one source only is held to low confidence, whatever it claimed.
+func TestACaseFromOneSourceIsLowConfidence(t *testing.T) {
+	list := []model.Idea{
+		{Name: "Warby Parker", Ticker: "WRBY", Exchange: "US", Kind: model.IdeaReaction, Accounts: true},
+		{Name: "Micron", Ticker: "MU", Exchange: "US", Kind: model.IdeaReaction, Accounts: true},
+	}
+	c := &fakeCompleter{reply: `=== WRBY
+VERDICT: SELL
+CONFIDENCE: medium
+CHECKED: One source only: the rally is reported by [259] alone.
+=== MU
+VERDICT: BUY
+CONFIDENCE: high
+CHECKED: Reuters [1] and the company's 8-K agree.`}
+	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), list, []string{"", ""}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Confidence != "low" || got[0].Checked != "One source only: the rally is reported by [259] alone." {
+		t.Errorf("WRBY = %q, %q", got[0].Confidence, got[0].Checked)
+	}
+	if got[1].Confidence != "high" || got[1].Checked != "Reuters [1] and the company's 8-K agree." {
+		t.Errorf("MU = %q, %q", got[1].Confidence, got[1].Checked)
+	}
+}

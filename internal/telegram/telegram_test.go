@@ -1313,7 +1313,7 @@ func TestThePicksComeUnderTheirThemes(t *testing.T) {
 	out := strings.Join(RenderPicks(picks, cited, IdeasOptions{}, time.UTC), "\n")
 	for _, want := range []string{
 		"<b>🔎 This week's picks</b>",
-		"/scorecard",
+		"at least 5 percentage points over 12 months",
 		"<b>AI data centres</b> · <i>Popular</i>",
 		"<i>The numbers:</i> median member +40 pts over 12 months",
 		"<i>Where the value is:</i> Power equipment &amp; cooling.",
@@ -1355,7 +1355,7 @@ func TestThePicksComeUnderTheirThemes(t *testing.T) {
 	// has never seen this before is told what wrote it and that it is not
 	// advice.
 	forChannel := strings.Join(RenderPicks(picks, cited, IdeasOptions{ForChannel: true}, time.UTC), "\n")
-	for _, want := range []string{"<b>Vertiv</b>", "an AI model", "nobody checking its work", "not financial advice", "someone licensed"} {
+	for _, want := range []string{"<b>Vertiv</b>", "AI-written, unchecked, not advice."} {
 		if !strings.Contains(forChannel, want) {
 			t.Errorf("the channel's picks are missing %q:\n%s", want, forChannel)
 		}

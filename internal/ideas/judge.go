@@ -123,6 +123,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		idea.Changed, idea.Moved, idea.Reaction = v.changed, v.moved, v.reaction
 		idea.Value = v.value
 		idea.Catalyst, idea.Sensitivity = v.catalyst, v.sensitivity
+		idea.Checked = v.checked
 		out = append(out, hold(idea))
 	}
 	if failed > 0 {
@@ -134,16 +135,22 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 // hold applies the rules the model is told but may not bend. A BUY the
 // valuation has closed is a HOLD, and says why; a verdict without accounts is
 // low confidence at most, since the numbers that would justify more were
-// never read.
+// never read; and so is one whose case was found in one source only.
 func hold(idea model.Idea) model.Idea {
 	if idea.Verdict == model.Buy && idea.BuyClosed != "" {
 		idea.Verdict = model.Hold
 		idea.Overruled = "BUY turned to HOLD: " + idea.BuyClosed
 	}
-	if !idea.Accounts && idea.Confidence != "" && idea.Confidence != "low" {
+	if (!idea.Accounts || oneSource(idea.Checked)) && idea.Confidence != "" && idea.Confidence != "low" {
 		idea.Confidence = "low"
 	}
 	return idea
+}
+
+// oneSource reports whether the verdict says its case rests on a single
+// source.
+func oneSource(checked string) bool {
+	return strings.Contains(strings.ToLower(checked), "one source only")
 }
 
 func (j *Judge) batch() int {
@@ -264,7 +271,7 @@ func clip(s string, n int) string {
 type verdict struct {
 	verdict, confidence, theCase, numbers, risk string
 	changed, moved, reaction, value             string
-	catalyst, sensitivity                       string
+	catalyst, sensitivity, checked              string
 }
 
 // parseVerdicts reads the reply's blocks, keyed by the symbol each opens with.
@@ -298,6 +305,7 @@ func parseVerdicts(text string) map[string]verdict {
 		{"VALUE:", func(v *verdict) *string { return &v.value }},
 		{"CATALYST:", func(v *verdict) *string { return &v.catalyst }},
 		{"SENSITIVITY:", func(v *verdict) *string { return &v.sensitivity }},
+		{"CHECKED:", func(v *verdict) *string { return &v.checked }},
 	}
 
 	for _, raw := range strings.Split(text, "\n") {

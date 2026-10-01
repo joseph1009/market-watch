@@ -17,21 +17,25 @@ type IdeasOptions struct {
 	ForChannel bool
 }
 
-// ownerNote and channelNote head the closer look for each audience.
+// ownerNote and channelNote head the closer look for each audience. Since
+// 2026-10-01 both are one line, at the owner's request: the owner's is the
+// wording they gave.
 //
 // The channel note is not decoration. Verdicts published to other people are a
 // different thing from verdicts kept for yourself, and the two things the
 // policy on AI-written advice asks for are that readers are told a model wrote
-// it and that nobody is told to act. Both are said here, because this is the
-// only place a channel reader will see them. See docs/RUNBOOK.md.
+// it and that nobody is told to act. "AI-written, unchecked, not advice" says
+// both, because this is the only place a channel reader will see them. If it
+// goes, the closer look goes back to the owner only. See docs/RUNBOOK.md.
 const (
-	ownerNote = "<i>Claude's verdicts on companies found from the market's numbers and the news. " +
-		"BUY and SELL mean at least 5 points better or worse than the S&amp;P 500 over twelve months, in US dollars. /scorecard shows how past verdicts have done.</i>"
+	verdictMeaning = "BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over 12 months."
 
-	channelNote = "<i>Companies found from market data and the news, researched and judged by Claude — an AI model, writing from public filings and share prices with nobody checking its work. " +
-		"BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over twelve months. " +
-		"This is not financial advice and not a recommendation to buy or sell anything. It is often wrong. " +
-		"Do your own research, and talk to someone licensed before you act on any of it.</i>"
+	ownerNote = "<i>Companies found from market data and the news, " + verdictMeaning + "</i>"
+
+	channelNote = "<i>Companies found from market data and the news, " + verdictMeaning + " " + disclosure + "</i>"
+
+	// disclosure is what every verdict shown to the channel carries.
+	disclosure = "AI-written, unchecked, not advice."
 )
 
 // ThemeView is one of the week's themes as the message shows it.
@@ -263,6 +267,9 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	}
 	if n := renderNumbers(idea.Numbers); n != "" {
 		parts = append(parts, n)
+	}
+	if idea.Checked != "" {
+		parts = append(parts, "<i>Checked:</i> "+linkCitations(escape(idea.Checked), cited))
 	}
 	if idea.Risk != "" {
 		parts = append(parts, "<i>Risk:</i> "+linkCitations(escape(idea.Risk), cited))
