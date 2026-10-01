@@ -89,6 +89,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	got := parseResponse(completion.Text)
 	rep := model.Report{
 		GeneratedAt:  now,
+		Summary:      got.Summary,
 		Overview:     got.Overview,
 		ArticleCount: len(articles),
 		SourceCount:  countSources(articles),

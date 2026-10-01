@@ -161,10 +161,22 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 		return
 	}
 
-	messages := telegram.RenderPicks(picks, lk.Cited, telegram.IdeasOptions{}, a.Cfg.DisplayLocation)
+	title := "Closer look · " + a.now().In(a.Cfg.DisplayLocation).Format("Mon 2 Jan")
+	picksFor := func(opts telegram.IdeasOptions) outgoing {
+		doc := telegram.PicksDoc(picks, lk.Cited, opts, a.now(), a.Cfg.DisplayLocation)
+		return outgoing{
+			title:    title,
+			messages: telegram.RenderPicks(picks, lk.Cited, opts, a.Cfg.DisplayLocation),
+			summary:  telegram.PicksSummary(picks, opts),
+			doc:      &doc,
+		}
+	}
+	owner := picksFor(telegram.IdeasOptions{})
+	messages := owner.messages
 	cached.Save("shown", shown)
 	cached.Text("messages.html", joinMessages(messages))
-	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
+	cached.Text("summary.html", owner.summary.Text)
+	ids, err := a.send(ctx, prefs.ChatID, owner, false)
 	if len(ids) > 0 {
 		// Cleared with the brief it follows, when REPLACE_PREVIOUS is on.
 		if saveErr := a.UpdatePrefs(func(p *config.Prefs) error {
@@ -183,7 +195,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) {
 	// The channel is posted before the verdicts are scored, for the reason the
 	// brief is: the reader's copy should not wait on bookkeeping.
 	if lk.Share {
-		a.shareIdeas(ctx, telegram.RenderPicks(picks, lk.Cited, telegram.IdeasOptions{ForChannel: true}, a.Cfg.DisplayLocation))
+		a.shareIdeas(ctx, picksFor(telegram.IdeasOptions{ForChannel: true}))
 	}
 
 	a.recordVerdicts(ctx, shown, charts)

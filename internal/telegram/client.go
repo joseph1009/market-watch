@@ -70,6 +70,19 @@ type sendMessageRequest struct {
 	ParseMode             string `json:"parse_mode"`
 	DisableWebPagePreview bool   `json:"disable_web_page_preview"`
 	DisableNotification   bool   `json:"disable_notification,omitempty"`
+
+	ReplyMarkup *inlineKeyboard `json:"reply_markup,omitempty"`
+}
+
+// inlineKeyboard is a row of buttons under a message; here, only ever one
+// that opens a web page.
+type inlineKeyboard struct {
+	Rows [][]urlButton `json:"inline_keyboard"`
+}
+
+type urlButton struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
 }
 
 // SendMessage delivers one HTML-formatted message.
@@ -100,6 +113,24 @@ func (c *Client) send(ctx context.Context, chatID int64, html string, silent boo
 		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
 		DisableNotification:   silent,
+	}, &sent)
+	return sent.MessageID, err
+}
+
+// SendLinked delivers one message with a button under it that opens url:
+// a summary, and the way to the whole thing. In a channel it can arrive
+// silently, as the parts of a long post after the first do.
+func (c *Client) SendLinked(ctx context.Context, chatID int64, html, label, url string, silent bool) (int64, error) {
+	var sent struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := c.call(ctx, "sendMessage", sendMessageRequest{
+		ChatID:                chatID,
+		Text:                  html,
+		ParseMode:             "HTML",
+		DisableWebPagePreview: true,
+		DisableNotification:   silent,
+		ReplyMarkup:           &inlineKeyboard{Rows: [][]urlButton{{{Text: label, URL: url}}}},
 	}, &sent)
 	return sent.MessageID, err
 }

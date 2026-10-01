@@ -7,6 +7,7 @@ import (
 // parsed is the raw shape of a model response, before it is matched against
 // the watchlists that were actually requested.
 type parsed struct {
+	Summary  string // the few bullets shown before the rest is opened
 	Overview string
 	Sections map[string]string
 	Order    []string
@@ -23,11 +24,16 @@ func parseResponse(raw string) parsed {
 	var (
 		current string // "" means the overview
 		body    []string
+		summary bool // in the IN SHORT block
 	)
 	flush := func() {
 		text := strings.TrimSpace(strings.Join(body, "\n"))
 		body = body[:0]
 		if text == "" {
+			return
+		}
+		if summary {
+			out.Summary = strings.TrimSpace(out.Summary + "\n" + text)
 			return
 		}
 		if current == "" {
@@ -44,11 +50,15 @@ func parseResponse(raw string) parsed {
 
 	for _, line := range strings.Split(raw, "\n") {
 		switch trimmed := strings.TrimSpace(line); {
+		case strings.EqualFold(trimmed, summaryMarker):
+			flush()
+			summary = true
 		case strings.EqualFold(trimmed, overviewMarker):
 			flush()
-			current = ""
+			current, summary = "", false
 		case hasMarkerPrefix(trimmed, sectionMarker):
 			flush()
+			summary = false
 			current = strings.ToLower(strings.TrimSpace(trimmed[len(sectionMarker):]))
 		default:
 			body = append(body, line)

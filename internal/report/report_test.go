@@ -621,14 +621,16 @@ func TestSectionSourcesAreOnlyWhatTheModelWasShown(t *testing.T) {
 // its terms rather than assume them, in sub-headings and bullets. On
 // 2026-10-01 they asked for plain English over brevity, about twice the room,
 // an emoji on each sub-heading, the key figure highlighted, and a look at
-// what is coming as well as what happened.
+// what is coming as well as what happened; later the same day, longer bullets
+// for reading as a page, and the short bullets as ordinary sentences.
 func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
 	for _, want := range []string{
 		"not a market professional",
 		"plain English",
 		"25bp",
 		`a line starting "### ", then one emoji`,
-		"up to about forty-five words",
+		"up to about sixty words",
+		"Never open a bullet with the figure and a colon",
 		"double asterisks",
 		"### 🔭 What to watch",
 	} {
@@ -673,5 +675,18 @@ func TestSystemPromptAsksForCitationsAndSkipsRepeats(t *testing.T) {
 		if !strings.Contains(systemPrompt, want) {
 			t.Errorf("the system prompt no longer carries %q", want)
 		}
+	}
+}
+
+// The few bullets the chat shows are kept apart from the overview, so the
+// overview on the page does not open by repeating them.
+func TestParseResponseKeepsTheShortVersionApart(t *testing.T) {
+	raw := "## IN SHORT\n- Yields hit **5.55%**.\n- Micron reports tonight.\n\n## OVERVIEW\nYields hit 2002 highs.\n\n## SECTION: energy\nOil rose."
+	got := parseResponse(raw)
+	if got.Summary != "- Yields hit **5.55%**.\n- Micron reports tonight." {
+		t.Errorf("summary = %q", got.Summary)
+	}
+	if got.Overview != "Yields hit 2002 highs." || got.Sections["energy"] != "Oil rose." {
+		t.Errorf("overview %q, sections %v", got.Overview, got.Sections)
 	}
 }

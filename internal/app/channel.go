@@ -29,13 +29,13 @@ import (
 
 // delivery is something sent to the owner that /share can pass on.
 type delivery struct {
-	what     string // how the replies name it: "the NVDA analysis"
-	messages []string
+	what  string // how the replies name it: "the NVDA analysis"
+	owner outgoing
 
 	// channel is the copy for the channel where it differs from the owner's:
 	// an analysis, whose verdict goes out under the warning a channel reader
 	// needs. Nil posts the owner's.
-	channel []string
+	channel *outgoing
 
 	shared  bool
 	sharing bool // a post to the channel is under way
@@ -55,7 +55,20 @@ func (a *App) remember(what string, messages []string) *delivery {
 
 // rememberFor is remember with a different copy for the channel.
 func (a *App) rememberFor(what string, messages, channel []string) *delivery {
-	d := &delivery{what: what, messages: messages, channel: channel}
+	d := &delivery{what: what, owner: outgoing{messages: messages}}
+	if channel != nil {
+		d.channel = &outgoing{messages: channel}
+	}
+	return a.keep(d)
+}
+
+// rememberSent is rememberFor for what was sent as a summary and a page:
+// the channel gets the same, from its own copy.
+func (a *App) rememberSent(what string, owner outgoing, channel *outgoing) *delivery {
+	return a.keep(&delivery{what: what, owner: owner, channel: channel})
+}
+
+func (a *App) keep(d *delivery) *delivery {
 	a.lastMu.Lock()
 	a.last = d
 	a.lastMu.Unlock()
@@ -86,11 +99,11 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	d.sharing = true
 	a.lastMu.Unlock()
 
-	messages := d.messages
+	out := d.owner
 	if d.channel != nil {
-		messages = d.channel
+		out = *d.channel
 	}
-	_, err := a.Bot.Broadcast(ctx, channel, messages)
+	ids, err := a.send(ctx, channel, out, true)
 
 	a.lastMu.Lock()
 	d.sharing = false
@@ -100,7 +113,7 @@ func (a *App) share(ctx context.Context, d *delivery) error {
 	if err != nil {
 		return fmt.Errorf("post %s to the channel: %w", d.what, err)
 	}
-	a.Log.Info("posted to the channel", "what", d.what, "messages", len(messages), "channel", channel)
+	a.Log.Info("posted to the channel", "what", d.what, "messages", len(ids), "channel", channel)
 	return nil
 }
 
@@ -137,13 +150,14 @@ func (a *App) shareBrief(ctx context.Context, d *delivery) {
 // all.
 //
 // Like the brief, a failure here costs the channel and never the owner's copy.
-func (a *App) shareIdeas(ctx context.Context, messages []string) {
+func (a *App) shareIdeas(ctx context.Context, out outgoing) {
 	channel := a.Cfg.TelegramChannelID
-	if channel == 0 || len(messages) == 0 {
+	if channel == 0 || len(out.messages) == 0 {
 		return
 	}
 
-	if _, err := a.Bot.Broadcast(ctx, channel, messages); err != nil {
+	ids, err := a.send(ctx, channel, out, true)
+	if err != nil {
 		a.Log.Error("could not post the closer look to the channel", "error", err)
 		owner := a.Prefs().ChatID
 		if owner == 0 {
@@ -158,7 +172,7 @@ func (a *App) shareIdeas(ctx context.Context, messages []string) {
 		}
 		return
 	}
-	a.Log.Info("posted to the channel", "what", "the closer look", "messages", len(messages), "channel", channel)
+	a.Log.Info("posted to the channel", "what", "the closer look", "messages", len(ids), "channel", channel)
 }
 
 // handleShare posts the latest brief or analysis to the channel.

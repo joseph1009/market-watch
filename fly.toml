@@ -1,8 +1,10 @@
-# Fly.io deployment. One machine, one volume, no public port.
+# Fly.io deployment. One machine, one volume, one public port: the pages.
 #
 # The service opens connections out -- to the feeds, to Telegram, and through
-# Claude Code to Anthropic -- and listens for nothing, so it needs no HTTP
-# service block and nothing should be able to reach it from the internet.
+# Claude Code to Anthropic. Since 2026-10-01 it also serves the pages its
+# summaries link to, and that is all it answers: GET /r/<random id> for a page
+# on the volume, "not found" for anything else. No listing, no commands, no
+# writes; the bot still takes commands from the owner's chat alone.
 #
 # Secrets, set with `fly secrets set` or scripts/fly-deploy.sh, never here:
 #   TELEGRAM_BOT_TOKEN       from @BotFather
@@ -35,6 +37,11 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
   TRIAGE = "true"
   DISCOVER = "true"
 
+  # Long messages go out as a summary with a button to this page server.
+  # Remove PAGES_URL to send everything in full again.
+  PAGES_URL = "https://joseph-market-watch.fly.dev"
+  PAGES_ADDR = ":8080"
+
   # Every model call is answered by Claude Code on this machine, by Opus 5.5
   # for every stage. Two batches at a time.
   RELAY_ANSWER = "claude"
@@ -55,8 +62,15 @@ primary_region = "sin"   # Singapore: nearest to the reader, and the feeds are w
   # /analyse, fit in a gigabyte with room left over.
   memory = "1gb"
 
+# The pages, over HTTPS on Fly's certificate for joseph-market-watch.fly.dev.
+#
 # The machine runs a scheduler, so it must never be stopped for being idle: a
-# stopped machine has no timer, and the brief would simply never fire. Nothing
-# needs saying for that. Idle machines are stopped by Fly's proxy, which only
-# manages an app with an [http_service] or [[services]] section, and this app
-# has neither.
+# stopped machine has no timer, and the brief would simply never fire. Fly's
+# proxy stops idle machines of an app with a web service unless told not to,
+# which auto_stop_machines and min_machines_running do here.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1

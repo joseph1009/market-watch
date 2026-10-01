@@ -25,6 +25,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/pages"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -82,6 +83,14 @@ type App struct {
 	// Terms are config/glossary.yaml's jargon, linked to an explanation in
 	// the brief.
 	Terms []model.Term
+
+	// Pages keeps the web pages that long messages are sent as, behind a
+	// summary. Nil sends everything in full, as messages.
+	Pages Publisher
+
+	// pageStore is Pages when the service serves them itself, which Serve
+	// starts.
+	pageStore *pages.Store
 
 	MarketStore *market.Store
 
@@ -228,6 +237,10 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	a.Terms = terms
+	if cfg.PagesURL != "" {
+		a.pageStore = &pages.Store{Dir: filepath.Join(cfg.DataDir, "pages"), BaseURL: cfg.PagesURL}
+		a.Pages = a.pageStore
+	}
 	if cfg.Consensus {
 		a.Consensus = &consensus.Client{HTTP: &http.Client{Timeout: 20 * time.Second}}
 	}
@@ -649,13 +662,18 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 		"output_tokens", rep.Usage.OutputTokens,
 		"took", time.Since(started).Round(time.Second))
 
-	messages := telegram.RenderWith(rep, telegram.Options{
+	layout := telegram.Options{
 		Display: a.Cfg.DisplayLocation,
 		Sources: sourceMode(a.Cfg.SourceLinks),
 		Terms:   a.Terms,
-	})
+	}
+	messages := telegram.RenderWith(rep, layout)
+	day := rep.GeneratedAt.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan")
+	doc := telegram.BriefDoc(rep, pageMarket(a.Generator.Levels, quotes), layout)
+	out := outgoing{title: "Market Watch · " + day, messages: messages, summary: telegram.BriefSummary(rep, layout), doc: &doc}
 	cached.Save("report", rep)
 	cached.Text("messages.html", joinMessages(messages))
+	cached.Text("summary.html", out.summary.Text)
 
 	// Clearing happens after generation, not before: a run that fails to
 	// produce a brief must not also have thrown away the last one.
@@ -664,7 +682,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 		a.Log.Info("cleared previous brief", "deleted", deleted, "unavailable", failed)
 	}
 
-	ids, err := a.Bot.SendReport(ctx, prefs.ChatID, messages)
+	ids, err := a.send(ctx, prefs.ChatID, out, false)
 	// The ids are recorded even on a partial send, so a half-delivered brief
 	// still gets cleaned up by the next run rather than lingering forever.
 	if len(ids) > 0 {
@@ -678,7 +696,7 @@ func (a *App) sendReport(ctx context.Context) (*briefDone, error) {
 	if err != nil {
 		return nil, err
 	}
-	sent := a.remember("the brief of "+rep.GeneratedAt.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan"), messages)
+	sent := a.rememberSent("the brief of "+day, out, nil)
 
 	// Recorded only after delivery: a brief that never reached the reader has
 	// not covered anything, and marking it would silence tomorrow's.
@@ -778,9 +796,17 @@ func (a *App) Serve(ctx context.Context) error {
 		a.Log.Info("discarded updates queued while offline", "count", n)
 	}
 
-	errs := make(chan error, 4)
+	errs := make(chan error, 5)
 	var wg sync.WaitGroup
 	wg.Add(4)
+	if a.pageStore != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.Log.Info("serving pages", "addr", a.Cfg.PagesAddr, "url", a.Cfg.PagesURL)
+			errs <- a.pageStore.Serve(ctx, a.Cfg.PagesAddr)
+		}()
+	}
 
 	go func() {
 		defer wg.Done()

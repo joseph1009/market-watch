@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -169,6 +170,16 @@ type Config struct {
 	// source list at all). Set with SOURCE_LINKS.
 	SourceLinks string
 
+	// PagesURL is the web address the service's own pages are read at, such
+	// as https://joseph-market-watch.fly.dev. Set, every brief, closer look,
+	// analysis and industry goes out as a short summary with a button to the
+	// whole thing as a web page. Empty, they go out in full, as messages.
+	PagesURL string
+
+	// PagesAddr is where the pages are served from, ":8080" by default when
+	// PagesURL is set.
+	PagesAddr string
+
 	MaxArticles int
 	HTTPTimeout time.Duration
 	LogLevel    slog.Level
@@ -257,6 +268,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.ReplacePrevious, err = envBool("REPLACE_PREVIOUS", false); err != nil {
 		return nil, err
+	}
+	if cfg.PagesURL = strings.TrimRight(strings.TrimSpace(os.Getenv("PAGES_URL")), "/"); cfg.PagesURL != "" {
+		if u, err := url.Parse(cfg.PagesURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return nil, fmt.Errorf("PAGES_URL: want an address such as https://example.fly.dev, got %q", cfg.PagesURL)
+		}
+		cfg.PagesAddr = envOr("PAGES_ADDR", ":8080")
 	}
 	if cfg.SkipWeekends, err = envBool("SKIP_WEEKENDS", true); err != nil {
 		return nil, err

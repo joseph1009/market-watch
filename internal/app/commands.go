@@ -550,33 +550,55 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	prose, verdict := fundamentals.SplitVerdict(prose)
 	cached.Save("verdict", verdict)
 
-	messages := analysisMessages(snapshot, prose, verdict, related, telegram.IdeasOptions{})
+	owner := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{})
 	cached.Save("related", related)
-	cached.Text("messages.html", joinMessages(messages))
+	cached.Text("messages.html", joinMessages(owner.messages))
+	cached.Text("summary.html", owner.summary.Text)
 
-	if _, err = a.Bot.SendReport(ctx, msg.Chat.ID, messages); err != nil {
+	if _, err = a.send(ctx, msg.Chat.ID, owner, false); err != nil {
 		return err
 	}
 	// /share posts the channel's copy, whose verdict carries the warning a
 	// reader there needs.
-	a.rememberFor("the "+snapshot.Ticker+" analysis", messages,
-		analysisMessages(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true}))
+	channel := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true})
+	a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
 	a.recordAnalysis(snapshot, verdict)
 	return nil
+}
+
+// analysisOut is an analysis to send: its messages, and its verdict as the
+// summary of them.
+func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) outgoing {
+	v := telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body}
+	doc := telegram.AnalysisDoc(snapshot.Ticker, snapshot.Company, v, prose, pageAccounts(snapshot), relatedList(related),
+		opts, a.Terms, a.now(), a.Cfg.DisplayLocation)
+	return outgoing{
+		title:    snapshot.Ticker + " · " + snapshot.Company,
+		messages: analysisMessages(snapshot, prose, verdict, related, opts),
+		summary:  telegram.AnalysisSummary(analysisHeading(snapshot), v, opts),
+		doc:      &doc,
+	}
+}
+
+// relatedList is the related companies as the chat and the page show them.
+func relatedList(related []fundamentals.Related) []telegram.Related {
+	return telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
+		return r.Name, r.Symbol(), r.Listed, r.Why
+	})
+}
+
+func analysisHeading(snapshot fundamentals.Snapshot) string {
+	return fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
 }
 
 // analysisMessages lays an analysis out for the owner or the channel: the
 // verdict first, then the accounts, the related companies, and where the
 // figures came from.
 func analysisMessages(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) []string {
-	heading := fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
-	messages := telegram.RenderAnalysis(heading,
+	messages := telegram.RenderAnalysis(analysisHeading(snapshot),
 		telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body},
 		prose, opts)
-	shown := telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
-		return r.Name, r.Symbol(), r.Listed, r.Why
-	})
-	if block := telegram.RenderRelated(shown); block != "" {
+	if block := telegram.RenderRelated(relatedList(related)); block != "" {
 		messages = append(messages, block)
 	}
 	return append(messages, fmt.Sprintf(

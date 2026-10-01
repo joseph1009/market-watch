@@ -316,3 +316,11 @@ func reactionWord(reaction string) string {
 	}
 	return ""
 }
+
+// picksNote is the note the closer look is read under, for its reader.
+func picksNote(opts IdeasOptions) string {
+	if opts.ForChannel {
+		return channelNote
+	}
+	return ownerNote
+}

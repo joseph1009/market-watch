@@ -1479,3 +1479,13 @@ func TestTheReactionWordReadsNotYetTraded(t *testing.T) {
 		}
 	}
 }
+
+// A source a model names as a markdown link, as it does for what it found
+// on the web, arrives as a link rather than as brackets.
+func TestMarkdownLinksBecomeLinks(t *testing.T) {
+	got := linkCitations("Checked: [MarketBeat](https://www.marketbeat.com/a?b=1&amp;c=2) and [3].", nil)
+	want := `Checked: <a href="https://www.marketbeat.com/a?b=1&amp;c=2">MarketBeat</a> and [3].`
+	if got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}

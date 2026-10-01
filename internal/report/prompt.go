@@ -16,6 +16,7 @@ import (
 // straight to the reader, so plain text avoids a round trip through JSON
 // escaping, and a malformed marker costs one section instead of the whole run.
 const (
+	summaryMarker  = "## IN SHORT"
 	overviewMarker = "## OVERVIEW"
 	sectionMarker  = "## SECTION:"
 )

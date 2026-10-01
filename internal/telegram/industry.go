@@ -61,3 +61,34 @@ func capitalise(s string) string {
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
 }
+
+// industryNoteFor is the note an industry is read under, for its reader.
+func industryNoteFor(opts IdeasOptions) string {
+	if opts.ForChannel {
+		return industryChannelNote
+	}
+	return industryNote
+}
+
+// industryPart is one part of an industry and the companies in it.
+type industryPart struct {
+	Name      string
+	Companies []IndustryCompany
+}
+
+// partsOf groups the companies by part, in the order the parts first
+// appear, which is the order the explanation gives them in.
+func partsOf(companies []IndustryCompany) []industryPart {
+	var parts []industryPart
+	at := map[string]int{}
+	for _, c := range companies {
+		i, seen := at[c.Part]
+		if !seen {
+			i = len(parts)
+			at[c.Part] = i
+			parts = append(parts, industryPart{Name: c.Part})
+		}
+		parts[i].Companies = append(parts[i].Companies, c)
+	}
+	return parts
+}

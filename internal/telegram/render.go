@@ -623,6 +623,15 @@ const (
 	analysisChannelNote = "<i>" + verdictMeaning + " " + disclosure + "</i>"
 )
 
+// analysisNote is the note an analysis's verdict is read under, for its
+// reader.
+func analysisNote(opts IdeasOptions) string {
+	if opts.ForChannel {
+		return analysisChannelNote
+	}
+	return analysisOwnerNote
+}
+
 // RenderAnalysis lays out /analyse: the heading, then the verdict, then the
 // accounts that support it. The verdict is written last and shown first:
 // last, so the reading of the accounts is not bent to fit a conclusion
@@ -689,6 +698,7 @@ var citation = regexp.MustCompile(`\[(\d{1,4})\]`)
 // with no article behind it is left as written rather than linked to something
 // else, so a miscount cannot silently attribute a claim to the wrong outlet.
 func linkCitations(block string, cited []model.Article) string {
+	block = markdownLinks(block)
 	if len(cited) == 0 {
 		return block
 	}
@@ -703,6 +713,15 @@ func linkCitations(block string, cited []model.Article) string {
 		}
 		return fmt.Sprintf("<a href=\"%s\">[%d]</a>", escape(a.URL), n)
 	})
+}
+
+// markdownLink is a link a model wrote as markdown, [MarketBeat](https://...),
+// as it does when it names a source it found on the web. Telegram shows
+// markdown as written, brackets and all, so it becomes a real link.
+var markdownLink = regexp.MustCompile(`\[([^\[\]\n]{1,120})\]\((https?://[^\s()<>"]+)\)`)
+
+func markdownLinks(block string) string {
+	return markdownLink.ReplaceAllString(block, `<a href="$2">$1</a>`)
 }
 
 // cite links the citations in every block of a section.

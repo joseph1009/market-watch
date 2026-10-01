@@ -58,14 +58,24 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 		companies[i] = telegram.IndustryCompany{Part: c.Part, Name: c.Name, Symbol: c.Symbol(), Why: c.Why}
 	}
 
-	messages := telegram.RenderIndustry(exp.Topic, exp.Text, companies, telegram.IdeasOptions{}, a.Terms)
-	cached.Text("messages.html", joinMessages(messages))
-	if _, err := a.Bot.SendReport(ctx, msg.Chat.ID, messages); err != nil {
+	industryFor := func(opts telegram.IdeasOptions) outgoing {
+		doc := telegram.IndustryDoc(exp.Topic, exp.Text, companies, opts, a.Terms)
+		return outgoing{
+			title:    capitalise(exp.Topic) + " · how the industry fits together",
+			messages: telegram.RenderIndustry(exp.Topic, exp.Text, companies, opts, a.Terms),
+			summary:  telegram.IndustrySummary(exp.Topic, exp.Text, companies, opts),
+			doc:      &doc,
+		}
+	}
+	owner := industryFor(telegram.IdeasOptions{})
+	cached.Text("messages.html", joinMessages(owner.messages))
+	cached.Text("summary.html", owner.summary.Text)
+	if _, err := a.send(ctx, msg.Chat.ID, owner, false); err != nil {
 		return err
 	}
 	// /share posts the channel's copy, which says a model wrote it.
-	a.rememberFor("the "+exp.Topic+" industry", messages,
-		telegram.RenderIndustry(exp.Topic, exp.Text, companies, telegram.IdeasOptions{ForChannel: true}, a.Terms))
+	channel := industryFor(telegram.IdeasOptions{ForChannel: true})
+	a.rememberSent("the "+exp.Topic+" industry", owner, &channel)
 	a.Log.Info("industry explained", "topic", exp.Topic, "companies", len(companies),
 		"input_tokens", exp.Usage.InputTokens, "output_tokens", exp.Usage.OutputTokens)
 	return nil

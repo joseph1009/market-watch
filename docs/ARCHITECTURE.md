@@ -61,7 +61,8 @@ headless Claude Code process, and the answer written beside it.
 | [internal/consensus](../internal/consensus/) | What analysts expect of a company, and what its insiders, short sellers and funds have done, from the data behind Nasdaq's website |
 | [internal/fundamentals](../internal/fundamentals/) | Reading XBRL accounts out of EDGAR and turning them into a table |
 | [internal/prices](../internal/prices/) | What markets measured: a live quote feed, a daily-history chart source, the whole US market's day and its splits from Massive, company news, and FRED's yields, rates, inflation and commodities |
-| [internal/telegram](../internal/telegram/) | The Telegram API client, and all rendering into messages |
+| [internal/telegram](../internal/telegram/) | The Telegram API client, and all rendering into messages and summaries |
+| [internal/pages](../internal/pages/) | The web pages long messages are sent as: tables, charts and cards laid out from what the messages were written from, kept for a month, served at a random address |
 | [internal/relay](../internal/relay/) | Every model call. Writes the request, runs Claude Code, keeps the reply |
 | [internal/runcache](../internal/runcache/) | What the latest brief, analysis and closer look were made from and sent, one folder each |
 | [internal/history](../internal/history/) | What earlier briefs covered, and what each run cost |
@@ -79,10 +80,10 @@ poller — and this is what the scheduler fires.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L732) recomputes the next run every time
+[`RunScheduler`](../internal/app/app.go#L750) recomputes the next run every time
 rather than ticking on an interval, so the schedule stays pinned to 07:30 US
 Eastern, two hours before the open, across a daylight-saving change. When the timer fires it calls
-[`Publish`](../internal/app/app.go#L351) → [`brief(ctx, share: true)`](../internal/app/app.go#L365).
+[`Publish`](../internal/app/app.go#L364) → [`brief(ctx, share: true)`](../internal/app/app.go#L378).
 
 `brief` does three things before any work starts:
 
@@ -91,7 +92,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 - calls [`Relay.Begin`](../internal/relay/relay.go#L96), which creates a directory
   for this run and puts it on the context — every model call the run makes
   lands there, numbered in order;
-- then calls [`sendReport`](../internal/app/app.go#L452), which is the pipeline.
+- then calls [`sendReport`](../internal/app/app.go#L465), which is the pipeline.
 
 ### 2. Gathering
 
@@ -227,18 +228,18 @@ Both are best-effort. A failure here costs the anchor numbers, never the brief.
 
 [`report.Generator.Generate`](../internal/report/generate.go#L68):
 
-- [`splitByCoverage`](../internal/report/prompt.go#L82) decides which watchlists
+- [`splitByCoverage`](../internal/report/prompt.go#L83) decides which watchlists
   have enough news to deserve a section, and which are merely quiet.
-- [`buildPrompt`](../internal/report/prompt.go#L114) assembles the prompt: the
-  market levels ([`renderMarketData`](../internal/report/prompt.go#L339)), the
-  prices with the movers' history ([`renderPrices`](../internal/report/prompt.go#L362)),
+- [`buildPrompt`](../internal/report/prompt.go#L115) assembles the prompt: the
+  market levels ([`renderMarketData`](../internal/report/prompt.go#L340)), the
+  prices with the movers' history ([`renderPrices`](../internal/report/prompt.go#L363)),
   then each active section's articles under its line of biggest moves
   ([`sectionMoves`](../internal/report/moves.go#L30)), then the general news the
   overview may draw on. Every article gets a citation number from
-  [`numbering`](../internal/report/prompt.go#L244). The writer is told the reader
+  [`numbering`](../internal/report/prompt.go#L245). The writer is told the reader
   sees the moves line, so it explains the moves rather than listing them.
 - The call goes through `Completer`, which is the relay.
-- [`parseResponse`](../internal/report/parse.go#L20) splits the reply on
+- [`parseResponse`](../internal/report/parse.go#L21) splits the reply on
   `## OVERVIEW` and `## SECTION: <id>` markers into a `model.Report`, and each
   section is given the same biggest moves the prompt showed.
 
@@ -273,9 +274,9 @@ that explains it, outside tags, links and bold.
 
 [`telegram.RenderWith`](../internal/telegram/render.go#L91) turns the report into
 Telegram HTML: the overview, each section under its line of biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L724)), the quiet watchlists,
+([`renderCandidates`](../internal/telegram/render.go#L743)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](../internal/telegram/render.go#L691). The brief is written as
+[`linkCitations`](../internal/telegram/render.go#L700). The brief is written as
 sub-headings, each a `### ` line, over one-sentence bullets;
 [`paragraphs`](../internal/telegram/render.go#L250) keeps each sub-heading with
 its bullets, [`bullets`](../internal/telegram/render.go#L345) bolds the
@@ -288,7 +289,24 @@ the older way, as a label and a dash, still has its label bolded
 messages under Telegram's 4096-character cap, breaking between sections rather
 than mid-thought, and never leaving a heading alone at the end of a message.
 
-[`Client.SendReport`](../internal/telegram/client.go#L111) sends them. Message ids
+[`send`](../internal/app/pages.go#L38) sends them. Since 1 October 2026, with
+`PAGES_URL` set, that is one message: a summary
+([`BriefSummary`](../internal/telegram/summary.go#L56): the overview's opening
+line, the writer's `## IN SHORT` bullets, and the next 24 hours' releases and
+results, each "… @ time") with a "📖 Read the full brief" button to the whole
+brief as a web page. The page is laid out from the report, not the messages, by
+[`BriefDoc`](../internal/telegram/pagedocs.go#L42): the markets as a table and a
+bar chart (from the FRED readings and the benchmark funds, [`pageMarket`](../internal/app/pages.go#L79)),
+the overview, what is coming up as a table a day, and each sector with its
+biggest moves and its own sources. The prose is the messages' prose, and
+[`pages.Render`](../internal/pages/render.go#L35) lets through only Telegram's
+tags in it. It is kept on the volume by
+[`pages.Store.Publish`](../internal/pages/pages.go#L52) under a random 128-bit
+address for 30 days, and served by the service itself
+([`pages.Store.Handler`](../internal/pages/pages.go#L109)): `GET /r/<id>` and
+nothing else, no scripts, `noindex`. If the page or the summary fails, the
+messages go out in full, as they always did before. The closer look, `/analyse`
+and `/industry` go out the same way, each with its own summary. Message ids
 are recorded in prefs so the next run can delete them if `REPLACE_PREVIOUS` is on.
 
 Afterwards: [`history.Store.Record`](../internal/history/history.go#L89) marks what
@@ -299,13 +317,13 @@ records what the run cost and did, for `/stats`. When search is on,
 kept stories no feed carried, how many of the brief's citations came from
 search alone, and — by source — the cited stories no search found. The
 citations are read back out of the prose by
-[`Report.Referenced`](../internal/model/report.go#L101). Those numbers are what
+[`Report.Referenced`](../internal/model/report.go#L105). Those numbers are what
 decides whether search can take over from the media feeds.
 
 ### 7. The channel
 
-[`shareBrief`](../internal/app/channel.go#L110) posts the same messages to the
-channel, before the research starts, so readers are not kept waiting on minutes
+[`shareBrief`](../internal/app/channel.go#L123) posts the same brief to the
+channel (with pages on, the same summary and its own copy of the page), before the research starts, so readers are not kept waiting on minutes
 of web searches whose result they will never see.
 
 The channel is one-way. Its readers cannot reach `HandleMessage`; the bot takes
@@ -313,7 +331,7 @@ commands from the owner's chat alone.
 
 ### 8. Worth a closer look
 
-The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L365)
+The daily run does not send it with the brief. [`brief`](../internal/app/app.go#L378)
 queues it ([`queueLook`](../internal/app/look.go#L40)) in `pending-look.json` on the
 data volume, due `LookDelay` (twenty minutes) later, and
 [`RunLooks`](../internal/app/look.go#L73), which runs beside the scheduler and the
@@ -367,7 +385,7 @@ US listing ([`listings`](../internal/app/marketdata.go), kept a day), and then:
    `/analyse` reads -- five years of accounts, the business description and
    recent filings, what analysts expect, the results release at the same
    length, and the last fortnight's news -- the feed's stories and one news
-   search ([`addIdeaNews`](../internal/app/ideas.go#L375)); for anything else, the
+   search ([`addIdeaNews`](../internal/app/ideas.go#L387)); for anything else, the
    price and trading history and the same news, and it says the accounts are
    missing.
 4. [`ideas.Judge.Judge`](../internal/ideas/judge.go) — Opus with web search,
@@ -410,7 +428,7 @@ fetched within minutes of being served.
 [`main`](../cmd/market-watch/main.go#L27) parses five flags — `--once`, `--share`,
 `--check`, `--clear`, `--fold` — and calls [`run`](../cmd/market-watch/main.go#L57), which:
 
-- [`config.Load`](../config/config.go#L179) reads the environment (and
+- [`config.Load`](../config/config.go#L190) reads the environment (and
   `.env` via [`LoadDotEnv`](../config/dotenv.go#L22)), reporting every
   missing variable at once rather than one per run;
 - [`config.LoadPrompts`](../config/prompts.go#L61) checks the prompts file
@@ -422,7 +440,7 @@ fetched within minutes of being served.
   as the Finnhub and FRED keys do in theirs. The secrets scrubbed are every
   credential the configuration holds (`config.Secrets`), and the error text
   sent to the chat is scrubbed of the same list;
-- [`app.New`](../internal/app/app.go#L155) builds the service, loading the lists
+- [`app.New`](../internal/app/app.go#L164) builds the service, loading the lists
   from `config/` and the changes made to them from Telegram off the data volume;
 - installs a SIGTERM handler, so a brief in flight finishes its delivery.
 
@@ -449,11 +467,11 @@ checks the sender is the owner and routes on the command:
 |---|---|---|
 | `/start` | [`handleStart`](../internal/app/commands.go#L141) | Registers the chat as the owner's, once |
 | `/now` | [`handleNow`](../internal/app/commands.go#L161) | A brief to the owner only; waits for `/share` |
-| `/share` | [`handleShare`](../internal/app/channel.go#L165) | Posts whatever arrived last to the channel |
+| `/share` | [`handleShare`](../internal/app/channel.go#L179) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L463) | Reads a company's filings — below |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L466) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L625) | What recent runs found and did |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L478) | How the verdicts have done against the index |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L647) | What recent runs found and did |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L244) | Follow or stop following a company; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L327) | Turn a feed on or off |
 | `/schedule` | [`handleSchedule`](../internal/app/commands.go#L233) | When the next brief is due |
@@ -473,7 +491,7 @@ does not inherit whatever the caller's context has left:
    ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
    year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L635) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L657) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -1021,6 +1039,18 @@ price.
 the week's releases from ForexFactory's weekly export; `Key` keeps the ones a
 reader of the US market needs.
 
+### internal/pages
+
+**[pages.go](../internal/pages/pages.go)** — `Store.Publish` writes a page under
+a random id and prunes the month-old ones; `Store.Handler` and `Store.Serve`
+answer `GET /r/<id>` and nothing else.
+**[doc.go](../internal/pages/doc.go)** — `Doc` and its parts: sections, tables,
+bar and column charts, a price's range, facts, a company's card, an industry's
+chain, folded sources. The charts are HTML and CSS: no scripts, no images.
+**[render.go](../internal/pages/render.go)** — `Render` and `Fragment` lay a page
+out from its `Doc`, or from Telegram's messages where it has none, escaping
+anything but Telegram's tags.
+
 ### internal/industry
 
 **[industry.go](../internal/industry/industry.go)** — `Explainer.Explain` asks for
@@ -1106,6 +1136,7 @@ On Fly this is the `market_watch_data` volume at `/data`; locally it is `./data`
 | `pending-look.json` | [app/look.go](../internal/app/look.go) | The closer look waiting its twenty minutes after the brief, when there is one |
 | `themes.json` | [ideas/themelog.go](../internal/ideas/themelog.go) | The last half-year of weekly themes, with what each one's research said and what was picked |
 | `market/` | [market/store.go](../internal/market/store.go) | Two years of the US market's daily bars, a file a session, forty megabytes; the splits since; and Nasdaq's list, a day old at most |
+| `pages/` | [pages/pages.go](../internal/pages/pages.go) | The web pages the summaries link to, one file each, deleted after 30 days |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, a ledger each |
 
 Locally, [scripts/sync-from-fly.sh](../scripts/sync-from-fly.sh) copies these
@@ -1116,7 +1147,7 @@ down from Fly, keeping what they replace in `data/.backup/`.
 ## Configuration
 
 Everything is environment variables, read once by
-[`config.Load`](../config/config.go#L179). The deployed values are in
+[`config.Load`](../config/config.go#L190). The deployed values are in
 [fly.toml](../fly.toml); the secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](../scripts/fly-deploy.sh) without being printed.
 [.env.example](../.env.example) documents every one. What the service follows

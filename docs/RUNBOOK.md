@@ -607,6 +607,16 @@ repository, and runs every call through it as on a desktop. It logs in with
 
 Deploying again later is the same script.
 
+The machine serves one thing to the internet: the pages the summaries link to,
+at `https://joseph-market-watch.fly.dev/r/<id>` (`PAGES_URL` and
+`[http_service]` in [fly.toml](../fly.toml)). Anything else gets "not found".
+`auto_stop_machines = "off"` there is what keeps Fly's proxy from stopping the
+machine, and the scheduler with it, when nobody is reading a page. To go back
+to full messages, remove `PAGES_URL` from fly.toml and deploy; the
+`[http_service]` block can go with it. Pages live in `/data/pages` and are
+deleted after 30 days; deleting one by hand (`rm /data/pages/<id>.html`) takes
+it down at once.
+
 ### Moving the data down
 
 `scripts/sync-from-fly.sh` copies the volume's files into `./data`, so a local

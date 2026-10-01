@@ -25,6 +25,13 @@ import (
 type sentMessage struct {
 	ChatID int64  `json:"chat_id"`
 	Text   string `json:"text"`
+
+	ReplyMarkup struct {
+		Rows [][]struct {
+			Text string `json:"text"`
+			URL  string `json:"url"`
+		} `json:"inline_keyboard"`
+	} `json:"reply_markup"`
 }
 
 // newTestApp wires an App against a stub Telegram server and a temporary data

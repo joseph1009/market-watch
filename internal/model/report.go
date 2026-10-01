@@ -8,8 +8,12 @@ import (
 
 // Report is one generated market brief, ready to be rendered and sent.
 type Report struct {
-	GeneratedAt  time.Time `json:"generated_at"`
-	Overview     string    `json:"overview"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Overview    string    `json:"overview"`
+
+	// Summary is the brief in three to five short bullets, which the chat is
+	// sent when the whole brief is a page.
+	Summary      string    `json:"summary,omitempty"`
 	Sections     []Section `json:"sections"`
 	ArticleCount int       `json:"article_count"`
 	SourceCount  int       `json:"source_count"`
