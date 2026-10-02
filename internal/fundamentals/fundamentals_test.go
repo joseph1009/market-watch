@@ -396,15 +396,35 @@ func TestNoPriceMeansNoValuationBlock(t *testing.T) {
 	}
 }
 
-// The case for and against each weigh the business and the figures equally, as
-// two groups under their own sub-headings, so neither a ratio-only case nor a
-// story-only one gets through. The sub-headings are what the reader scans for.
+// The case for and against each weigh the business, the figures and where
+// they lead equally, as three groups under their own sub-headings, so neither
+// a ratio-only case nor a story-only one gets through. The sub-headings are
+// what the reader scans for.
 func TestSystemPromptBalancesTheBusinessAndTheNumbers(t *testing.T) {
 	for _, want := range []string{
 		`"### In the business"`,
 		`"### In the numbers"`,
-		"Neither group outranks the other",
+		`"### What follows"`,
+		"No group outranks another",
 		"do not bring in market shares, customers or events from memory",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Errorf("the prompt no longer carries %q", want)
+		}
+	}
+}
+
+// The analysis looks forward and questions its figures, with CAN SLIM's
+// questions in mind and its traps named (asked for on 2026-10-02).
+func TestSystemPromptLooksAheadAndQuestionsTheNumbers(t *testing.T) {
+	for _, want := range []string{
+		"It is not to tell the reader whether to buy",
+		"WHERE IT IS HEADING",
+		"DO THE NUMBERS HOLD UP",
+		"looks right, looks wrong or needs a closer look",
+		"Think one step past the obvious",
+		"CAN SLIM",
+		"Do not write the checklist out",
 	} {
 		if !strings.Contains(systemPrompt, want) {
 			t.Errorf("the prompt no longer carries %q", want)

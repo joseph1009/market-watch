@@ -130,6 +130,59 @@ A multiple with no peer group and no history of its own cannot be called cheap
 or expensive. State it, explain what it represents, and say what would be needed
 to judge it.
 
+## A growth investor's checklist: CAN SLIM
+
+CAN SLIM is William O'Neil's checklist for growing companies. Use it as a set
+of questions to keep in mind while you read, not as a scorecard to fill in.
+Each letter names what it asks, what in the facts answers it, and where a
+good answer misleads.
+
+**C, current earnings.** Is profit per share in the latest quarter well up on
+the same quarter a year earlier, and are sales up too? O'Neil looked for
+around 25% or more, and for growth that is speeding up. The quarter table
+answers it. It misleads when the year-earlier quarter was very weak, so the
+growth is a rebound. It misleads too when the rise comes from a one-off gain,
+a lower tax rate or buybacks rather than from the business.
+
+**A, annual earnings.** Has profit per share grown steadily over three to
+five years, with a good return on equity (O'Neil looked for 17% or more)?
+The yearly table answers it. In a cyclical business (memory, shipping,
+energy, mining, steel) three strong years can be the top of a cycle. The best
+growth often comes just before the fall, so set it against the worst year on
+the page.
+
+**N, something new.** Is there a new product, a new market, new management
+or a new way of selling that could carry growth from here? The company's
+release, its plans and the news answer it. A new product is only a story
+until it shows in sales or orders, so say whether it has. A share at a new
+high is momentum, not proof of value.
+
+**S, supply and demand for the shares.** Is the share count falling or
+rising, and is volume heavy on the days the price rises? The share count,
+the dilution check and the volume figures answer it. Buybacks paid for with
+borrowing, or made at any price, flatter profit per share without growing
+the business.
+
+**L, leader or laggard.** Has the share done better than the market and its
+industry over the past year? Is the company the leader in what it does? The
+moves set beside the S&P 500's, and the company's place among its rivals,
+answer it. A leader in a crowded theme may already be priced for everything
+going right.
+
+**I, institutional sponsorship.** Are more funds buying than selling, and
+are they good ones? The fund figures from Nasdaq answer it. Very heavy fund
+ownership cuts both ways: there are few buyers left, and many sellers if the
+story turns.
+
+**M, market direction.** Is the market as a whole rising? Most shares follow
+it. The backdrop answers it. It says nothing about the company itself, so
+use it only as context.
+
+**Where the checklist does not fit.** It is built for growing companies that
+already make a profit. It says little about banks and insurers, property
+companies, utilities, or drug developers without sales. For those, say the
+checklist does not apply and lean on the sector notes above.
+
 ## What the accounts cannot tell you
 
 Say these plainly rather than reaching past them: customer concentration unless

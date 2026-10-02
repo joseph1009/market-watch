@@ -87,16 +87,69 @@ func TestThePicksSummaryIsALineACompany(t *testing.T) {
 	}
 }
 
-// An analysis's summary is its verdict and the reasons for it.
-func TestTheAnalysisSummaryIsTheVerdict(t *testing.T) {
+const groundedProse = `THE BUSINESS
+
+### What it sells
+- Rides and food delivery.
+
+THE CASE FOR IT
+
+### In the business
+- Leads ride-hailing in six countries.
+- Second point.
+
+### In the numbers
+- Margin is **1.9%** [3].
+
+### What follows
+- Scale lowers the cost of each ride.
+
+THE CASE AGAINST IT
+
+### In the business
+- Rivals subsidise rides.
+
+### In the numbers
+- HBM
+- Cash burn in lending.
+
+WHAT WOULD SETTLE IT
+
+### The question
+- November's cash flow.`
+
+// An analysis's summary is the best point of each group of the case for and
+// against, then the verdict in a line with its note.
+func TestTheAnalysisSummaryIsTheCaseForAndAgainst(t *testing.T) {
+	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Thin margin.\n\n### What would change it\n- Lending losses."}
+	s := AnalysisSummary("GRAB — the case for and against", v, groundedProse, IdeasOptions{ForChannel: true})
+	want := "🔬 <b>GRAB — the case for and against</b>\n\n" +
+		"<b>THE CASE FOR IT</b>\n• Leads ride-hailing in six countries.\n\n• Margin is <b>1.9%</b>.\n\n• Scale lowers the cost of each ride.\n\n" +
+		"<b>THE CASE AGAINST IT</b>\n• Rivals subsidise rides.\n\n• HBM\n\n" +
+		"<b>THE VERDICT</b>\n⚪ <b>HOLD</b> · low confidence\n"
+	if !strings.HasPrefix(s.Text, want) {
+		t.Errorf("summary:\n%s\nwant it to start:\n%s", s.Text, want)
+	}
+	if !strings.Contains(s.Text, disclosure) {
+		t.Errorf("the channel's summary lost its note:\n%s", s.Text)
+	}
+	for _, not := range []string{"Second point", "Cash burn", "November", "Thin margin", "Rides and food"} {
+		if strings.Contains(s.Text, not) {
+			t.Errorf("summary carries %q:\n%s", not, s.Text)
+		}
+	}
+}
+
+// Prose without the case sections falls back to the verdict's reasons.
+func TestAnAnalysisSummaryWithoutTheCaseGivesTheVerdictsReasons(t *testing.T) {
 	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Margin is **1.9%** [3].\n\n### What would change it\n- November's cash flow."}
-	s := AnalysisSummary("GRAB — what the filings say", v, IdeasOptions{ForChannel: true})
-	for _, want := range []string{"🔬 <b>GRAB — what the filings say</b>", "<b>THE VERDICT</b>", "⚪ <b>HOLD</b> · low confidence", disclosure, "<b>Why</b>\n• Margin is <b>1.9%</b>."} {
+	s := AnalysisSummary("GRAB — the case for and against", v, "THE BUSINESS\n- Rides.", IdeasOptions{})
+	for _, want := range []string{"<b>THE VERDICT</b>", "⚪ <b>HOLD</b> · low confidence", "<b>Why</b>\n• Margin is <b>1.9%</b>."} {
 		if !strings.Contains(s.Text, want) {
 			t.Errorf("summary is missing %q:\n%s", want, s.Text)
 		}
 	}
-	if strings.Contains(s.Text, "November") {
+	if strings.Contains(s.Text, "November") || strings.Contains(s.Text, "CASE") {
 		t.Errorf("summary carries more than the reasons:\n%s", s.Text)
 	}
 }

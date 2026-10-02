@@ -170,17 +170,74 @@ func pickLines(idea model.Idea) string {
 	return head + "\n" + verdict
 }
 
-// AnalysisSummary is the analysis's verdict and the reasons for it, which
-// is what a reader looks for first; the accounts are on the page.
-func AnalysisSummary(heading string, v AnalysisVerdict, opts IdeasOptions) Summary {
+// AnalysisSummary is the case for the company and the case against it, the
+// strongest point of each group, then the verdict in a line. The owner wants
+// the analysis read for the argument, not for the call (2026-10-02). Where
+// the prose has no case sections, the verdict's reasons stand in for them.
+func AnalysisSummary(heading string, v AnalysisVerdict, prose string, opts IdeasOptions) Summary {
 	text := "🔬 <b>" + escape(heading) + "</b>"
+	argued := false
+	for _, side := range []string{caseFor, caseAgainst} {
+		if bullets := leadBullets(section(prose, side)); len(bullets) > 0 {
+			text += "\n\n" + block(side, spaced(bullets))
+			argued = true
+		}
+	}
 	if v.Verdict != "" {
 		text += "\n\n" + block("THE VERDICT", verdictLine(v)+"\n"+analysisNote(opts))
-		if why := firstGroup(v.Body); why != "" {
+		if why := firstGroup(v.Body); why != "" && !argued {
 			text += "\n\n" + why
 		}
 	}
 	return Summary{Text: text, Button: "📖 Read the full analysis"}
+}
+
+// The analysis's two case sections, as the prompt heads them.
+const (
+	caseFor     = "THE CASE FOR IT"
+	caseAgainst = "THE CASE AGAINST IT"
+)
+
+// section is the text under one of the analysis's capitalised headings, up
+// to the next one, or empty where there is no such heading.
+func section(prose, heading string) string {
+	var out []string
+	in := false
+	for _, line := range strings.Split(prose, "\n") {
+		plain := strings.TrimSpace(line)
+		trimmed := strings.Trim(plain, "#*: ")
+		// A bullet in capitals ("- HBM") is not a heading.
+		head := plain != "" && !strings.HasPrefix(plain, "-") && !strings.HasPrefix(plain, "#") && isSectionHeading(plain)
+		if head || trimmed == heading {
+			if in {
+				break
+			}
+			in = trimmed == heading
+			continue
+		}
+		if in {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// leadBullets is the first bullet under each sub-heading: the prompt asks
+// for the strongest point first, so this is each group's best.
+func leadBullets(text string) []string {
+	var out []string
+	taken := true // nothing to take before the first sub-heading's bullet
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, subheadingMarker):
+			taken = false
+		case strings.HasPrefix(line, "- ") && (!taken || len(out) == 0):
+			out = append(out, "• "+inline(line[2:]))
+			taken = true
+		}
+	}
+	return out
 }
 
 // verdictLine is "⚪ HOLD · low confidence".

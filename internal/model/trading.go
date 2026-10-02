@@ -68,6 +68,21 @@ type Trading struct {
 	// Volatility is the annualised standard deviation of daily moves, as a
 	// percentage: the usual size of this share's swings, not their direction.
 	Volatility float64
+
+	// Market is the S&P 500's moves over the same stretches as Returns, where
+	// they were read. A share up 30% in a year when the market rose 25% has
+	// barely led it, and the share's own figures cannot say so.
+	Market []Return
+}
+
+// MarketOver is the S&P 500's move over the named stretch, if it was read.
+func (t Trading) MarketOver(over string) (Return, bool) {
+	for _, r := range t.Market {
+		if r.Over == over {
+			return r, true
+		}
+	}
+	return Return{}, false
 }
 
 // Return is a price move over a named stretch of time.

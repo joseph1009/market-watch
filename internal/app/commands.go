@@ -636,8 +636,8 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	return nil
 }
 
-// analysisOut is an analysis to send: its messages, and its verdict as the
-// summary of them.
+// analysisOut is an analysis to send: its messages, and its case for and
+// against as the summary of them.
 func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) outgoing {
 	v := telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body}
 	doc := telegram.AnalysisDoc(snapshot.Ticker, snapshot.Company, v, prose, pageAccounts(snapshot), relatedList(related),
@@ -645,7 +645,7 @@ func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose string, verdict 
 	return outgoing{
 		title:    snapshot.Ticker + " · " + snapshot.Company,
 		messages: analysisMessages(snapshot, prose, verdict, related, opts),
-		summary:  telegram.AnalysisSummary(analysisHeading(snapshot), v, opts),
+		summary:  telegram.AnalysisSummary(analysisHeading(snapshot), v, prose, opts),
 		doc:      &doc,
 	}
 }
@@ -660,12 +660,12 @@ func relatedList(related []fundamentals.Related) []telegram.Related {
 }
 
 func analysisHeading(snapshot fundamentals.Snapshot) string {
-	return fmt.Sprintf("%s — what the filings say", snapshot.Ticker)
+	return fmt.Sprintf("%s — the case for and against", snapshot.Ticker)
 }
 
 // analysisMessages lays an analysis out for the owner or the channel: the
-// verdict first, then the accounts, the related companies, and where the
-// figures came from.
+// analysis, the verdict, the related companies, and where the figures came
+// from.
 func analysisMessages(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) []string {
 	messages := telegram.RenderAnalysis(analysisHeading(snapshot),
 		telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body},

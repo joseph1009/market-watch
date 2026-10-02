@@ -20,13 +20,16 @@ import (
 // THE VERDICT, after the accounts have been read through: argued from the
 // first line, every section would become a case for it. The verdict is the
 // same call the closer look makes -- against the S&P 500 over twelve months --
-// so /scorecard can keep score of both.
+// so /scorecard can keep score of both. Since 2026-10-02 the verdict is a
+// short line for the record: the owner wants the analysis read for the case
+// for and against, where the company is heading, and whether its figures
+// hold up.
 //
 // The method follows it: how to read the accounts in order and which traps to
-// look for by sector. It was written as a playbook for the agent that could
-// look filings up as it wrote; that agent spoke to the API directly and went
-// when the API did, and the playbook is as much use to the analysis that
-// remains, which works from the table alone.
+// look for by sector, and CAN SLIM's questions with where each misleads. It
+// was written as a playbook for the agent that could look filings up as it
+// wrote; that agent spoke to the API directly and went when the API did, and
+// the playbook is as much use to the analysis that remains.
 var systemPrompt = config.Prompt("analysis.system") + "\n\n" + config.Method
 
 // Analysis is a written reading of one company's accounts.

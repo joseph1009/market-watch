@@ -527,21 +527,13 @@ type Accounts struct {
 	Trading  *model.Trading
 }
 
-// AnalysisDoc is an analysis as a page: the verdict, the share's price on
-// its year, the accounts as tables and charts, then the reading of them and
-// the companies to read beside it.
+// AnalysisDoc is an analysis as a page: the share's price on its year, the
+// accounts as tables and charts, the reading of them, the verdict, and the
+// companies to read beside it. The verdict is last, as in the chat
+// (RenderAnalysis says why).
 func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Accounts, related []Related, opts IdeasOptions, terms []model.Term, now time.Time, where *time.Location) pages.Doc {
 	doc := pages.Doc{Kicker: "Analysis · " + ticker, Title: company,
 		Dek: []string{escape(now.In(where).Format("Monday 2 January 2006"))}}
-	if v.Verdict != "" {
-		doc.Note = analysisNote(opts)
-		card := pages.Card{ID: "verdict", Tone: strings.ToLower(v.Verdict), Badge: v.Verdict, Title: "The verdict"}
-		if v.Confidence != "" {
-			card.Meta = append(card.Meta, v.Confidence+" confidence")
-		}
-		card.Parts = append(card.Parts, pages.Prose(linkTerms(paragraphs(v.Body), terms)))
-		doc.Parts = append(doc.Parts, card)
-	}
 	if price := priceParts(acc.Price, acc.Trading); len(price) > 0 {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "price", Title: "The share price", Parts: price})
 	}
@@ -554,6 +546,15 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 			blocks = append(blocks, seg.blocks...)
 		}
 		doc.Parts = append(doc.Parts, pages.Prose(linkTerms(blocks, terms)))
+	}
+	if v.Verdict != "" {
+		doc.Note = analysisNote(opts)
+		card := pages.Card{ID: "verdict", Tone: strings.ToLower(v.Verdict), Badge: v.Verdict, Title: "The verdict"}
+		if v.Confidence != "" {
+			card.Meta = append(card.Meta, v.Confidence+" confidence")
+		}
+		card.Parts = append(card.Parts, pages.Prose(linkTerms(paragraphs(v.Body), terms)))
+		doc.Parts = append(doc.Parts, card)
 	}
 	if len(related) > 0 {
 		t := pages.Table{Head: []string{"Company", "", "Why read it"}, Align: "lll"}

@@ -100,6 +100,9 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 			t.Errorf("the page is missing %q", want)
 		}
 	}
+	if v, b := strings.Index(page, "Thin margin."), strings.Index(page, "<h2>THE BUSINESS</h2>"); v < b {
+		t.Error("the verdict comes before the analysis")
+	}
 }
 
 // A quarter's column is headed by its months, and the rows' names stay in

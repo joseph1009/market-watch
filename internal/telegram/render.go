@@ -632,12 +632,14 @@ func analysisNote(opts IdeasOptions) string {
 	return analysisOwnerNote
 }
 
-// RenderAnalysis lays out /analyse: the heading, then the verdict, then the
-// accounts that support it. The verdict is written last and shown first:
-// last, so the reading of the accounts is not bent to fit a conclusion
-// reached before it; first, because it is what a reader looks for.
+// RenderAnalysis lays out /analyse: the heading, the analysis, then the
+// verdict. The verdict comes last, where it is written. The owner asked on
+// 2026-10-02 for the analysis to be about the case for and against the
+// company, not about whether to buy it, so the call is a line for the record
+// at the end rather than the headline.
 func RenderAnalysis(heading string, v AnalysisVerdict, prose string, opts IdeasOptions) []string {
 	segs := headingSegments(heading)
+	segs = append(segs, plainSegments(prose)...)
 	if v.Verdict != "" {
 		note := analysisOwnerNote
 		if opts.ForChannel {
@@ -654,7 +656,6 @@ func RenderAnalysis(heading string, v AnalysisVerdict, prose string, opts IdeasO
 		blocks = append(blocks, paragraphs(v.Body)...)
 		segs = append(segs, segment{blocks: blocks})
 	}
-	segs = append(segs, plainSegments(prose)...)
 	if len(segs) == 0 {
 		return nil
 	}

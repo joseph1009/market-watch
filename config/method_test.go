@@ -27,6 +27,8 @@ func TestMethodCarriesTheDiagnosticsAndTheSectorTraps(t *testing.T) {
 		"Semiconductors, memory, shipping",
 		"Never compute a multiple across currencies",
 		"worst year on the page",
+		"CAN SLIM",
+		"Where the checklist does not fit",
 	} {
 		if !strings.Contains(Method, want) {
 			t.Errorf("the method is missing %q", want)

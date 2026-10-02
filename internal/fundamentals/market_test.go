@@ -67,6 +67,25 @@ func TestTableCarriesTheTradingHistory(t *testing.T) {
 	}
 }
 
+// Each move is set beside the S&P 500's over the same stretch, where it was
+// read, so the analysis can say whether the share led the market.
+func TestTableSetsEachMoveBesideTheMarkets(t *testing.T) {
+	snap := tradingSnapshot()
+	snap.Trading.Market = []model.Return{{Over: "1 week", Percent: 1.1}, {Over: "12 months", Percent: 18.2}}
+	table := snap.Table()
+	for _, want := range []string{
+		"+4.2%    (from USD 892.15 on 9 Sep 2026; S&P 500 +1.1% over the same stretch)",
+		"-12.5%   (S&P 500 +18.2% over the same stretch)",
+	} {
+		if !strings.Contains(table, want) {
+			t.Errorf("the table does not carry %q:\n%s", want, table)
+		}
+	}
+	if strings.Contains(tradingSnapshot().Table(), "S&P 500") {
+		t.Error("the market is mentioned where it was not read")
+	}
+}
+
 // The whole discipline of the analysis rests on the reader being able to tell
 // a filed figure from a traded one from a reported claim. Each block has to
 // label itself, every time.

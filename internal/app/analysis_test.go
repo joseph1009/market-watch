@@ -25,9 +25,9 @@ CONFIDENCE: medium
 ### What would change it
 - Memory prices falling.`
 
-// The verdict is shown first, and the channel's copy carries the warning a
-// reader there needs, which the owner's does not.
-func TestAnAnalysisShowsItsVerdictFirstAndWarnsTheChannel(t *testing.T) {
+// The verdict is shown last, after the analysis, and the channel's copy
+// carries the warning a reader there needs, which the owner's does not.
+func TestAnAnalysisShowsItsVerdictLastAndWarnsTheChannel(t *testing.T) {
 	snap := fundamentals.Snapshot{Ticker: "MU", Company: "MICRON TECHNOLOGY INC"}
 	prose, verdict := fundamentals.SplitVerdict(writtenAnalysis)
 
@@ -36,8 +36,8 @@ func TestAnAnalysisShowsItsVerdictFirstAndWarnsTheChannel(t *testing.T) {
 
 	for name, text := range map[string]string{"owner": owner, "channel": channel} {
 		v, b := strings.Index(text, "THE VERDICT"), strings.Index(text, "THE BUSINESS")
-		if v < 0 || b < 0 || v > b {
-			t.Errorf("%s: the verdict is not shown before the accounts:\n%s", name, text)
+		if v < 0 || b < 0 || v < b {
+			t.Errorf("%s: the verdict is not shown after the analysis:\n%s", name, text)
 		}
 		if !strings.Contains(text, "🟢 <b>BUY</b> · medium confidence") || !strings.Contains(text, "8.7 times") {
 			t.Errorf("%s: the verdict is missing:\n%s", name, text)

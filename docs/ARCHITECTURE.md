@@ -96,7 +96,7 @@ Eastern, two hours before the open, across a daylight-saving change. When the ti
 
 ### 2. Gathering
 
-[`collectPrices`](../internal/app/prices.go#L45) starts first, in the background:
+[`collectPrices`](../internal/app/prices.go#L46) starts first, in the background:
 the twelve benchmark funds and every watchlist share, read from Finnhub by
 [`prices.Client.Fetch`](../internal/prices/prices.go#L71) at the free tier's pace
 of about one a second. That is about two minutes for 95 shares, which is why it
@@ -104,7 +104,7 @@ runs beside the filings and searches rather than after them. It prices every
 share, not only those in the news, so a share that moved with no story behind
 it is still seen. Finnhub is left after three failed requests, and whatever it
 did not price is read from the daily charts instead, four at a time, by
-[`fromCharts`](../internal/app/prices.go#L70): on 24 September 2026 it answered
+[`fromCharts`](../internal/app/prices.go#L71): on 24 September 2026 it answered
 for three shares of 107 before the scan's budget ran out.
 
 [`collectFilings`](../internal/app/filings.go#L25) runs next, so filings arrive on
@@ -257,7 +257,7 @@ company ([`SameCompany`](../internal/discover/verify.go#L153)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
-name has been running, and [`priceCandidates`](../internal/app/prices.go#L267)
+name has been running, and [`priceCandidates`](../internal/app/prices.go#L277)
 attaches each one's move on the day — US names from the quote feed, everywhere
 else from the chart source.
 
@@ -274,9 +274,9 @@ that explains it, outside tags, links and bold.
 
 [`telegram.RenderWith`](../internal/telegram/render.go#L91) turns the report into
 Telegram HTML: the overview, each section under its line of biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L743)), the quiet watchlists,
+([`renderCandidates`](../internal/telegram/render.go#L744)), the quiet watchlists,
 the source links and a footer of token counts. Citations become links via
-[`linkCitations`](../internal/telegram/render.go#L700). The brief is written as
+[`linkCitations`](../internal/telegram/render.go#L701). The brief is written as
 sub-headings, each a `### ` line, over one-sentence bullets;
 [`paragraphs`](../internal/telegram/render.go#L250) keeps each sub-heading with
 its bullets, [`bullets`](../internal/telegram/render.go#L345) bolds the
@@ -507,10 +507,12 @@ does not inherit whatever the caller's context has left:
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
-   [`tradingFor`](../internal/app/prices.go#L145) reads the daily price history and
+   [`tradingFor`](../internal/app/prices.go#L146) reads the daily price history and
    [`prices.Summarise`](../internal/prices/history.go#L281) turns it into returns,
-   moving averages, the year's range, VWAP and volatility;
-   [`addNews`](../internal/app/prices.go#L222) adds what has been written in the
+   moving averages, the year's range, VWAP and volatility. It also reads
+   the S&P 500's moves over the same stretches, so the analysis can say
+   whether the share led the market or lagged it;
+   [`addNews`](../internal/app/prices.go#L232) adds what has been written in the
    last month — the news feed's company headlines and two Tavily searches
    ([`searchCompany`](../internal/app/research.go#L106)), two credits — filtered by
    [`Relevant`](../internal/fundamentals/news.go#L92) to pieces that actually
@@ -526,9 +528,13 @@ does not inherit whatever the caller's context has left:
    [`backdrop`](../internal/app/research.go#L85) the commodities, the dollar and
    the cost of money from FRED. Best-effort again.
 5. [`Snapshot.Table`](../internal/fundamentals/table.go#L46) lays the figures out as
-   a fixed-width table, and [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L47)
+   a fixed-width table, and [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L50)
    sends it to Opus with [`method.md`](../config/method.md) — the
-   house method for reading accounts — appended to the system prompt.
+   house method for reading accounts — appended to the system prompt. The
+   method includes CAN SLIM's questions as a reference, with where each one
+   misleads. Since 2026-10-02 the analysis centres on the case for and
+   against the company. It also covers where the company is heading and
+   whether its figures hold up.
 6. [`SplitRelated`](../internal/fundamentals/related.go#L54) cuts the "companies to
    read next to it" table out of the prose, and
    [`VerifyRelated`](../internal/fundamentals/related.go#L90) checks those tickers
@@ -536,10 +542,9 @@ does not inherit whatever the caller's context has left:
    [`SplitVerdict`](../internal/fundamentals/verdict.go) takes out THE VERDICT,
    the last section the analysis writes: BUY, HOLD or SELL against the S&P 500
    over twelve months, the same call the closer look makes, with a confidence
-   and the reasons.
-7. [`RenderAnalysis`](../internal/telegram/render.go), which shows the verdict
-   first and then rules off each capitalised section and bolds its
-   sub-headings, and [`RenderRelated`](../internal/telegram/related.go#L23)
+   and a short reason. It is kept short and shown last.
+7. [`RenderAnalysis`](../internal/telegram/render.go), which rules off each
+   capitalised section, bolds its sub-headings and shows the verdict last, and [`RenderRelated`](../internal/telegram/related.go#L23)
    render it, once for the owner and once for the channel, whose copy carries
    the warning under the verdict and is what `/share` posts.
    [`recordAnalysis`](../internal/app/commands.go) writes the verdict to the

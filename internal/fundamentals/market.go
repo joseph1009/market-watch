@@ -50,12 +50,22 @@ func (s Snapshot) trading() string {
 	}
 
 	for _, r := range t.Returns {
-		if r.From <= 0 {
-			fmt.Fprintf(&b, "%s%s\n", pad("Change over "+r.Over, 32), r.Sign())
-			continue
+		market := ""
+		if m, ok := t.MarketOver(r.Over); ok && m.Sign() != "" {
+			market = "S&P 500 " + m.Sign() + " over the same stretch"
 		}
-		fmt.Fprintf(&b, "%s%s(from %s %s on %s)\n", pad("Change over "+r.Over, 32), pad(r.Sign(), 9),
-			unit, price(r.From), r.Since.Format("2 Jan 2006"))
+		switch {
+		case r.From <= 0 && market == "":
+			fmt.Fprintf(&b, "%s%s\n", pad("Change over "+r.Over, 32), r.Sign())
+		case r.From <= 0:
+			fmt.Fprintf(&b, "%s%s(%s)\n", pad("Change over "+r.Over, 32), pad(r.Sign(), 9), market)
+		case market == "":
+			fmt.Fprintf(&b, "%s%s(from %s %s on %s)\n", pad("Change over "+r.Over, 32), pad(r.Sign(), 9),
+				unit, price(r.From), r.Since.Format("2 Jan 2006"))
+		default:
+			fmt.Fprintf(&b, "%s%s(from %s %s on %s; %s)\n", pad("Change over "+r.Over, 32), pad(r.Sign(), 9),
+				unit, price(r.From), r.Since.Format("2 Jan 2006"), market)
+		}
 	}
 
 	if t.MA50 > 0 {

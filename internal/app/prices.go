@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -147,7 +148,16 @@ func (a *App) tradingFor(ctx context.Context, ticker string) *model.Trading {
 	if !ok {
 		return nil
 	}
-	return a.summarise(ticker, series)
+	trading := a.summarise(ticker, series)
+	if trading == nil || strings.EqualFold(ticker, prices.MarketSymbol) {
+		return trading
+	}
+	// The market over the same stretches, so the analysis can say whether
+	// the share led it or lagged it. Without it the moves are only half read.
+	if market, ok := a.seriesFor(ctx, prices.MarketSymbol); ok {
+		trading.Market = prices.Summarise(market, a.now()).Returns
+	}
+	return trading
 }
 
 // marketFor reads one listing's history and returns both what the share has

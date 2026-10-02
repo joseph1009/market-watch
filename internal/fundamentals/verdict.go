@@ -21,9 +21,9 @@ type Verdict struct {
 }
 
 // SplitVerdict takes the verdict section out of the analysis prose, so it
-// can be shown first and written to the scorecard. The prose comes back
-// without it. Where there is no section, or no verdict in it that reads as
-// one, the prose comes back whole and the verdict empty.
+// can be shown under its own heading and written to the scorecard. The prose
+// comes back without it. Where there is no section, or no verdict in it that
+// reads as one, the prose comes back whole and the verdict empty.
 func SplitVerdict(prose string) (string, Verdict) {
 	lines := strings.Split(prose, "\n")
 	start := -1
