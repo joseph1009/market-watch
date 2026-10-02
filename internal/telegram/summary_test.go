@@ -74,7 +74,7 @@ func TestThePicksSummaryIsALineACompany(t *testing.T) {
 		{Name: "NESR", Ticker: "NESR", Exchange: "US", Verdict: model.Buy, Confidence: "medium"},
 	}}
 	owner := PicksSummary(p, IdeasOptions{})
-	for _, want := range []string{"🔎 <b>Reacting to the news</b>", "<b>2 companies</b> · 🟢 1 BUY · 🔴 1 SELL", "🔴 <b>Warby Parker</b> <code>WRBY</code>\n<b>SELL</b> · low confidence · overreacted", "🟢 <b>NESR</b>"} {
+	for _, want := range []string{"🔎 <b>Reacting to the news</b>", "<b>2 companies</b> · 🟢 1 BUY · 🔴 1 SELL", "🔴 <b>Warby Parker</b> 🇺🇸 <code>WRBY</code>\n<b>SELL</b> · low confidence · overreacted", "🟢 <b>NESR</b>"} {
 		if !strings.Contains(owner.Text, want) {
 			t.Errorf("summary is missing %q:\n%s", want, owner.Text)
 		}

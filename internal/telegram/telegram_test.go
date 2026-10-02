@@ -1317,19 +1317,19 @@ func TestThePicksComeUnderTheirThemes(t *testing.T) {
 		"<b>AI data centres</b> · <i>Popular</i>",
 		"<i>The numbers:</i> median member +40 pts over 12 months",
 		"<i>Where the value is:</i> Power equipment &amp; cooling.",
-		"🟢 <b>Vertiv</b> <code>VRT</code>",
+		"🟢 <b>Vertiv</b> 🇺🇸 <code>VRT</code>",
 		"<i>Where it fits:</i> Cools the racks; backlog up 30%.",
 		"<i>The price:</i> 22x earnings against the theme's 35x.",
 		"<i>Warning signs:</i> above the average analyst target",
 		"<b>Grid batteries</b> · <i>Early</i>",
-		"<code>5E2.SP</code>",
+		"🇸🇬 <code>5E2.SP</code>",
 		"<b>SELL</b> · low confidence · <i>no SEC accounts behind it</i> · <i>was BUY on 6 Oct</i>",
 		"<b>Reacting to the news</b>",
 		"<b>BUY</b> · high confidence · underreacted",
 		`<i>What changed:</i> Next year's expected earnings rose 4% <a href="https://example.com/1">[1]</a>.`,
 		"<b>Earlier picks</b>",
-		"• Rambus <code>RMBS</code> · BUY on 28 Sep · +4.2 points the way called",
-		"• DBS <code>D05.SP</code> · HOLD on 5 Oct · not yet traded since",
+		"• Rambus 🇺🇸 <code>RMBS</code> · BUY on 28 Sep · +4.2 points the way called",
+		"• DBS 🇸🇬 <code>D05.SP</code> · HOLD on 5 Oct · not yet traded since",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("picks are missing %q:\n%s", want, out)

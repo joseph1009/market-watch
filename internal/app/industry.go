@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -56,7 +57,7 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 	cached.Save("explanation", exp)
 	companies := make([]telegram.IndustryCompany, len(exp.Companies))
 	for i, c := range exp.Companies {
-		companies[i] = telegram.IndustryCompany{Part: c.Part, Name: c.Name, Symbol: c.Symbol(), Why: c.Why}
+		companies[i] = telegram.IndustryCompany{Part: c.Part, Name: c.Name, Symbol: c.Symbol(), Why: c.Why, Exchange: c.Exchange, Market: model.MarketOf(c.Exchange)}
 	}
 
 	industryFor := func(opts telegram.IdeasOptions) outgoing {

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 // OpenFIGI is Bloomberg's open symbology service. It maps a ticker and an
@@ -29,24 +31,9 @@ const (
 	figiPause          = 300 * time.Millisecond
 )
 
-// Exchanges are the markets a candidate may be listed on, as OpenFIGI codes.
-// Beyond these the reader is unlikely to be able to trade, and the further the
-// list stretches the more room there is for a symbol to mean two things.
-var Exchanges = map[string]string{
-	"US": "United States",
-	"HK": "Hong Kong",
-	"JP": "Tokyo",
-	"LN": "London",
-	"NA": "Euronext Amsterdam",
-	"FP": "Euronext Paris",
-	"GR": "Frankfurt",
-	"SP": "Singapore",
-	"AU": "Australia",
-	"KS": "Korea",
-	"TT": "Taiwan",
-	"IN": "India",
-	"CH": "China, Shanghai or Shenzhen", // OpenFIGI's CN is Canada
-}
+// Exchanges are the markets a candidate may be listed on, as OpenFIGI codes:
+// model.Markets, which also gives each its country and flag.
+var Exchanges = model.Markets
 
 // Verifier confirms that a ticker belongs to the company it is claimed for.
 type Verifier interface {

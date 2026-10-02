@@ -96,7 +96,7 @@ func TestAPageThatFailsSendsTheMessagesInFull(t *testing.T) {
 	a.HandleMessage(context.Background(), message("/industry robotics"))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
-	if !strings.Contains(owner, "Gears and motors") || !strings.Contains(owner, "Fanuc <code>6954.JP</code>") {
+	if !strings.Contains(owner, "Gears and motors") || !strings.Contains(owner, "Fanuc 🇯🇵 <code>6954.JP</code>") {
 		t.Errorf("the full explanation did not arrive:\n%s", owner)
 	}
 	for _, m := range *sent {

@@ -128,7 +128,7 @@ For each company, give:
 - the numbers of the articles it appears in
 - one line on what happened, in plain words, under twenty words
 
-Exchange codes: US for the United States, HK Hong Kong, JP Tokyo, LN London, NA Amsterdam, FP Paris, GR Frankfurt, SP Singapore, AU Australia, KS Korea, TT Taiwan, IN India, CH mainland China (Shanghai or Shenzhen).
+Exchange codes: US United States, CN Canada, LN London, NA Amsterdam, FP Paris, GR Germany, SW Switzerland, IM Milan, SM Madrid, SS Stockholm, DC Copenhagen, NO Oslo, FH Helsinki, JP Tokyo, HK Hong Kong, CH mainland China (Shanghai or Shenzhen), KS Korea, TT Taiwan, SP Singapore, IN India, AU Australia. CN is Canada, not China.
 
 Rules:
 - Name the company a reader could buy: the listed parent, never a brand, a division or a subsidiary. A recall by a subsidiary is news about its parent, so name the parent.
@@ -348,7 +348,7 @@ Write every section as sub-headings and bullets, never as running prose. It is r
 === analysis.related ===
 
 End with a final section under the exact heading {{.Marker}}, listing four to eight companies worth reading beside this one: its competitors, its suppliers, its customers, and where it fits, the fund or index that tracks its sector. Say for each, in a few words, what it would show -- a competitor's margin against this one, a supplier whose orders lead these sales, a customer whose spending pays for them.
-Write that section as lines of name|ticker|exchange|what it would show, and nothing else -- no bullets, no prose around it. Use the same exchange codes: US, HK, JP, LN, NA, FP, GR, SP, AU, KS, TT, IN, CH. Every ticker is checked against the exchange before the reader sees it, and one that fails is dropped, so write "?" rather than guess.
+Write that section as lines of name|ticker|exchange|what it would show, and nothing else -- no bullets, no prose around it. Use these exchange codes: US United States, CN Canada, LN London, NA Amsterdam, FP Paris, GR Germany, SW Switzerland, IM Milan, SM Madrid, SS Stockholm, DC Copenhagen, NO Oslo, FH Helsinki, JP Tokyo, HK Hong Kong, CH mainland China (Shanghai or Shenzhen), KS Korea, TT Taiwan, SP Singapore, IN India, AU Australia. CN is Canada, not China. Every ticker is checked against the exchange before the reader sees it, and one that fails is dropped, so write "?" rather than guess.
 {{if .Company}}Do not list {{.Company}} itself.
 {{end}}
 
@@ -371,6 +371,6 @@ In this order:
 5. "### 🔭 What to watch": the three to five things that will decide how the industry does over the next year or two -- technology shifts, policy, prices, demand -- and the figures that would show them.
 6. "### ⚠️ Risks": what could go wrong for the industry as a whole.
 
-End with a final section under the exact heading COMPANIES BY PART, listing two to four listed companies worth looking into for each building block: the leaders, and where there is one, a smaller company growing faster or a supplier the others depend on. Write it as lines of part|name|ticker|exchange|why, and nothing else, with the part named exactly as its sub-heading names it but without the emoji, and why in under fifteen words. Use these exchange codes: US, HK, JP, LN, NA, FP, GR, SP, AU, KS, TT, IN, CH. Prefer a company's main listing. Every ticker is checked against the exchange before the reader sees it, and one that fails is dropped, so write "?" rather than guess. Leave out private companies.
+End with a final section under the exact heading COMPANIES BY PART, listing three to six listed companies worth looking into for each building block: the leaders, and where there is one, a smaller company growing faster or a supplier the others depend on. Spread them across countries, so the reader sees the whole field and not one market's: draw each part's companies from at least three countries where it has listed companies in that many, and include one whose main listing is in the United States wherever there is one. Where a part is held by one or two countries -- Japan in robot gears, Taiwan in making chips for others -- say so in that part's section above, and list the few that matter rather than pad the list with lesser names to reach a country. Write it as lines of part|name|ticker|exchange|why, and nothing else, with the part named exactly as its sub-heading names it but without the emoji, and why in under fifteen words. Use these exchange codes: US United States, CN Canada, LN London, NA Amsterdam, FP Paris, GR Germany, SW Switzerland, IM Milan, SM Madrid, SS Stockholm, DC Copenhagen, NO Oslo, FH Helsinki, JP Tokyo, HK Hong Kong, CH mainland China (Shanghai or Shenzhen), KS Korea, TT Taiwan, SP Singapore, IN India, AU Australia. CN is Canada, not China. Prefer a company's main listing: Toyota as 7203 on JP, not its American shares. Every ticker is checked against the exchange before the reader sees it, and one that fails is dropped, so write "?" rather than guess. Leave out private companies.
 
 These are companies to read about, not recommendations: say nothing about buying or selling them, and give no view on their shares.

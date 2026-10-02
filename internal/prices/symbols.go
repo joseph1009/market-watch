@@ -21,6 +21,14 @@ var chartSuffix = map[string]string{
 	"TT": ".TW",
 	"IN": ".NS",
 	"CH": ".SZ", // or .SS, by the code: see ChartSymbol
+	"CN": ".TO",
+	"SW": ".SW",
+	"IM": ".MI",
+	"SM": ".MC",
+	"SS": ".ST",
+	"DC": ".CO",
+	"NO": ".OL",
+	"FH": ".HE",
 }
 
 // ChartSymbol is how the chart source spells a verified listing: "000660.KS"
@@ -38,8 +46,12 @@ func ChartSymbol(ticker, exchange string) string {
 		return ""
 	}
 
+	// A Swedish or Danish share class (OpenFIGI's "VOLVB") is written with
+	// a dash by the chart source ("VOLV-B"), but whether a last letter is a
+	// class cannot be told from the ticker -- Genmab's GMAB is not GMA-B -- so
+	// those classes go without a price rather than with a guess.
 	switch exchange {
-	case "US":
+	case "US", "CN":
 		// A share class is written with a slash or a dot by the exchanges and
 		// with a dash by the chart source.
 		ticker = strings.NewReplacer("/", "-", ".", "-").Replace(ticker)

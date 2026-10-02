@@ -11,6 +11,10 @@ import (
 // part of the industry it belongs to.
 type IndustryCompany struct {
 	Part, Name, Symbol, Why string
+
+	// Exchange is the code it is listed under, and Market where that is,
+	// flag first: "🇯🇵 Japan".
+	Exchange, Market string
 }
 
 // industryNote and industryChannelNote head an industry's explanation. The
@@ -43,7 +47,7 @@ func RenderIndustry(topic, prose string, companies []IndustryCompany, opts Ideas
 			if _, seen := byPart[c.Part]; !seen {
 				order = append(order, c.Part)
 			}
-			byPart[c.Part] = append(byPart[c.Part], fmt.Sprintf("• %s <code>%s</code> — %s", escape(c.Name), escape(c.Symbol), escape(c.Why)))
+			byPart[c.Part] = append(byPart[c.Part], fmt.Sprintf("• %s %s — %s", escape(c.Name), flagged(c.Symbol, c.Exchange), escape(c.Why)))
 		}
 		blocks := []string{divider + "\n<b>🏢 COMPANIES TO LOOK INTO</b>\n<i>Every ticker checked against its exchange.</i>"}
 		for _, part := range order {

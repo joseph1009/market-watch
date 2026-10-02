@@ -229,7 +229,7 @@ func newNames(candidates []model.Candidate, cited []model.Article) *pages.Sectio
 		symbol := "<i>ticker unverified</i>"
 		switch {
 		case c.Symbol() != "":
-			symbol = "<code>" + escape(c.Symbol()) + "</code>"
+			symbol = flagged(c.Symbol(), c.Exchange)
 		case c.Private:
 			symbol = "<i>private</i>"
 		}
@@ -325,7 +325,7 @@ func PicksDoc(p Picks, cited []model.Article, opts IdeasOptions, now time.Time, 
 			if e.Priced {
 				since = fmt.Sprintf("<b>%+.1f</b> points", e.Ahead)
 			}
-			t.Rows = append(t.Rows, []string{escape(e.Name), "<code>" + escape(e.Symbol) + "</code>", "<b>" + escape(e.Verdict) + "</b>",
+			t.Rows = append(t.Rows, []string{escape(e.Name), flaggedSymbol(e.Symbol), "<b>" + escape(e.Verdict) + "</b>",
 				e.At.In(where).Format("2 Jan"), since})
 		}
 		t.Note = "<i>Points the way each verdict called it, against the S&amp;P 500, since the first open after it. A pick is not written up again for eight weeks unless its verdict changes.</i>"
@@ -350,7 +350,7 @@ func glance(ideas []model.Idea) pages.Table {
 		if idea.Quote != nil {
 			move = escape(idea.Quote.Move())
 		}
-		t.Rows = append(t.Rows, []string{"<b>" + escape(idea.Name) + "</b>", "<code>" + escape(idea.Symbol()) + "</code>",
+		t.Rows = append(t.Rows, []string{"<b>" + escape(idea.Name) + "</b>", flagged(idea.Symbol(), idea.Exchange),
 			"<b>" + escape(idea.Verdict) + "</b>", escape(idea.Confidence), escape(why), move})
 	}
 	return t
@@ -558,7 +558,7 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	if len(related) > 0 {
 		t := pages.Table{Head: []string{"Company", "", "Why read it"}, Align: "lll"}
 		for _, r := range related {
-			t.Rows = append(t.Rows, []string{"<b>" + escape(r.Name) + "</b>", "<code>" + escape(r.Symbol) + "</code>", escape(r.Why)})
+			t.Rows = append(t.Rows, []string{"<b>" + escape(r.Name) + "</b>", flagged(r.Symbol, r.Exchange), escape(r.Why)})
 		}
 		t.Note = "<i>Every ticker checked against its exchange. Not recommendations.</i>"
 		doc.Parts = append(doc.Parts, pages.Section{ID: "related", Title: "Companies to read next to it", Parts: []pages.Part{t}})
@@ -772,7 +772,11 @@ func IndustryDoc(topic, prose string, companies []IndustryCompany, opts IdeasOpt
 		for _, p := range parts {
 			t := pages.Table{Caption: p.Name, Head: []string{"Company", "", "Why look into it"}, Align: "lll"}
 			for _, c := range p.Companies {
-				t.Rows = append(t.Rows, []string{"<b>" + escape(c.Name) + "</b>", "<code>" + escape(c.Symbol) + "</code>", escape(c.Why)})
+				name := "<b>" + escape(c.Name) + "</b>"
+				if c.Market != "" {
+					name += " <i>" + escape(c.Market) + "</i>"
+				}
+				t.Rows = append(t.Rows, []string{name, "<code>" + escape(c.Symbol) + "</code>", escape(c.Why)})
 			}
 			sec.Parts = append(sec.Parts, t)
 		}

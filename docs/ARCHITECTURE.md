@@ -251,9 +251,9 @@ pipe-delimited table, parsed by [`parse`](../internal/discover/discover.go#L135)
 
 Then the part that matters: [`Finder.verify`](../internal/discover/discover.go#L291)
 checks every ticker against OpenFIGI through
-[`FIGI.Verify`](../internal/discover/verify.go#L73), confirming both that the
+[`FIGI.Verify`](../internal/discover/verify.go#L60), confirming both that the
 symbol exists on the exchange claimed and that the registered name is the same
-company ([`SameCompany`](../internal/discover/verify.go#L166)). A verification
+company ([`SameCompany`](../internal/discover/verify.go#L153)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
@@ -295,7 +295,7 @@ than mid-thought, and never leaving a heading alone at the end of a message.
 line, the writer's `## IN SHORT` bullets, and the next 24 hours' releases and
 results, each "… @ time") with a "📖 Read the full brief" button to the whole
 brief as a web page. The page is laid out from the report, not the messages, by
-[`BriefDoc`](../internal/telegram/pagedocs.go#L42): the markets as a table and a
+[`BriefDoc`](../internal/telegram/pagedocs.go#L43): the markets as a table and a
 bar chart (from the FRED readings and the benchmark funds, [`pageMarket`](../internal/app/pages.go#L123)),
 the overview, what is coming up as a table a day, and each sector with its
 biggest moves and its own sources. The prose is the messages' prose, and
@@ -473,9 +473,9 @@ checks the sender is the owner and routes on the command:
 | `/now` | [`handleNow`](../internal/app/commands.go#L222) | A brief to the owner only; waits for `/share` |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L524) | Reads a company's filings — below |
-| `/industry` | [`handleIndustry`](../internal/app/industry.go#L20) | How an industry fits together, and companies to look into — below |
+| `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, and companies to look into — below |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L717) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L719) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L305) | Follow or stop following a company; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L388) | Turn a feed on or off |
@@ -502,7 +502,7 @@ does not inherit whatever the caller's context has left:
    ([`supersedes`](../internal/fundamentals/metrics.go#L439)) and builds the current
    year so far beside the full years ([`buildYTD`](../internal/fundamentals/metrics.go#L547)),
    from interim periods that end after the latest annual report only.
-2. [`quoteFor`](../internal/app/commands.go#L727) adds the share price, so filed
+2. [`quoteFor`](../internal/app/commands.go#L729) adds the share price, so filed
    figures become multiples.
 3. [`AddBusiness`](../internal/fundamentals/business.go#L39) pulls the business
    description out of the latest annual report;
@@ -538,7 +538,7 @@ does not inherit whatever the caller's context has left:
    and the reasons.
 7. [`RenderAnalysis`](../internal/telegram/render.go), which shows the verdict
    first and then rules off each capitalised section and bolds its
-   sub-headings, and [`RenderRelated`](../internal/telegram/related.go#L22)
+   sub-headings, and [`RenderRelated`](../internal/telegram/related.go#L23)
    render it, once for the owner and once for the channel, whose copy carries
    the warning under the verdict and is what `/share` posts.
    [`recordAnalysis`](../internal/app/commands.go) writes the verdict to the
@@ -560,14 +560,14 @@ fortnight's news and a foreign filer's own latest results.
 company, and the next message, however many words, is the topic.
 `/industry robotics` still works in one line.
 
-[`handleIndustry`](../internal/app/industry.go#L20) asks
+[`handleIndustry`](../internal/app/industry.go#L21) asks
 [`industry.Explainer.Explain`](../internal/industry/industry.go#L61) -- Opus with web
 search, under `industry.system` -- to explain how the industry fits together,
-part by part, and to list two to four listed companies to look into in each.
+part by part, and to list three to six listed companies to look into in each, spread across countries, each shown with its flag and country.
 [`industry.Split`](../internal/industry/industry.go#L86) cuts the
 `COMPANIES BY PART` table out, [`industry.Verify`](../internal/industry/industry.go#L113)
 checks every ticker against OpenFIGI through `VerifyRelated`, and
-[`RenderIndustry`](../internal/telegram/industry.go#L27) lays it out in the brief's
+[`RenderIndustry`](../internal/telegram/industry.go#L31) lays it out in the brief's
 style, the companies grouped by part. `/share` posts the channel's copy.
 
 ### Every model call
@@ -925,7 +925,7 @@ its markers.
 merge duplicates, remove names already watched, verify, apply the evidence bar
 (`withEvidence`), cap.
 **[verify.go](../internal/discover/verify.go)** — `FIGI.Verify` checks tickers
-against OpenFIGI; `Exchanges` is the exchange codes a ticker may be checked under; `SameCompany`
+against OpenFIGI; `Exchanges` is the exchange codes a ticker may be checked under (`model.Markets`, which also gives each one's country and the flag shown beside its tickers); `SameCompany`
 compares a registered name to a claimed one, ignoring corporate forms.
 **[store.go](../internal/discover/store.go)** — `Store.Note` counts how many days a
 name has been running; `Save`; sixty days of retention.

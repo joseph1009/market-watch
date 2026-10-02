@@ -145,7 +145,7 @@ func TestAPeriodEndingInAMonthsFirstWeekIsNamedForTheMonthBefore(t *testing.T) {
 // gives them, each with its companies.
 func TestTheIndustryPageDrawsTheChain(t *testing.T) {
 	companies := []IndustryCompany{
-		{Part: "Motion parts", Name: "Harmonic Drive", Symbol: "6324.JP", Why: "gears"},
+		{Part: "Motion parts", Name: "Harmonic Drive", Symbol: "6324.JP", Why: "gears", Market: "🇯🇵 Japan"},
 		{Part: "Robot makers", Name: "Fanuc", Symbol: "6954.JP", Why: "the largest"},
 		{Part: "Motion parts", Name: "Nabtesco", Symbol: "6268.JP", Why: "reducers"},
 	}
@@ -153,6 +153,7 @@ func TestTheIndustryPageDrawsTheChain(t *testing.T) {
 	for _, want := range []string{
 		`<figure class="chain">`, `<span class="step-name">Motion parts</span><span class="step-items"><code>6324.JP</code><code>6268.JP</code>`,
 		`<span class="step-name">Robot makers</span>`, "<figcaption>Motion parts</figcaption>", "Robots move.",
+		"<b>Harmonic Drive</b> <i>🇯🇵 Japan</i>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page is missing %q", want)

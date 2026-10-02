@@ -8,10 +8,11 @@ import (
 // keeps its own shape so it does not import the analysis package: this is a
 // rendering concern, and the fields are what a message needs.
 type Related struct {
-	Name   string
-	Symbol string
-	Listed string
-	Why    string
+	Name     string
+	Symbol   string
+	Exchange string
+	Listed   string
+	Why      string
 }
 
 // RenderRelated lists the companies worth looking at next to the one analysed.
@@ -30,20 +31,9 @@ func RenderRelated(related []Related) string {
 	for _, r := range related {
 		b.WriteString("\n\n• <b>" + escape(r.Name) + "</b>")
 		if r.Symbol != "" {
-			b.WriteString(" <code>" + escape(r.Symbol) + "</code>")
+			b.WriteString(" " + flagged(r.Symbol, r.Exchange))
 		}
 		b.WriteString("\n" + escape(r.Why))
 	}
 	return b.String()
-}
-
-// RelatedList converts any shape carrying the same four fields, so the caller
-// does not have to build this package's type by hand.
-func RelatedList[T any](items []T, fields func(T) (name, symbol, listed, why string)) []Related {
-	out := make([]Related, 0, len(items))
-	for _, item := range items {
-		name, symbol, listed, why := fields(item)
-		out = append(out, Related{Name: name, Symbol: symbol, Listed: listed, Why: why})
-	}
-	return out
 }

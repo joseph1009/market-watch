@@ -158,7 +158,7 @@ func pickLines(idea model.Idea) string {
 	}
 	head += "<b>" + escape(idea.Name) + "</b>"
 	if s := idea.Symbol(); s != "" {
-		head += " <code>" + escape(s) + "</code>"
+		head += " " + flagged(s, idea.Exchange)
 	}
 	verdict := "<b>" + escape(idea.Verdict) + "</b>"
 	if idea.Confidence != "" {

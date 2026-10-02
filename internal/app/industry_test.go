@@ -35,15 +35,15 @@ func TestIndustryExplainsAndListsCompaniesByPart(t *testing.T) {
 	a.Cfg.TelegramChannelID = testChannel
 	a.Industry = &industry.Explainer{
 		Completer: industryModel{reply: "### 🧭 The big picture\n- Robots sense, decide and move.\n\n" +
-			"COMPANIES BY PART\nRobot makers|Fanuc|6954|JP|the largest maker of factory robots\nRobot makers|Nobody Inc|NOPE|US|made up"},
-		Verifier: knownTickers{"6954|JP": "FANUC CORP"},
+			"COMPANIES BY PART\nRobot makers|Fanuc|6954|JP|the largest maker of factory robots\nRobot makers|ATS Corporation|ATS|CN|builds automated factory lines\nRobot makers|Nobody Inc|NOPE|US|made up"},
+		Verifier: knownTickers{"6954|JP": "FANUC CORP", "ATS|CN": "ATS CORP"},
 	}
 
 	a.HandleMessage(context.Background(), message("/industry robotics"))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	for _, want := range []string{"🧭 Robotics — how the industry fits together", "<b>🧭 The big picture</b>",
-		"🏢 COMPANIES TO LOOK INTO", "<b>Robot makers</b>", "Fanuc <code>6954.JP</code> — the largest maker of factory robots", "not recommendations"} {
+		"🏢 COMPANIES TO LOOK INTO", "<b>Robot makers</b>", "Fanuc 🇯🇵 <code>6954.JP</code> — the largest maker of factory robots", "ATS Corporation 🇨🇦 <code>ATS.CN</code>", "not recommendations"} {
 		if !strings.Contains(owner, want) {
 			t.Errorf("owner's copy is missing %q:\n%s", want, owner)
 		}

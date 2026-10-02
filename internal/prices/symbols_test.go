@@ -20,6 +20,15 @@ func TestChartSymbolSpellsEachMarketTheWayTheChartSourceDoes(t *testing.T) {
 		{"688981", "CH", "688981.SS"}, // SMIC, Shanghai's STAR board
 		{"300750", "CH", "300750.SZ"}, // CATL, Shenzhen
 		{"000333", "CH", "000333.SZ"}, // Midea, Shenzhen
+		{"SHOP", "CN", "SHOP.TO"},
+		{"BBD/B", "CN", "BBD-B.TO"},
+		{"ABBN", "SW", "ABBN.SW"},
+		{"ENEL", "IM", "ENEL.MI"},
+		{"ITX", "SM", "ITX.MC"},
+		{"SAND", "SS", "SAND.ST"},
+		{"GMAB", "DC", "GMAB.CO"},
+		{"EQNR", "NO", "EQNR.OL"},
+		{"NOKIA", "FH", "NOKIA.HE"},
 		{"X", "ZZ", ""},
 		{"", "US", ""},
 	} {

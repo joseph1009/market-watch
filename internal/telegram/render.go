@@ -753,7 +753,7 @@ func renderCandidates(candidates []model.Candidate, cited []model.Article) []str
 		b.WriteString("• <b>" + escape(c.Name) + "</b>")
 		switch {
 		case c.Symbol() != "":
-			b.WriteString(" <code>" + escape(c.Symbol()) + "</code>")
+			b.WriteString(" " + flagged(c.Symbol(), c.Exchange))
 		case c.Private:
 			b.WriteString(" <i>private</i>")
 		default:

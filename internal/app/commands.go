@@ -652,9 +652,11 @@ func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose string, verdict 
 
 // relatedList is the related companies as the chat and the page show them.
 func relatedList(related []fundamentals.Related) []telegram.Related {
-	return telegram.RelatedList(related, func(r fundamentals.Related) (string, string, string, string) {
-		return r.Name, r.Symbol(), r.Listed, r.Why
-	})
+	out := make([]telegram.Related, 0, len(related))
+	for _, r := range related {
+		out = append(out, telegram.Related{Name: r.Name, Symbol: r.Symbol(), Exchange: r.Exchange, Listed: r.Listed, Why: r.Why})
+	}
+	return out
 }
 
 func analysisHeading(snapshot fundamentals.Snapshot) string {

@@ -79,7 +79,7 @@ func TestTheWeeksThemesRunOnceAWeek(t *testing.T) {
 		"<b>AI chips</b> · <i>Popular</i>",
 		"<i>The numbers:</i> 3 companies;",
 		"<i>Where the value is:</i> Cooling.",
-		"<b>Vertiv</b> <code>VRT</code>",
+		"<b>Vertiv</b> 🇺🇸 <code>VRT</code>",
 		"<i>Where it fits:</i> Cools the racks.",
 		"<i>The price:</i> Cheaper than the chips.",
 	} {

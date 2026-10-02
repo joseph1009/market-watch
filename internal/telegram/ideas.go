@@ -155,7 +155,7 @@ func RenderPicks(p Picks, cited []model.Article, opts IdeasOptions, where *time.
 	if len(p.Earlier) > 0 {
 		lines := []string{divider + "\n<b>Earlier picks</b>"}
 		for _, e := range p.Earlier {
-			line := fmt.Sprintf("• %s <code>%s</code> · %s on %s", escape(e.Name), escape(e.Symbol), escape(e.Verdict), e.At.In(where).Format("2 Jan"))
+			line := fmt.Sprintf("• %s %s · %s on %s", escape(e.Name), flaggedSymbol(e.Symbol), escape(e.Verdict), e.At.In(where).Format("2 Jan"))
 			if e.Priced {
 				line += fmt.Sprintf(" · %+.1f points the way called", e.Ahead)
 			} else {
@@ -187,7 +187,7 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	}
 	head.WriteString("<b>" + escape(idea.Name) + "</b>")
 	if s := idea.Symbol(); s != "" {
-		head.WriteString(" <code>" + escape(s) + "</code>")
+		head.WriteString(" " + flagged(s, idea.Exchange))
 	}
 	// The last session's move, unless the verdict gives it below with the
 	// longer ones. Not "today": the look is read before the US open, when a
