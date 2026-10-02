@@ -51,7 +51,7 @@ you, and why it is worth doing.
   the 8-K firehose: after a fortnight, how many of its articles were placed, and
   how many were cited.
 - **Prices outside the US, in the brief.** Done for the closer look. A listing
-  on any of the fourteen exchanges now takes its price from the daily-history
+  on any of the checked exchanges now takes its price from the daily-history
   source -- Yahoo's charting endpoint, keyless, in the currency the share
   actually trades in -- with `prices.Latest` turning the last two closes into a
   day's move. The keyed vendors were checked against a live key first and are

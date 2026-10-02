@@ -251,9 +251,9 @@ pipe-delimited table, parsed by [`parse`](../internal/discover/discover.go#L135)
 
 Then the part that matters: [`Finder.verify`](../internal/discover/discover.go#L291)
 checks every ticker against OpenFIGI through
-[`FIGI.Verify`](../internal/discover/verify.go#L74), confirming both that the
+[`FIGI.Verify`](../internal/discover/verify.go#L73), confirming both that the
 symbol exists on the exchange claimed and that the registered name is the same
-company ([`SameCompany`](../internal/discover/verify.go#L167)). A verification
+company ([`SameCompany`](../internal/discover/verify.go#L166)). A verification
 failure returns nothing rather than unchecked tickers.
 
 [`discover.Store.Note`](../internal/discover/store.go#L54) counts how many days a
@@ -925,7 +925,7 @@ its markers.
 merge duplicates, remove names already watched, verify, apply the evidence bar
 (`withEvidence`), cap.
 **[verify.go](../internal/discover/verify.go)** — `FIGI.Verify` checks tickers
-against OpenFIGI; `Exchanges` is the fourteen exchange codes; `SameCompany`
+against OpenFIGI; `Exchanges` is the exchange codes a ticker may be checked under; `SameCompany`
 compares a registered name to a claimed one, ignoring corporate forms.
 **[store.go](../internal/discover/store.go)** — `Store.Note` counts how many days a
 name has been running; `Save`; sixty days of retention.

@@ -45,8 +45,7 @@ var Exchanges = map[string]string{
 	"KS": "Korea",
 	"TT": "Taiwan",
 	"IN": "India",
-	"CN": "Shanghai",
-	"CH": "Shenzhen",
+	"CH": "China, Shanghai or Shenzhen", // OpenFIGI's CN is Canada
 }
 
 // Verifier confirms that a ticker belongs to the company it is claimed for.

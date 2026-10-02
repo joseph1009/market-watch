@@ -16,6 +16,10 @@ func TestChartSymbolSpellsEachMarketTheWayTheChartSourceDoes(t *testing.T) {
 		{"ASML", "NA", "ASML.AS"},
 		{"BESI", "NA", "BESI.AS"},
 		{"D05", "SP", "D05.SI"},
+		{"600519", "CH", "600519.SS"}, // Kweichow Moutai, Shanghai
+		{"688981", "CH", "688981.SS"}, // SMIC, Shanghai's STAR board
+		{"300750", "CH", "300750.SZ"}, // CATL, Shenzhen
+		{"000333", "CH", "000333.SZ"}, // Midea, Shenzhen
 		{"X", "ZZ", ""},
 		{"", "US", ""},
 	} {

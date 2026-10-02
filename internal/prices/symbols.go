@@ -20,8 +20,7 @@ var chartSuffix = map[string]string{
 	"KS": ".KS",
 	"TT": ".TW",
 	"IN": ".NS",
-	"CN": ".SS",
-	"CH": ".SZ",
+	"CH": ".SZ", // or .SS, by the code: see ChartSymbol
 }
 
 // ChartSymbol is how the chart source spells a verified listing: "000660.KS"
@@ -48,6 +47,13 @@ func ChartSymbol(ticker, exchange string) string {
 		// Hong Kong codes are numbers, written to four digits: 700 is 0700.
 		for len(ticker) < 4 {
 			ticker = "0" + ticker
+		}
+	case "CH":
+		// OpenFIGI has one code for mainland China; the chart source has one
+		// for each exchange. Shanghai's codes start with a 6 (or a 9 for its
+		// B shares), Shenzhen's with a 0, a 2 or a 3.
+		if strings.HasPrefix(ticker, "6") || strings.HasPrefix(ticker, "9") {
+			suffix = ".SS"
 		}
 	}
 	return ticker + suffix
