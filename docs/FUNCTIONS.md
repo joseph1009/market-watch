@@ -366,7 +366,7 @@ What passes between the functions:
 
 **Entry point:** [`handleIndustry`](../internal/app/industry.go#L21)
 
-**What it does:** explains how an industry fits together for someone who does not work in it, as a map to read single companies against: the big picture, the chain from inputs to the customer, each building block (what it does, how it makes money, who leads it, what is changing), where the profits pool, what to watch and the risks. It ends with three to six listed companies to look into in each part, drawn from at least three countries where the part has them and shown with their flag and country, every ticker checked against its exchange.
+**What it does:** explains how an industry fits together for someone who does not work in it, as a map to read single companies against: the big picture, the chain from inputs to the customer, each building block (what it does, how it makes money, who leads it, what is changing and what that leads to), and where the profits pool. Then it looks ahead: what people are saying about the industry, the research and developments due in the next one to three years, the knock-on effects of those changes, what to watch and the risks. It ends with three to six listed companies to look into in each part, drawn from at least three countries where the part has them and shown with their flag and country, every ticker checked against its exchange.
 
 **Files:** [internal/app/industry.go](../internal/app/industry.go), [internal/industry/industry.go](../internal/industry/industry.go), [internal/telegram/industry.go](../internal/telegram/industry.go), `industry.system` in [config/prompts.md](../config/prompts.md)
 

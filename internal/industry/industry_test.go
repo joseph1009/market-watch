@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/discover"
 	"github.com/joseph1009/market-watch/internal/model"
 )
@@ -65,5 +66,27 @@ Software|Some Startup|?|?|private`}
 	if len(got.Companies) != 2 || got.Companies[0].Part != "Motion parts" || got.Companies[0].Symbol() != "6324.JP" ||
 		got.Companies[1].Name != "Fanuc" || got.Companies[1].Listed != "FANUC CORP" {
 		t.Errorf("companies = %+v", got.Companies)
+	}
+}
+
+// An industry is explained looking forward as well as at how it stands: what
+// people are saying, what is coming, and what follows from it (asked for on
+// 2026-10-02). Nothing earlier in the explanation goes.
+func TestThePromptLooksAheadAndOneStepFurther(t *testing.T) {
+	system := config.Prompt("industry.system")
+	for _, want := range []string{
+		"Then search for where it is going",
+		"Think one step past the obvious",
+		"### 🗣️ What people are saying",
+		"### 🔬 What is coming",
+		"### 🔁 What follows",
+		"### 💰 Where the money is",
+		"### 🔭 What to watch",
+		"### ⚠️ Risks",
+		"COMPANIES BY PART",
+	} {
+		if !strings.Contains(system, want) {
+			t.Errorf("the industry prompt no longer carries %q", want)
+		}
 	}
 }
