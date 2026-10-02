@@ -69,11 +69,29 @@ func LoadPrompts() error {
 // condition to handle, so it panics: the ids are compiled in, and CheckPrompts has
 // already confirmed the file carries them.
 func Prompt(id string) string {
-	text, ok := sections(loaded)[id]
+	all := sections(loaded)
+	text, ok := all[id]
 	if !ok {
 		panic("prompts: no section " + id)
 	}
+	if readerFacing[id] {
+		text += "\n\n" + all["writing"]
+	}
 	return text
+}
+
+// readerFacing are the prompts whose words the reader sees. Each one ends
+// with the writing section, so they all follow the same plain style. The
+// owner found the reports stiff and in need of a second read (2026-10-02).
+var readerFacing = map[string]bool{
+	"brief.system":    true,
+	"discover.system": true,
+	"themes.system":   true,
+	"scout.system":    true,
+	"research.system": true,
+	"verdicts.system": true,
+	"analysis.system": true,
+	"industry.system": true,
 }
 
 // RenderPrompt fills a section's {{.Fields}} from data.
@@ -94,6 +112,7 @@ func RenderPrompt(id string, data any) (string, error) {
 // parsers depend on, not the ones that read best: this is a check against
 // breaking the machinery, not against writing badly.
 var required = map[string][]string{
+	"writing":          {"HOW TO WRITE"},
 	"brief.system":     {"## OVERVIEW", "## SECTION:", "### "},
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},

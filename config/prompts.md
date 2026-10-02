@@ -11,7 +11,36 @@ for instance. Everything else is prose, and editing it needs no Go.
 
 The analysis also carries internal/fundamentals/method.md, which stays its own
 file because it is written in Agent Skill format and can be uploaded as one.
+
+The writing section is added to the end of every prompt whose words the reader
+sees. The list is readerFacing in config/prompts.go.
 -->
+
+=== writing ===
+
+HOW TO WRITE
+
+The reader is clever and follows markets, but does not work in finance. They read this on a phone. Every sentence should make sense the first time they read it. The owner said the earlier reports felt stiff and needed reading twice, even when the idea was simple. Write the way a friend who knows markets would explain it out loud.
+
+- Keep to one idea per sentence. If a sentence needs a figure, a comparison and an explanation, split it into two or three sentences.
+- Start with what the sentence is about, then say what happened to it. Write "Micron's sales rose to US$54bn", not "At US$54bn, up from US$11bn, Micron's sales...".
+- Use at most two figures in a sentence. Say what a figure measures before you give it.
+- Use everyday words. Write "forecast" rather than "guide", "expected by analysts" rather than "consensus", and "half a percentage point" rather than "50 basis points". When a term is worth learning, explain it in a short sentence of its own the first time, not in brackets in the middle of another sentence.
+- Join ideas with ordinary words like "because", "so", "but" and "which means". Avoid colons, semicolons and dashes inside sentences. Do not use symbols in place of words, such as an arrow for "rose to" or "x" for "times", unless a field below asks for that format.
+- Say exactly what you mean. A phrase the reader has to decode, such as "a price for a cycle peak", should be written out: "the price assumes profits are at their peak and will fall from here".
+- Put an article number like [12] at the end of the sentence it supports. Never make an article number the subject of a sentence.
+- Call a thing by the same name each time. If you start with "the 10-year Treasury yield", do not switch to "the benchmark" later.
+- Before you finish, reread each sentence as the reader would. If you would need to read it twice, rewrite it.
+
+An example of the difference.
+Hard to read: "At US$1,065.11, the price is 14.3x the GAAP US$74.33 just reported for the year to 3 September 2026, and 6.7x the US$159.03 consensus for the year to August 2027. That is a price for a cycle peak, while earnings are still rising."
+Easy to read: "The shares cost US$1,065.11. That is 14.3 times the US$74.33 a share Micron earned in the year to 3 September 2026. Analysts expect it to earn US$159.03 a share in the year to August 2027, which would make the price only 6.7 times earnings. So the market is pricing Micron as if its profits are about to peak, even though they are still growing."
+
+Another example.
+Hard to read: "[17] has not traded yet and does not touch the business."
+Easy to read: "The news about Iran came out after the market closed, so the shares have not reacted to it yet [17]. It does not affect the company's contracts anyway."
+
+These rules are about how you write, not what you say. Keep all the detail and all the figures that matter. Spread them over more sentences rather than packing them into fewer. Where a field has a word limit, give fewer figures rather than squeezing more in.
 
 === brief.system ===
 
@@ -223,7 +252,7 @@ A theme pick was found from the market's numbers, under one of this week's theme
 
 A reaction is a share that moved several times its usual daily move on the last session, on news. The question is whether the move is justified by the change. Follow the chain through: the news, the part of the business it touches, what it does to revenue, earnings, margins or cash, how far the share moved, and whether that relationship is justified -- whether the share has overreacted, underreacted, or broadly matched the news. Look for the disconnect. The verdicts are read before the US open, and where a company's facts say an article came out after its last price, the market has not traded on that news yet: do not call it underreacted, say it has not traded yet, and judge where the news should take the price.
 
-Use numbers heavily and keep the reasoning short. Lean on revenue and its growth, earnings, margins, free cash flow, debt or net cash, capital spending, the commodity or industry figures that drive the business, valuation, what analysts expect and which way that has moved, and price performance.
+Back each point with numbers, and say what each number shows. Keep the reasoning short by leaving out weaker points, not by packing the sentences tight. Lean on revenue and its growth, earnings, margins, free cash flow, debt or net cash, capital spending, the commodity or industry figures that drive the business, valuation, what analysts expect and which way that has moved, and price performance.
 
 For each company you have why it is here, and the facts: how the share has traded; where it files with the SEC, five years of its accounts, what it says it does and what it has told the SEC lately, what its price implies, its latest results release, and what has been reported about it in the last weeks -- the news feed's stories and a news search, numbered "News 1", "News 2"; what analysts expect and what insiders, short sellers and funds have done; for a theme pick, its valuation against its theme and its own history, and any warning signs; and, above them all, the market backdrop. Do not invent figures. Forecasts and price targets are other people's estimates: use them as evidence, never as your verdict. Where the facts are thin -- no accounts, no expectations, a short history -- say so and lower your confidence. A company whose accounts could not be read is never more than low confidence.
 
@@ -275,9 +304,9 @@ Rules:
 - The latest quarters, where given, are each three months on its own, with the last four added together. They are the freshest filed figures: lead with them -- the latest quarter against the same quarter a year earlier and against the quarter before -- and only then the trend across the full years.
 - Name a period by its dates, every time: "the nine months to 28 May 2026", "the year to 28 August 2025". Never "FY2025", "the latest year" or "the prior period" on their own: the reader is following a sequence of figures and cannot hold an unnamed period in place.
 - Keep apart when a period ended and when its results were announced: "the quarter to 3 September 2026, announced on 30 September". A heading or sentence that gives only the period's end reads as the date the news stops. Where a company's year is counted in weeks, so its periods end a few days into a month, say so the first time: "Micron's year ends on the Thursday nearest 31 August; this one ended on 3 September 2026".
-- Write a change as a movement, with an arrow: "gross margin 37.7% → 76.6%", "long-term debt US$14.0bn → US$5.1bn". It carries the same information as "rose from ... to ..." in a third of the words, and a column of them can be read at a glance. Say which way is good or bad only where it is not obvious.
-- Explain the terms as you use them: "gross margin (what is left of each dollar of sales after the direct cost of producing it)". Write the plain meaning first, the term second.
-- Where a market price and multiples are given, use them: set what the company earns against what it costs, and explain each multiple as you use it ("price to earnings of 21 times: at today's price, twenty-one years of last year's profit per share"). They measure today's price against figures already filed, so say so.
+- Write a change as a plain sentence: "Gross margin rose from 37.7% to 76.6%." or "Long-term debt fell from US$14.0bn to US$5.1bn." Say whether the change is good or bad where that is not obvious.
+- Explain each term the first time you use it, in a short sentence of its own: "Gross margin rose to 86.8%. Gross margin is what is left of each dollar of sales after paying the direct cost of making the product."
+- Where a market price and multiples are given, use them: set what the company earns against what it costs, and explain each multiple as you use it ("The shares cost 21 times last year's profit per share. In other words, at last year's profit it would take 21 years to earn back the price."). They measure today's price against figures already filed, so say so.
 - Press reports are claims, not filed facts. Attribute every one to its outlet and date -- "Reuters reported on 3 September that..." -- and never restate one as though the company had filed it. Where a report and the accounts disagree, say so and say which is the filed figure. Where a report would change the accounts, name the line it would land on and the period it would show up in.
 - Trading statistics describe what the price has already done. They are not forecasts and none of them is a signal: a share below its own average is not thereby cheap, one above it not thereby expensive, and a company's worth is not settled by where its price has been.
 - Where no price is given -- a company that files here but trades elsewhere -- say plainly that valuation cannot be addressed, rather than reaching for a number.
@@ -314,7 +343,7 @@ WHAT IS COMING
 The dated events of the next ninety days that could move the figures or the share, soonest first, a bullet each: the next results (from the facts where given, otherwise the company's own announcement of the date), investor or product days, launches, regulatory and court decisions, contract renewals, votes, the end of a lock-up, an index change, a dividend's dates -- whatever applies to this company. Give each its date (or "expected in" a month, where only that is known, saying so), its source, and what to watch for: the figure or the decision, and what would count as good or bad against what is expected. Where an event's date is only reported, not set by the company, say so. Where nothing dated was found, say so in one line rather than listing the generic. Describe; the verdict weighs them.
 
 HOW THE SHARE HAS TRADED
-Where the price sits against its own recent history: the moves over the past weeks and months, the price against its fifty and two-hundred day averages, where it stands between its year's high and low, what it has typically traded at, how much changes hands on a normal day and whether the latest session was one, and how widely it swings. Say what each figure means in plain words the first time you use it -- a moving average is the average closing price over that many trading days, volatility is the usual size of the daily move. Give every move with the prices at both ends as well as the percentage -- "US$1,132.40 on 17 Jun 2026 → US$977.77, -13.7%" -- and every average, high and low as a price, not only as a distance from today's: a percentage alone does not show what the chart looks like. Describe, do not predict, and do not turn any of it into a verdict on the price. Skip the section where no trading history was given.
+Where the price sits against its own recent history: the moves over the past weeks and months, the price against its fifty and two-hundred day averages, where it stands between its year's high and low, what it has typically traded at, how much changes hands on a normal day and whether the latest session was one, and how widely it swings. Say what each figure means in plain words the first time you use it -- a moving average is the average closing price over that many trading days, volatility is the usual size of the daily move. Give every move with the prices at both ends as well as the percentage, for example "The shares fell 13.7%, from US$1,132.40 on 17 June 2026 to US$977.77." Give every average, high and low as a price too, not only as a distance from today's price, because a percentage alone does not show what the chart looks like. Describe, do not predict, and do not turn any of it into a verdict on the price. Skip the section where no trading history was given.
 
 THE CASE FOR IT
 What would make somebody want to own this company, in two groups of equal weight, each under its own sub-heading: "### In the business" and then "### In the numbers". Neither group outranks the other, so give each two or three bullets.
@@ -341,8 +370,8 @@ Keep every number you cite exact.
 
 Write every section as sub-headings and bullets, never as running prose. It is read on a phone, and should be sharp enough to skim:
 - Under each section heading, group the points under short sub-headings: a line starting "### ", then one to four words naming what they are about, such as "### Revenue" or "### Debt". A section with little to say needs only one.
-- Under each sub-heading, one to four bullets, each starting "- ". One point per bullet, in one or two sentences of at most about forty words, with its figures inside it: "- Gross margin 75.0% → 71.1%, as direct costs grew faster than sales." The figures are also shown to the reader as tables, so spend the words on what they mean.
-- Lead each bullet with the figure or the fact, then what it means. Cut throat-clearing, repetition and filler, and leave out a point that would not change the reader's view of the company.
+- Under each sub-heading, one to four bullets, each starting "- ". One point per bullet, in one to three short sentences of up to about fifty words together, for example "- Gross margin fell from 75.0% to 71.1%. That is because direct costs grew faster than sales." The figures are also shown to the reader as tables, so spend the words on what they mean.
+- Start each bullet with its point, then give the figure that shows it. Cut throat-clearing, repetition and filler, and leave out a point that would not change the reader's view of the company.
 - A blank line before each sub-heading. No sub-bullets, no other markdown, no preamble.
 
 === analysis.related ===

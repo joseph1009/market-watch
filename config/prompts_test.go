@@ -66,3 +66,16 @@ func TestSectionsIgnoreThePreamble(t *testing.T) {
 		t.Errorf("sections read as %#v", got)
 	}
 }
+
+// Every prompt whose words the reader sees ends with the plain-writing
+// rules, and a prompt the reader never sees does not carry them.
+func TestReaderFacingPromptsCarryTheWritingRules(t *testing.T) {
+	for id := range readerFacing {
+		if !strings.Contains(Prompt(id), "HOW TO WRITE") {
+			t.Errorf("%s is missing the writing rules", id)
+		}
+	}
+	if strings.Contains(Prompt("triage.system"), "HOW TO WRITE") {
+		t.Error("triage, which the reader never sees, carries the writing rules")
+	}
+}
