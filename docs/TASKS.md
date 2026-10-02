@@ -4,205 +4,252 @@
 
 # Backlog
 
-What is agreed but not built. Each entry says what it is, what it needs from
-you, and why it is worth doing.
+This page lists what has been agreed but not built. Each entry says what it
+is, what it needs from you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Push the repository.** Every commit is still local only. GitHub holds only
-  an old first commit from before the history was regrouped, so the first push
-  replaces it: `git push --force-with-lease`.
-- **Judge Monday's run.** Everything built is deployed (27 September 2026).
-  The first weekly themes on the new code run on Monday 28 September; read
-  them with `scripts/sync-cache-from-fly.sh recommendations`.
+- **Try the latest changes live.** The changes of 2 October 2026 are built
+  but have not run on real data yet. They cover plain writing in every
+  report, the reworked `/analyse` (the case for and against, where the
+  company is heading, whether its figures hold up) and `/industry`'s look
+  ahead. One `/analyse` and one `/industry` would show how they read. Each
+  uses the Claude plan.
+- **Push and deploy.** The commits since 1 October are on your machine only.
+  Push them with `git push`, then deploy with `scripts/fly-deploy.sh`.
 
 ## Reliability
 
-- **Weekly source health.** A failed brief now messages you, and `/stats` names
-  feeds that fail regularly, but nothing volunteers it: you have to ask. A
-  weekly message would close that.
-- **Decide on the media feeds after a fortnight of search.** Search runs beside
-  the feeds, and `/stats` shows which cited stories it failed to find, by the
-  source that carried them. If that list holds only government and company
-  releases, the eighteen media feeds can be turned off, and with them the part
-  of the source list that breaks. RUNBOOK.md, "News search", says how to read
-  it.
-- **`marketwatch-top` returns HTTP 400.** One feed of 44, failing consistently.
-  Worth replacing or turning off.
+- **A weekly report on the sources.** A failed brief now sends you a message,
+  and `/stats` names the feeds that fail often. But nothing tells you on its
+  own; you have to ask. A weekly message would fix that.
+- **Decide on the media feeds after a fortnight of search.** Search runs
+  beside the feeds. `/stats` shows which cited stories search failed to find,
+  listed by the source that carried them. If that list holds only government
+  and company releases, the eighteen media feeds can be turned off. They are
+  the part of the source list that breaks most. RUNBOOK.md, "News search",
+  explains how to read the list.
+- **`marketwatch-top` returns HTTP 400.** It is one feed of 44, and it fails
+  every time. It is worth replacing or turning off.
 
 ## Brief quality
 
-- **Judge the sorting and the review after a week.** The keywords are gone:
-  an article reaches a section by naming a followed company, or because Opus
-  read it against the sector's description in `config/sectors.yaml` and the
-  review agreed. `/stats` reports how many were placed by judgment and how many
-  the review moved, with five of each. Read those for a week. If the placements
-  are stories you would want and the moves are corrections, the net is set
-  right; if they are stretches, sharpen the descriptions, raise
-  `MinPlacementRating`, or turn the review off with `REVIEW=false`. The same
-  week says whether the top-up earns its place: `/stats` shows how many
-  stories rated 3 were offered to thin sections, how many the review kept, and
-  five of them. If what it keeps reads as padding, set `ThinSection` in
-  `internal/triage/topup.go` to 0 and the thin sections go back to
-  disappearing. Only once that is settled is it worth adding
-  sector feeds -- chip trade press, energy and shipping, drug development,
-  freight -- since a gate that works makes extra sources cheap and a gate that
-  does not makes them mush. The test for any new feed is the one that condemned
-  the 8-K firehose: after a fortnight, how many of its articles were placed, and
-  how many were cited.
-- **Prices outside the US, in the brief.** Done for the closer look. A listing
-  on any of the checked exchanges now takes its price from the daily-history
-  source -- Yahoo's charting endpoint, keyless, in the currency the share
-  actually trades in -- with `prices.Latest` turning the last two closes into a
-  day's move. The keyed vendors were checked against a live key first and are
-  no use: Twelve Data's free tier answers Hong Kong with "available starting
-  with the Pro or Venture plan", London with "the Grow or Venture plan", and
-  does not resolve Tokyo or Singapore at all. `TWELVEDATA_API_KEY` was dropped
-  rather than left as a promise the tier cannot keep.
-  The new names now do the same and show the move beside the ticker. What is
-  left is `collectPrices` in `internal/app/prices.go`, which reads US listings
-  only: the quote feed, and the charts for whatever that misses. It prices
-  every company followed, and today all 95 tickers trade in New York, so
-  nothing is missing; but a Tokyo or London listing added to
-  `config/companies.yaml` would go without a price, a moves line or a mover
-  search. Giving companies an exchange and spelling it with `ChartSymbol`
-  would fix it.
-- **Judge the weekly themes after a month.** Read four weeks of them for
-  whether the themes are ones the numbers really show, whether the early ones
-  are backed by figures rather than talk, and whether the picks sit in the
-  unpriced part of their theme or simply are its leaders. And what a Monday
-  costs the plan: the `look` runs' ledgers in `relay/` have the sizes.
-- **Judge the verdicts after three months.** `/scorecard` will by then hold
-  enough of each kind to compare. If BUY is not ahead of the index more often
-  than not, or SELL not behind it, the verdicts are adding nothing the index
-  would not, and should change or stop. Its breakdowns say which of the
-  weekly themes, the reactions, `/analyse` and the old news-led closer look
-  have done better, and whether high confidence has meant anything.
-- **Promotion.** A command to move a name from "new names in the news" straight
-  into a sector. `/watchlist add <sector> <ticker> <name>` already does the
-  work; this would just save the typing.
-- **Market-wide movers in the brief.** The market's history already names the
+- **Judge the sorting and the review after a week.** The keywords are gone.
+  An article now reaches a section in one of two ways. Either it names a
+  followed company, or Opus read it against the sector's description in
+  `config/sectors.yaml` and the review agreed. `/stats` reports how many
+  articles were placed by judgment and how many the review moved, with five
+  examples of each. Read those for a week.
+  - If the placements are stories you want and the moves are corrections,
+    the net is set right.
+  - If they are a stretch, sharpen the descriptions, raise
+    `MinPlacementRating`, or turn the review off with `REVIEW=false`.
+
+  The same week shows whether the top-up earns its place. `/stats` shows how
+  many stories rated 3 were offered to thin sections, how many the review
+  kept, and five examples. If what it keeps reads as padding, set
+  `ThinSection` in `internal/triage/topup.go` to 0. Thin sections will then
+  disappear again, as they used to.
+
+  Only once that is settled is it worth adding sector feeds, such as chip
+  trade press, energy and shipping, drug development and freight. A sorting
+  step that works makes extra sources cheap. One that doesn't turns them into
+  noise. Test any new feed the way the 8-K feed was tested and dropped: after
+  a fortnight, count how many of its articles were placed and how many were
+  cited.
+- **Prices outside the US, in the brief.** This is done for the closer look
+  and for the new names. A listing on any of the checked exchanges takes its
+  price from Yahoo's daily price data. That needs no key, and it gives the
+  price in the currency the share actually trades in. `prices.Latest` turns
+  the last two closes into the day's move.
+
+  The paid services were tried first, with a real key, and are no use.
+  Twelve Data's free tier refuses Hong Kong ("available starting with the Pro
+  or Venture plan") and London ("the Grow or Venture plan"). It doesn't find
+  Tokyo or Singapore at all. So `TWELVEDATA_API_KEY` was dropped.
+
+  What is left is `collectPrices` in `internal/app/prices.go`. It reads US
+  listings only, from the quote feed and then the charts for whatever the feed
+  misses. It prices every company followed. Today all 95 tickers trade in New
+  York, so nothing is missing. But a Tokyo or London listing added to
+  `config/companies.yaml` would get no price, no moves line and no mover
+  search. Giving each company an exchange, and spelling its symbol with
+  `ChartSymbol`, would fix that.
+- **Judge the weekly themes after a month.** Read four weeks of them. Ask
+  whether the numbers really show each theme, and whether the early themes
+  rest on figures rather than talk. Ask whether the picks sit in the part of
+  their theme the market hasn't paid for yet, or are simply its leaders. Also
+  check what a Monday costs the plan. The ledgers of the `look` runs in
+  `relay/` have the sizes.
+- **Judge the verdicts after three months.** By then `/scorecard` will hold
+  enough of each kind to compare. If BUYs don't beat the index more often than
+  not, or SELLs don't trail it, the verdicts add nothing, and they should
+  change or stop. The scorecard's breakdowns show which source has done better
+  (the weekly themes, the reactions, `/analyse` or the old news-led closer
+  look), and whether high confidence has meant anything.
+- **Promotion.** A command to move a company from "new names in the news"
+  straight into a sector. `/watchlist add <sector> <ticker> <name>` already
+  does this. The new command would just save typing.
+- **Market-wide movers in the brief.** The market's history already finds the
   day's outsized moves for the closer look's reactions. A line of them in the
-  overview -- the biggest moves among companies of some size, followed or not
-  -- would give the brief the same view, for no extra request.
+  overview would give the brief the same view at no extra cost. It would show
+  the biggest moves among companies of some size, followed or not.
 - **Tickers for the companies followed by name.** Morgan Stanley, Moderna and
-  Spotify are followed by name alone, which leaves them without a price, a
-  moves line or filings. Their tickers were left out because MS and SPOT match
-  ordinary words; `match: name` in `config/companies.yaml` now keeps a ticker
-  out of matching while still pricing it, so they could have one.
+  Spotify are followed by name alone. So they have no price, no moves line and
+  no filings. Their tickers were left out because MS and SPOT match ordinary
+  words. Now `match: name` in `config/companies.yaml` keeps a ticker out of the
+  matching while still pricing it, so they could have one.
+
+## Verdicts
+
+- **Learn from the scorecard.** Put aside on 2 October 2026. Today the
+  scorecard only keeps score. It feeds back in only two ways: a company isn't
+  picked twice within 8 weeks, and a verdict sees the one before it. Three
+  options were offered:
+  - show the judge each company's past outcome;
+  - show the judge the record of each source and each kind of verdict;
+  - add code rules, such as lowering the confidence of a group with a poor
+    record, or showing fewer of it (the one recommended).
+
+  All three need about 30 graded verdicts in a group first.
+- **Backtests.** Also put aside on 2 October 2026. The parts of the closer
+  look that use no model could be tested on the stored two years of prices.
+  That covers the weekly screen's leaders and industries, and whether
+  outsized moves carried on. No model calls would be needed.
 
 ## /analyse — further
 
-- **Its tools back.** The analysis used to be written by an agent that could
-  look up any figure the company files and calculate exactly, rather than work
-  from the fixed table and do the arithmetic in its head. It spoke to the API
-  directly and was removed with it. Claude Code can be given tools of our own
-  through an MCP server (`--mcp-config`), so the Go side could serve
-  `find_concepts`, `read_concept` and `compute` to the analysis call. Until
-  then, every analysis works from the table, as every relay analysis so far
-  has.
-- **Charts.** The trading history is described in words. A picture of price
-  against its averages, or free cash flow against capital spending, would carry
-  more of it in less space. Telegram takes images; drawing one means a Go
-  plotting library.
-- **Peers beside the company.** The SEC's frames API returns one figure for
-  every filer for one period in a single request -- every company's revenue
-  for the second quarter, say. Set against the companies in the same SIC code,
-  it would let the analysis and the verdicts say whether a margin or a growth
-  rate is high for the industry, which today they are told not to judge.
-- **Companies with no US listing.** The analysis reads SEC filings, so Tencent,
-  Keyence and anything without a US listing are not covered. Japan's EDINET is a
-  free XBRL API and would cover Tokyo; Hong Kong and mainland Europe need a paid
-  vendor.
+- **Give it its tools back.** The analysis used to be written by an agent
+  that could look up any figure the company files and calculate exactly.
+  Today it works from a fixed table and does the sums in its head. That agent
+  talked to the API directly, so it went when the API did. Claude Code can be
+  given tools of our own through an MCP server (`--mcp-config`). The Go side
+  could then offer `find_concepts`, `read_concept` and `compute` to the
+  analysis call. Until then, every analysis works from the table.
+- **Charts.** The trading history is described in words. A picture would
+  carry more of it in less space, for example the price against its averages,
+  or free cash flow against capital spending. Telegram takes images, but
+  drawing one needs a Go plotting library.
+- **Peers beside the company.** In one request, the SEC's frames API returns
+  one figure for every filer for one period, such as every company's revenue
+  for the second quarter. Set against the companies in the same industry
+  code, this would let the analysis and the verdicts say whether a margin or
+  a growth rate is high for the industry. Today they are told not to judge
+  that.
+- **Companies with no US listing.** The analysis reads SEC filings, so it
+  can't cover Tencent, Keyence or anything else without a US listing. Japan's
+  EDINET is a free XBRL service and would cover Tokyo. Hong Kong and mainland
+  Europe need a paid provider.
 
 ## Relay runs
 
-- **Smaller requests.** The general block and the section caps have been dealt
-  with; two cuts are left. The sorting pass re-rates stories earlier briefs
-  already carried, when yesterday's rating would do. And a relay brief is still
-  four sorting batches of 40KB, which is the bulk of the reading: batching by
-  source, so the near-identical items arrive together, would make each one
-  quicker to answer.
+- **Smaller requests.** The general block and the section limits have been
+  dealt with. Two cuts are left. First, the sorting pass re-rates stories that
+  earlier briefs already carried, when yesterday's rating would do. Second, a
+  brief is still four sorting batches of 40KB each, which is most of the
+  reading. Batching by source would put near-identical items together, which
+  would make each batch quicker to answer.
 
 ## Done
 
-- 1 October 2026, at the owner's request: every stage on Opus 5.5; the brief
-  in plainer English with about twice the room, emoji, highlighted figures and
-  linked jargon; a look ahead at the week's releases (ForexFactory) and
-  results (Nasdaq); one-line notes on the verdicts; verdicts checked in two
-  sources with web search and a news search per company; `/analyse` with the
-  latest quarters and its own search for recent news; and `/industry`.
-
-- Triage: a small model rates and places every article before the cap.
-- Market levels from FRED: yields, the curve, fed funds, S&P 500, VIX.
+- 2 October 2026, at the owner's request:
+  - Plain writing. Every report the models write follows one shared set of
+    writing rules, and the rules that made sentences dense are gone.
+  - `/analyse` is about the case for and against the company, not about
+    whether to buy. It adds where the company is heading and whether its
+    figures hold up. It keeps CAN SLIM's questions in mind, and sets each
+    price move beside the S&P 500's. The verdict is short and comes last.
+  - `/industry` also covers what people are saying, what is coming, and what
+    follows from it.
+  - A question the bot stops waiting for is deleted, so Telegram stops
+    offering to answer it.
+  - `/industry` lists more companies from more countries, and every ticker
+    shows its country's flag.
+  - Mainland China listings are checked under OpenFIGI's China code.
+- 1 October 2026, at the owner's request: every stage moved to Opus 5.5. The
+  brief became plainer, with about twice the room, emoji, highlighted figures
+  and linked finance words. It added a look ahead at the week's economic
+  releases (ForexFactory) and results (Nasdaq). The verdicts gained one-line
+  notes, a check in two sources with web search, and a news search for each
+  company. `/analyse` gained the latest quarters and its own search for recent
+  news. `/industry` was added.
+- Triage: a model rates and places every article before the limit is applied.
+- Market levels from FRED: yields, the yield curve, the Fed's rate, the
+  S&P 500 and the VIX.
 - `SOURCE_LINKS=off|short|full`.
-- The brief written for a non-specialist, with terms explained, in bullets.
-- `/analyse` (asks which company): SEC filings read and written up, any SEC filer
-  including foreign ones with a US listing, in their own currency, with the
-  current year so far beside the full years, and the share price against them,
-  read with the method in `config/method.md`.
-- What the share has done: returns over weeks and months, fifty and two-hundred
-  day averages, the year's high and low, volume-weighted average price, volume
-  against its averages, and volatility.
-- What has been written lately: company news, filtered to pieces that actually
-  name the company, spread across days, and used as reported claims rather than
-  filed facts.
-- Deployed to Fly as `joseph-market-watch` (personal organisation, Singapore),
-  with Claude Code on the machine logged in by `CLAUDE_CODE_OAUTH_TOKEN`.
-- The relay is the only way the service calls a model. Each call is a file
-  answered by Claude Code headless, one process per call -- Opus 5.5 for
-  every stage since 1 October 2026 -- or answered by hand with
-  subagents. No API
-  key, no API spend.
-- The bot answers only the chat that registered it.
-- Worth a closer look: about half an hour after the brief. On Mondays up to
-  ten companies found from two years of the whole US market's prices (Massive)
-  and Singapore's thirty largest: the leaders sorted into the themes driving
-  them, industries growing before their shares found on the web, each theme
-  researched for the part the market has not paid for, and the companies in
-  it judged against their theme's valuation and their own history, under two
-  rules the code enforces. Every day up to three shares that moved far beyond
-  their usual on the news, where the move and the news do not fit. Each
-  verdict rests on what `/analyse` reads. It goes to the channel with the daily
-  brief, under a note saying a model wrote it and that it is not advice; `/now`
-  keeps it to you. `/scorecard` measures every verdict against the S&P 500
-  from the next open once it is a week old.
-- More data behind the verdicts and `/analyse`: analysts' forecasts and their
-  revisions, price targets, results against forecast, insider trades, short
-  interest and fund holdings (Nasdaq); the latest results release (SEC); oil,
-  gas, copper, the dollar, the credit spread and inflation expectations (FRED);
-  and for `/analyse`, two news searches of the company's last month (Tavily).
-- A channel for other readers: the daily brief is posted there too, and
+- The brief is written for a non-specialist, in bullets, with terms explained.
+- `/analyse`, which asks which company. It reads and writes up the SEC
+  filings of any filer, including foreign companies with a US listing, in
+  their own currency. It shows the current year so far beside the full years,
+  and the share price against them. It reads them with the method in
+  `config/method.md`.
+- What the share has done: returns over weeks and months, the 50-day and
+  200-day averages, the year's high and low, the volume-weighted average
+  price, volume against its averages, and volatility.
+- What has been written lately: company news, kept only where a piece actually
+  names the company, spread across days, and used as reported claims rather
+  than filed facts.
+- Deployed to Fly as `joseph-market-watch` (personal organisation,
+  Singapore). Claude Code on the machine logs in with `CLAUDE_CODE_OAUTH_TOKEN`.
+- The relay is the only way the service calls a model. Each call is a file,
+  answered by Claude Code running without a screen, one process for each
+  call. Every stage has used Opus 5.5 since 1 October 2026. A call can also be
+  answered by hand. There is no API key and no API bill.
+- The bot answers only the chats its owner allows.
+- Worth a closer look, sent straight after the brief:
+  - On Mondays, up to ten companies. They come from two years of prices for
+    the whole US market (from Massive) and Singapore's thirty largest
+    companies. The leaders are sorted into the themes driving them. Industries
+    that are growing before their shares have caught up are found on the web.
+    Each theme is researched for the part the market hasn't paid for yet. Its
+    companies are judged against their theme's valuation and their own
+    history, under two rules the code enforces.
+  - Every day, up to three shares that moved far more than usual on the news,
+    where the move and the news don't fit.
+  - Each verdict rests on what `/analyse` reads. It goes to the channel with
+    the daily brief, under a note saying a model wrote it and that it is not
+    advice. `/now` keeps it to you.
+  - `/scorecard` measures every verdict against the S&P 500 from the next
+    open, once the verdict is a week old.
+- More data behind the verdicts and `/analyse`. From Nasdaq: analysts'
+  forecasts and how they have changed, price targets, results against
+  forecasts, insider trades, short interest and fund holdings. From the SEC:
+  the latest results release. From FRED: oil, gas, copper, the dollar, the
+  credit spread and inflation expectations. For `/analyse`: two news searches
+  of the company's last month (Tavily).
+- A channel for other readers. The daily brief is posted there too, and
   `/share` posts the latest brief or analysis. Readers can only read.
-- The watchlist as files: `config/sectors.yaml` describes each section,
-  `config/companies.yaml` lists the companies followed, `config/sources.yaml`
-  the feeds. No keywords, no migrations: `/watchlist` and `/sources` changes
-  are kept on the server on top of the files, and `scripts/sync-from-fly.sh`
-  writes them in.
-- Sorting and a review, both Opus: an article belongs to at most two sectors,
-  the review moves what the sorting misplaced, a section with fewer than ten
-  stories is filled from those rated 3 where the review agrees, a section is
-  written from at most 25, and the general block keeps only what was rated 4
-  or 5. A name match
-  rated 1 or 2 is not written about, which keeps broker notes, board
-  appointments and listicles out of the sections.
-- Every prompt in one file, `config/prompts.md`, checked at startup for the
-  markers its replies are parsed by.
+- The watchlist as files. `config/sectors.yaml` describes each section,
+  `config/companies.yaml` lists the companies followed, and
+  `config/sources.yaml` lists the feeds. There are no keywords and no
+  migrations. Changes made with `/watchlist` and `/sources` are kept on the
+  server on top of the files, and `scripts/sync-from-fly.sh` writes them in.
+- Sorting and a review, both by Opus:
+  - an article belongs to at most two sectors;
+  - the review moves what the sorting put in the wrong place;
+  - a section with fewer than ten stories is filled from those rated 3, where
+    the review agrees;
+  - a section is written from at most 25 stories;
+  - the general block keeps only stories rated 4 or 5;
+  - a story that names a followed company but is rated 1 or 2 is not written
+    about, which keeps broker notes, board appointments and listicles out.
+- Every prompt is in one file, `config/prompts.md`. At start-up the program
+  checks it for the markers that replies are read by.
 - Citations: every claim carries a link to the article behind it.
-- Repeats: stories earlier briefs carried are marked, not reported again.
+- Repeats: stories that earlier briefs carried are marked, not reported again.
 - Weekends: no brief on days the market was shut.
-- New names in the news, with every ticker checked against the exchange.
-- Share prices: benchmark funds and every watchlist share, each section headed
-  by its biggest moves, and a search for why when a share moves well beyond the
-  market, with its averages and range for context.
-- Inflation from FRED beside the yields: the consumer price index and its core,
-  year on year.
+- New names in the news, with every ticker checked against its exchange.
+- Share prices: the benchmark funds and every watchlist share. Each section
+  is headed by its biggest moves. When a share moves well beyond the market, a
+  search asks why, and its averages and range give context.
+- Inflation from FRED beside the yields: the consumer price index and its
+  core, year on year.
 - Failure alerts: a brief that fails says so in the chat.
 - `/stats`: what recent briefs found and did, kept on the data volume.
-- CI: gofmt, vet, tests and build on every push.
+- CI: gofmt, vet, tests and a build on every push.
 
 ---
 
 **Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → **7 Backlog**
 
-That's the end of the path. Back to the [README](../README.md), or to [4 Function by function](FUNCTIONS.md) to look something up.
+That's the end of the path. Go back to the [README](../README.md), or to [4 Function by function](FUNCTIONS.md) to look something up.

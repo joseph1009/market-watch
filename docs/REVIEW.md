@@ -4,7 +4,7 @@
 
 # Reviewing the code
 
-How to review this repository from nothing, in order:
+This page shows how to review the repository from scratch. Work through it in this order:
 
 1. Check it builds.
 2. See what it produces.
@@ -12,7 +12,7 @@ How to review this repository from nothing, in order:
 4. Check the rules that matter most, each against the code that enforces it and the test that pins it.
 5. Try a change without spending anything.
 
-It assumes you have read pages [3](ARCHITECTURE.md) and [4](FUNCTIONS.md) at least up to their diagrams. Keep [FUNCTIONS.md](FUNCTIONS.md) open beside the code: its step tables are the order the code runs in.
+It assumes you have read pages [3](ARCHITECTURE.md) and [4](FUNCTIONS.md), at least as far as their diagrams. Keep [FUNCTIONS.md](FUNCTIONS.md) open beside the code. Its step tables follow the order the code runs in.
 
 ---
 
@@ -20,11 +20,11 @@ It assumes you have read pages [3](ARCHITECTURE.md) and [4](FUNCTIONS.md) at lea
 
 - **Go 1.24** ([go.mod](../go.mod)). On Windows, Git Bash is enough.
 - **For the unit tests:** nothing else. No keys, no network.
-- **For `--check` and the live runs:** a `.env` copied from [.env.example](../.env.example), which explains every setting. For anything that calls a model, Claude Code logged in (`claude /login`).
+- **For `--check` and the live runs:** a `.env` file, copied from [.env.example](../.env.example), which explains every setting. Anything that calls a model also needs Claude Code to be logged in (`claude /login`).
 
 ## 1. Check it builds and its tests pass
 
-The same four steps CI runs on every push ([.github/workflows/test.yml](../.github/workflows/test.yml)):
+These are the same four steps that CI runs on every push ([.github/workflows/test.yml](../.github/workflows/test.yml)):
 
 ```
 gofmt -l ./cmd ./config ./internal    # prints nothing when everything is formatted
@@ -33,13 +33,13 @@ go test ./...
 go build ./...
 ```
 
-Unit tests never touch the network or a model. The tests that do are skipped unless you switch them on (step 6).
+The unit tests never touch the network or a model. The tests that do are skipped unless you switch them on (see step 6).
 
 ## 2. See what it produces
 
-Read real output before code: it tells you what the code is *for*.
+Read real output before you read the code. It tells you what the code is *for*.
 
-**The latest real runs.** `scripts/sync-cache-from-fly.sh` copies the server's latest brief, analysis and closer look into `data/cache/`. (`data/` is not in git; it exists only on your machine and the server.)
+**The latest real runs.** `scripts/sync-cache-from-fly.sh` copies the server's latest brief, analysis and closer look into `data/cache/`. The `data/` folder is not in git. It exists only on your machine and on the server.
 
 | Folder | Read first | Then |
 |---|---|---|
@@ -48,15 +48,15 @@ Read real output before code: it tells you what the code is *for*.
 | `data/cache/analysis/` | `messages.html`: the last `/analyse` | `snapshot.json` (everything read about the company), `verdict.json`, `model/` |
 | `data/cache/industry/` | `messages.html`: the last `/industry` | `explanation.json` (the prose and the checked companies), `model/` |
 
-**Every model call.** `data/relay/<time>-<kind>/` has one folder per run: `NN-stage-request.txt` (exactly what the model saw), `NN-stage-reply.txt` (what it answered) and a ledger. The last 40 runs are kept.
+**Every model call.** `data/relay/` has one folder for each run, named `<time>-<kind>`. Inside, `NN-stage-request.txt` is exactly what the model saw, and `NN-stage-reply.txt` is what it answered. There is also a ledger. The last 40 runs are kept.
 
-**The market's numbers, with no model.** `LIVE_MARKET=1 go test ./internal/app -run TestLiveMarket -v -timeout 4h` prints the leaders, the popular and early industries and the day's outsized moves. It needs `MASSIVE_API_KEY`. The first time, it downloads two years of bars into `data/market/`, which takes about 2 hours. After that it takes seconds.
+**The market's numbers, with no model.** `LIVE_MARKET=1 go test ./internal/app -run TestLiveMarket -v -timeout 4h` prints the leaders, the popular and early industries, and the day's outsized moves. It needs `MASSIVE_API_KEY`. The first time, it downloads two years of daily prices into `data/market/`, which takes about 2 hours. After that it takes seconds.
 
-**In Telegram.** The channel shows what readers see. The owner's chat also has `/stats` (what recent briefs did), `/usage` (what is left of the plan and the search credits) and `/scorecard` (how the verdicts have done).
+**In Telegram.** The channel shows what readers see. In the owner's chat you can also use `/stats` to see what recent briefs did, `/usage` to see what is left of the plan and the search credits, and `/scorecard` to see how the verdicts have done.
 
 ## 3. Read the code in this order
 
-Each step builds on the one before. The **Look for** column says what to judge.
+Each step builds on the one before it. The **Look for** column says what to judge.
 
 | # | Read | Why | Look for |
 |---|---|---|---|
@@ -73,7 +73,7 @@ Each step builds on the one before. The **Look for** column says what to judge.
 | 11 | [config/prompts.md](../config/prompts.md), [config/method.md](../config/method.md) | What the models are told: about half the behaviour lives here, not in Go. | That each prompt asks for exactly what its parser reads, and treats articles as data. |
 | 12 | [internal/runcache](../internal/runcache/), [internal/history](../internal/history/), [internal/logging](../internal/logging/) | Bookkeeping and safety. | That nothing written or logged can carry a secret. |
 
-**Tip:** each package's tests sit in the same folder, named as rules. Read the names before the code:
+**Tip:** each package's tests sit in the same folder, and each test is named as a rule. Read the names before the code:
 
 ```
 grep -h "^func Test" internal/ideas/*_test.go
@@ -81,7 +81,7 @@ grep -h "^func Test" internal/ideas/*_test.go
 
 ## 4. The rules that must hold
 
-These are the rules whose breaking would matter most, where each is enforced, and the test that fails if it breaks. Review these hardest.
+These are the rules that would do the most harm if they broke. For each one, the table shows where the code enforces it and which test fails if it breaks. Review these hardest.
 
 | Rule | Enforced in | Pinned by |
 |---|---|---|
@@ -99,12 +99,12 @@ These are the rules whose breaking would matter most, where each is enforced, an
 
 ## 5. Questions worth asking as you read
 
-- **Does the model see the number the code computed?** Compare `data/cache/recommendations/facts.json` with the verdicts in `verdicts.json`.
-- **What happens when a service is down?** Most steps are best-effort: a missing key or a failed call costs one section, never the brief. Check that each failure is logged and costs only what it should.
-- **What does a run cost the plan?** Count the calls in a run's ledger in `data/relay/`. A weekly closer look is the most expensive run.
-- **Are the thresholds sensible?** They are constants at the top of each file: [app/ideas.go](../internal/app/ideas.go), [app/themes.go](../internal/app/themes.go), [app/reactions.go](../internal/app/reactions.go), [ideas/ideas.go](../internal/ideas/ideas.go), and `DefaultRules` in [market/screen.go](../internal/market/screen.go).
-- **Could a verdict see the future?** Every score must start from a price after the verdict was made.
-- **Is anything shown that wasn't checked?** Tickers, prices and figures should each come from a named source.
+- **Does the model see the number the code worked out?** Compare `data/cache/recommendations/facts.json` with the verdicts in `verdicts.json`.
+- **What happens when a service is down?** Most steps carry on without it. A missing key or a failed call costs one section, never the whole brief. Check that each failure is logged and costs only what it should.
+- **What does a run cost the plan?** Count the calls in a run's ledger in `data/relay/`. The weekly closer look is the most expensive run.
+- **Are the limits sensible?** They are constants at the top of each file: [app/ideas.go](../internal/app/ideas.go), [app/themes.go](../internal/app/themes.go), [app/reactions.go](../internal/app/reactions.go), [ideas/ideas.go](../internal/ideas/ideas.go), and `DefaultRules` in [market/screen.go](../internal/market/screen.go).
+- **Could a verdict see the future?** Every score must start from a price set after the verdict was made.
+- **Is anything shown that wasn't checked?** Every ticker, price and figure should come from a named source.
 
 ## 6. Trying a change safely
 
@@ -118,15 +118,15 @@ These are the rules whose breaking would matter most, where each is enforced, an
 | `LIVE_ANALYSIS=MU go test ./internal/app -run TestLiveAnalysis -v -timeout 1h` | A real `/analyse` | **Claude plan**, plus 2 Tavily credits |
 | `SEARCH_LIVE=1 go test ./internal/search -v` | Search against the feeds | About 15 Tavily credits |
 
-The full list of live tests is in [FUNCTIONS.md §17](FUNCTIONS.md#17-live-tests). Deploying is `scripts/fly-deploy.sh` ([FUNCTIONS.md §16](FUNCTIONS.md#16-deploy-and-sync-scripts)); it changes what readers receive, so it waits for a deliberate decision.
+The full list of live tests is in [FUNCTIONS.md §17](FUNCTIONS.md#17-live-tests). To deploy, run `scripts/fly-deploy.sh` ([FUNCTIONS.md §16](FUNCTIONS.md#16-deploy-and-sync-scripts)). Deploying changes what readers receive, so only do it when you have decided to.
 
 ## 7. Writing down what you find
 
 - **Bugs, ideas and things not yet built:** [TASKS.md](TASKS.md).
-- **If you work with Claude Code:** it keeps `HANDOVER.md` at the repository root (on your machine only, not in git), with where the work stands and what comes next.
+- **If you work with Claude Code:** it keeps `HANDOVER.md` at the root of the repository. That file says where the work stands and what comes next. It lives on your machine only and is not in git.
 
 ---
 
 **Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → **5 Reviewing the code** → [6 Running it](RUNBOOK.md) → [7 Backlog](TASKS.md)
 
-**Next:** [6 Running it](RUNBOOK.md): how to operate the service, change its prompts and lists, and deploy.
+**Next:** [6 Running it](RUNBOOK.md), how to operate the service, change its prompts and lists, and deploy it.
