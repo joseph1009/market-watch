@@ -5,12 +5,21 @@
 // look is judged used to need a whole new run to see its inputs: every feed,
 // every search, every price, and a model call at each stage, to look at data
 // the last run had already gathered. The cache keeps that data instead. Each
-// kind of run has a folder, emptied when a run of that kind starts, so it
+// kind of run has a folder, replaced when a run of that kind finishes, so it
 // only ever holds the latest one:
 //
 //	cache/brief/            the daily brief
 //	cache/analysis/         the latest /analyse
 //	cache/recommendations/  the latest closer look
+//	cache/industry/         the latest /industry
+//
+// A run writes into a folder of its own under .running/ and takes the kind's
+// folder only when it finishes. Two runs of one kind can overlap, since
+// /analyse and /industry run side by side (2026-10-03), and they may finish
+// in either order. The folder keeps the one that finished last, by the time
+// each run.json gives, as the owner asked: a run whose end is earlier than
+// the one kept is thrown away. A run cut short, by a restart say, stays under
+// .running/ until the next run of its kind starts.
 //
 // Each holds the data at every step as JSON, the messages as they were sent,
 // the prompt and reply of every model call under model/, and run.json saying
@@ -53,11 +62,18 @@ type Cache struct {
 
 	Log func(format string, args ...any)
 	Now func() time.Time
+
+	mu      sync.Mutex
+	writing map[string]bool // the folders under .running/ that runs are writing to now
 }
+
+// running is the folder under Root that runs write into until they finish.
+const running = ".running"
 
 // Entry is one run being written.
 type Entry struct {
-	dir     string
+	cache   *Cache
+	dir     string // under .running/ until the run finishes
 	kind    string
 	subject string
 	started time.Time
@@ -73,30 +89,94 @@ type Entry struct {
 
 type entryKey struct{}
 
-// Start empties the kind's folder and returns a context carrying an entry that
-// writes into it, and the entry. Subject says what the run was about, such as
-// the ticker an analysis read; it may be empty. A nil Cache, or one that
-// cannot make its folder, returns a nil entry, whose methods do nothing.
+// Start returns a context carrying an entry for a new run of kind, and the
+// entry. The run is written under .running/ and kept by Finish. Subject says
+// what the run was about, such as the ticker an analysis read; it may be
+// empty. A nil Cache, or one that cannot make its folder, returns a nil
+// entry, whose methods do nothing.
 func (c *Cache) Start(ctx context.Context, kind, subject string) (context.Context, *Entry) {
 	if c == nil || c.Root == "" {
 		return ctx, nil
 	}
-	dir := filepath.Join(c.Root, kind)
-	if err := os.RemoveAll(dir); err != nil {
-		c.logf("cache: could not empty %s: %v", dir, err)
-		return ctx, nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		c.logf("cache: could not make %s: %v", dir, err)
+	dir, err := c.claim(kind)
+	if err != nil {
+		c.logf("cache: could not start a %s run: %v", kind, err)
 		return ctx, nil
 	}
 	e := &Entry{
-		dir: dir, kind: kind, subject: subject,
+		cache: c, dir: dir, kind: kind, subject: subject,
 		secrets: c.Secrets, log: c.Log, now: c.now,
 	}
 	e.started = e.now()
 	e.writeRun(time.Time{})
 	return context.WithValue(ctx, entryKey{}, e), e
+}
+
+// claim makes a new run's folder under .running/. Folders there of the same
+// kind that no run is writing to were cut short, and go.
+func (c *Cache) claim(kind string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.writing == nil {
+		c.writing = map[string]bool{}
+	}
+	parent := filepath.Join(c.Root, running)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", err
+	}
+	entries, _ := os.ReadDir(parent)
+	for _, e := range entries {
+		if n := e.Name(); e.IsDir() && !c.writing[n] && strings.HasPrefix(n, kind+"-") {
+			if err := os.RemoveAll(filepath.Join(parent, n)); err != nil {
+				c.logf("cache: could not remove %s: %v", n, err)
+			}
+		}
+	}
+	dir, err := os.MkdirTemp(parent, kind+"-")
+	if err != nil {
+		return "", err
+	}
+	c.writing[filepath.Base(dir)] = true
+	return dir, nil
+}
+
+// keep moves a run that finished at end into its kind's folder, unless the
+// run kept there finished later, in which case this one is thrown away.
+// Either way its folder under .running/ is gone afterwards.
+func (c *Cache) keep(e *Entry, end time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.writing, filepath.Base(e.dir))
+
+	dest := filepath.Join(c.Root, e.kind)
+	if kept, ok := finishedAt(dest); ok && end.Before(kept) {
+		c.logf("cache: dropped a %s run that finished before the one kept", e.kind)
+		if err := os.RemoveAll(e.dir); err != nil {
+			c.logf("cache: could not remove %s: %v", e.dir, err)
+		}
+		return
+	}
+	if err := os.RemoveAll(dest); err != nil {
+		c.logf("cache: could not empty %s: %v", dest, err)
+		return
+	}
+	if err := os.Rename(e.dir, dest); err != nil {
+		c.logf("cache: could not keep the %s run: %v", e.kind, err)
+	}
+}
+
+// finishedAt is when the run kept in dir finished, from its run.json. A run
+// kept before it finished, which the cache no longer does, has no end.
+func finishedAt(dir string) (time.Time, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, "run.json"))
+	if err != nil {
+		return time.Time{}, false
+	}
+	var r run
+	if json.Unmarshal(data, &r) != nil {
+		return time.Time{}, false
+	}
+	return r.Finished, !r.Finished.IsZero()
 }
 
 // From returns the entry a context carries, or nil.
@@ -153,13 +233,17 @@ func (e *Entry) Fail(err error) {
 }
 
 // Finish writes run.json again with the time the run ended and, if it failed,
-// why.
+// why, and keeps the run in its kind's folder unless the run there finished
+// later.
+// Nothing should be written to the entry afterwards.
 func (e *Entry) Finish(err error) {
 	if e == nil {
 		return
 	}
 	e.Fail(err)
-	e.writeRun(e.now())
+	end := e.now()
+	e.writeRun(end)
+	e.cache.keep(e, end)
 }
 
 // run is what run.json holds.

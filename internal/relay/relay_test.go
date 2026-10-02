@@ -78,7 +78,7 @@ func TestAskKeepsTheRequestTheReplyAndTheLedger(t *testing.T) {
 func TestAskCopiesTheCallIntoTheRunCache(t *testing.T) {
 	r := &Relay{Root: t.TempDir(), Answer: &scripted{text: "BUY"}}
 	cacheRoot := t.TempDir()
-	ctx, _ := (&runcache.Cache{Root: cacheRoot}).Start(context.Background(), runcache.Recommendations, "")
+	ctx, cached := (&runcache.Cache{Root: cacheRoot}).Start(context.Background(), runcache.Recommendations, "")
 	ctx, _, err := r.Begin(ctx, "look")
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +86,7 @@ func TestAskCopiesTheCallIntoTheRunCache(t *testing.T) {
 	if _, _, err := r.Plain(Verdicts).Complete(ctx, "judge", "NVDA facts"); err != nil {
 		t.Fatal(err)
 	}
+	cached.Finish(nil)
 
 	model := filepath.Join(cacheRoot, runcache.Recommendations, "model")
 	if !strings.Contains(read(t, filepath.Join(model, "01-verdicts-request.txt")), "NVDA facts") {

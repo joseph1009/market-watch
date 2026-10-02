@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,7 +41,7 @@ func TestACommandChatGetsTheCommandsThatOnlyAnswer(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramCommandChats = []int64{commandChat}
 
-	a.HandleMessage(context.Background(), from(commandChat, "/help"))
+	handle(a, from(commandChat, "/help"))
 	if got := repliesTo(*sent, commandChat); len(got) != 1 || !strings.Contains(got[0], "/analyse") {
 		t.Fatalf("/help from a command chat = %q, want the help", got)
 	}
@@ -56,7 +55,7 @@ func TestACommandChatGetsTheCommandsThatOnlyAnswer(t *testing.T) {
 		"/clear",
 	} {
 		*sent = nil
-		a.HandleMessage(context.Background(), from(commandChat, text))
+		handle(a, from(commandChat, text))
 		got := repliesTo(*sent, commandChat)
 		if len(got) != 1 || !strings.Contains(got[0], "only") {
 			t.Errorf("%s from a command chat: replies %q, want one refusal", text, got)
@@ -80,9 +79,9 @@ func TestAControlChatMayChangeTheWatchlistAndTheFeeds(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramControlChats = []int64{controlChat}
 
-	a.HandleMessage(context.Background(), from(controlChat, "/watchlist add semis-ai ZZZZ"))
-	a.HandleMessage(context.Background(), from(controlChat, "/sources off cnbc-top"))
-	a.HandleMessage(context.Background(), from(controlChat, "/analyse NVDA"))
+	handle(a, from(controlChat, "/watchlist add semis-ai ZZZZ"))
+	handle(a, from(controlChat, "/sources off cnbc-top"))
+	handle(a, from(controlChat, "/analyse NVDA"))
 
 	added := false
 	for _, g := range a.Prefs().Groups {
@@ -102,7 +101,7 @@ func TestAControlChatMayChangeTheWatchlistAndTheFeeds(t *testing.T) {
 
 	for _, text := range []string{"/start", "/share", "/clear"} {
 		*sent = nil
-		a.HandleMessage(context.Background(), from(controlChat, text))
+		handle(a, from(controlChat, text))
 		if got := repliesTo(*sent, controlChat); len(got) != 1 || !strings.Contains(got[0], "owner's chat only") {
 			t.Errorf("%s from a control chat: replies %q, want one refusal", text, got)
 		}
@@ -132,7 +131,7 @@ func TestABriefAControlChatAsksForGoesThereAlone(t *testing.T) {
 	a.Fetcher = &feed.Fetcher{Client: feedSrv.Client(), Now: a.Now}
 	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nThe Fed held [1].\n"}}
 
-	a.HandleMessage(context.Background(), from(controlChat, "/now"))
+	handle(a, from(controlChat, "/now"))
 
 	if got := repliesTo(*sent, 4242); len(got) != 0 {
 		t.Errorf("the owner was sent %q for another chat's brief", got)

@@ -11,6 +11,7 @@ package sec
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -385,6 +386,11 @@ func (c *Client) submissionsURL() string {
 	return submissionsURL
 }
 
+// ErrNoFiler is a ticker the SEC's index does not have: a foreign listing, a
+// private company or a typo. Any other error from a lookup means the index
+// could not be read.
+var ErrNoFiler = errors.New("no SEC filer")
+
 // LookupCIK resolves a ticker to the company the SEC knows it as, using the
 // same index the filing collector loads. Exported because the fundamentals
 // reader needs the CIK to read a company's reported figures, and there is no
@@ -396,7 +402,7 @@ func (c *Client) LookupCIK(ctx context.Context, ticker string) (cik int, name st
 	}
 	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
 	if !ok {
-		return 0, "", fmt.Errorf("no SEC filer for ticker %q", ticker)
+		return 0, "", fmt.Errorf("%w for ticker %q", ErrNoFiler, ticker)
 	}
 	return co.CIK, co.Name, nil
 }
@@ -425,7 +431,7 @@ func (c *Client) Recent(ctx context.Context, ticker string, since time.Time) ([]
 	}
 	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
 	if !ok {
-		return nil, fmt.Errorf("no SEC filer for ticker %q", ticker)
+		return nil, fmt.Errorf("%w for ticker %q", ErrNoFiler, ticker)
 	}
 
 	var doc submissions
@@ -474,7 +480,7 @@ func (c *Client) AnnualReport(ctx context.Context, ticker string) (Filing, error
 	}
 	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
 	if !ok {
-		return Filing{}, fmt.Errorf("no SEC filer for ticker %q", ticker)
+		return Filing{}, fmt.Errorf("%w for ticker %q", ErrNoFiler, ticker)
 	}
 
 	var doc submissions

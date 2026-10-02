@@ -19,6 +19,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -112,6 +113,13 @@ func message(text string) telegram.Message {
 	return telegram.Message{Text: text, Chat: telegram.Chat{ID: 4242, Type: "private"}}
 }
 
+// handle delivers a message as the poll loop does, then waits for whatever
+// it started in the background, so a test can read what was sent.
+func handle(a *App, msg telegram.Message) {
+	a.HandleMessage(context.Background(), msg)
+	a.work.wait()
+}
+
 func TestSplitCommandParsesArgumentsAndBotSuffix(t *testing.T) {
 	tests := []struct {
 		in      string
@@ -142,7 +150,7 @@ func TestSplitCommandParsesArgumentsAndBotSuffix(t *testing.T) {
 func TestStartRecordsTheChatAndPersistsIt(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/start"))
+	handle(a, message("/start"))
 
 	if got := a.Prefs().ChatID; got != 4242 {
 		t.Errorf("ChatID = %d, want 4242", got)
@@ -162,8 +170,8 @@ func TestStartRecordsTheChatAndPersistsIt(t *testing.T) {
 
 func TestStartTwiceIsNotAnError(t *testing.T) {
 	a, sent := newTestApp(t)
-	a.HandleMessage(context.Background(), message("/start"))
-	a.HandleMessage(context.Background(), message("/start"))
+	handle(a, message("/start"))
+	handle(a, message("/start"))
 
 	if len(*sent) != 2 {
 		t.Fatalf("got %d replies, want 2", len(*sent))
@@ -178,7 +186,7 @@ func TestStartTwiceIsNotAnError(t *testing.T) {
 func TestWatchlistAddPersistsACompany(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add industrials-defense PLTR Palantir"))
+	handle(a, message("/watchlist add industrials-defense PLTR Palantir"))
 
 	snapshot := a.Prefs()
 	group, ok := snapshot.Group("industrials-defense")
@@ -203,7 +211,7 @@ func TestWatchlistAddPersistsACompany(t *testing.T) {
 func TestWatchlistAddTakesAPlainNameAsANameOnlyCompany(t *testing.T) {
 	a, _ := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add semis-ai Tokyo Electron"))
+	handle(a, message("/watchlist add semis-ai Tokyo Electron"))
 
 	snapshot := a.Prefs()
 	group, _ := snapshot.Group("semis-ai")
@@ -221,7 +229,7 @@ func TestWatchlistAddTakesAPlainNameAsANameOnlyCompany(t *testing.T) {
 func TestWatchlistRemoveDropsACompany(t *testing.T) {
 	a, _ := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist remove semis-ai NVDA"))
+	handle(a, message("/watchlist remove semis-ai NVDA"))
 
 	snapshot := a.Prefs()
 	if group, _ := snapshot.Group("semis-ai"); group.Has("NVDA") || group.Has("Nvidia") {
@@ -234,9 +242,9 @@ func TestWatchlistRemoveDropsACompany(t *testing.T) {
 func TestWatchlistEditsAreListedAndCanBeReset(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add industrials-defense PLTR Palantir"))
-	a.HandleMessage(context.Background(), message("/watchlist remove semis-ai INTC"))
-	a.HandleMessage(context.Background(), message("/watchlist edits"))
+	handle(a, message("/watchlist add industrials-defense PLTR Palantir"))
+	handle(a, message("/watchlist remove semis-ai INTC"))
+	handle(a, message("/watchlist edits"))
 
 	listed := (*sent)[len(*sent)-1].Text
 	for _, want := range []string{"industrials-defense: PLTR Palantir", "semis-ai: INTC"} {
@@ -245,7 +253,7 @@ func TestWatchlistEditsAreListedAndCanBeReset(t *testing.T) {
 		}
 	}
 
-	a.HandleMessage(context.Background(), message("/watchlist reset"))
+	handle(a, message("/watchlist reset"))
 	if !a.Prefs().Edits.IsZero() {
 		t.Errorf("edits = %+v after a reset", a.Prefs().Edits)
 	}
@@ -258,7 +266,7 @@ func TestWatchlistEditsAreListedAndCanBeReset(t *testing.T) {
 func TestWatchlistRejectsAnUnknownGroup(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add nonsense NVDA"))
+	handle(a, message("/watchlist add nonsense NVDA"))
 
 	if len(*sent) != 1 {
 		t.Fatalf("got %d replies, want 1", len(*sent))
@@ -272,7 +280,7 @@ func TestWatchlistRejectsAnUnknownGroup(t *testing.T) {
 func TestSourcesToggleIsPersisted(t *testing.T) {
 	a, _ := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/sources off cnbc-top"))
+	handle(a, message("/sources off cnbc-top"))
 
 	for _, s := range a.Prefs().Sources {
 		if s.ID == "cnbc-top" && s.Enabled {
@@ -280,7 +288,7 @@ func TestSourcesToggleIsPersisted(t *testing.T) {
 		}
 	}
 
-	a.HandleMessage(context.Background(), message("/sources on cnbc-top"))
+	handle(a, message("/sources on cnbc-top"))
 	for _, s := range a.Prefs().Sources {
 		if s.ID == "cnbc-top" && !s.Enabled {
 			t.Error("cnbc-top was not re-enabled")
@@ -290,7 +298,7 @@ func TestSourcesToggleIsPersisted(t *testing.T) {
 
 func TestUnknownCommandIsAnsweredNotIgnored(t *testing.T) {
 	a, sent := newTestApp(t)
-	a.HandleMessage(context.Background(), message("/nonsense"))
+	handle(a, message("/nonsense"))
 
 	if len(*sent) != 1 || !strings.Contains((*sent)[0].Text, "Unknown command") {
 		t.Errorf("reply = %+v", *sent)
@@ -299,7 +307,7 @@ func TestUnknownCommandIsAnsweredNotIgnored(t *testing.T) {
 
 func TestPlainChatterIsIgnored(t *testing.T) {
 	a, sent := newTestApp(t)
-	a.HandleMessage(context.Background(), message("morning"))
+	handle(a, message("morning"))
 
 	if len(*sent) != 0 {
 		t.Errorf("the bot answered ordinary chatter: %+v", *sent)
@@ -310,7 +318,7 @@ func TestPlainChatterIsIgnored(t *testing.T) {
 func TestUserSuppliedTermsAreEscaped(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/watchlist add big-tech <b>evil</b>"))
+	handle(a, message("/watchlist add big-tech <b>evil</b>"))
 
 	if len(*sent) == 0 {
 		t.Fatal("no reply")
@@ -520,7 +528,7 @@ func TestClearReportsOnlyWhatWasRemoved(t *testing.T) {
 	defer srv.Close()
 	a.Bot = &telegram.Client{Token: "test", BaseURL: srv.URL, HTTP: srv.Client()}
 
-	a.HandleMessage(context.Background(), message("/clear"))
+	handle(a, message("/clear"))
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -560,7 +568,7 @@ func TestAnalyseAsksWhichCompanyThenTakesTheAnswer(t *testing.T) {
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
-	a.HandleMessage(context.Background(), message("/analyse"))
+	handle(a, message("/analyse"))
 
 	if len(*sent) != 1 {
 		t.Fatalf("got %d replies, want 1", len(*sent))
@@ -575,15 +583,15 @@ func TestAnalyseAsksWhichCompanyThenTakesTheAnswer(t *testing.T) {
 		t.Error("the question does not open a reply, so a group would not pass the answer on")
 	}
 
-	a.HandleMessage(context.Background(), message("$tencent"))
-	if len(*sent) != 3 || !strings.Contains((*sent)[1].Text, "Reading TENCENT") || !strings.Contains((*sent)[2].Text, "does not file with the SEC") {
+	handle(a, message("$tencent"))
+	if len(*sent) != 2 || !strings.Contains((*sent)[1].Text, "I could not read TENCENT") {
 		t.Fatalf("after the answer: %+v", *sent)
 	}
 
 	// Answered once: the next message is chatter again.
-	a.HandleMessage(context.Background(), message("thanks"))
-	if len(*sent) != 3 {
-		t.Errorf("a second answer was taken: %+v", (*sent)[3:])
+	handle(a, message("thanks"))
+	if len(*sent) != 2 {
+		t.Errorf("a second answer was taken: %+v", (*sent)[2:])
 	}
 }
 
@@ -595,8 +603,8 @@ func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
-	a.HandleMessage(context.Background(), message("/analyse"))
-	a.HandleMessage(context.Background(), message("which one is good?"))
+	handle(a, message("/analyse"))
+	handle(a, message("which one is good?"))
 	if len(*sent) != 2 || !strings.Contains((*sent)[1].Text, "is not a ticker") || !(*sent)[1].ReplyMarkup.ForceReply {
 		t.Fatalf("a non-ticker answer got %+v", *sent)
 	}
@@ -604,8 +612,8 @@ func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
 		t.Errorf("an answered question was taken down: %v", *deleted)
 	}
 
-	a.HandleMessage(context.Background(), message("/help"))
-	a.HandleMessage(context.Background(), message("NVDA"))
+	handle(a, message("/help"))
+	handle(a, message("NVDA"))
 	if len(*sent) != 3 {
 		t.Errorf("an answer after another command was taken: %+v", (*sent)[3:])
 	}
@@ -614,9 +622,9 @@ func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
 	}
 
 	start := a.now()
-	a.HandleMessage(context.Background(), message("/analyse"))
+	handle(a, message("/analyse"))
 	a.Now = func() time.Time { return start.Add(answerWithin + time.Minute) }
-	a.HandleMessage(context.Background(), message("NVDA"))
+	handle(a, message("NVDA"))
 	if len(*sent) != 4 {
 		t.Errorf("an answer after the wait was taken: %+v", (*sent)[4:])
 	}
@@ -632,7 +640,7 @@ func TestAnUnansweredQuestionComesDownWhenTheWaitIsOver(t *testing.T) {
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
-	a.HandleMessage(context.Background(), message("/analyse"))
+	handle(a, message("/analyse"))
 	a.expire(4242, 7) // a question since replaced
 	if len(*deleted) != 0 {
 		t.Fatalf("took down %v for a question no longer waiting", *deleted)
@@ -641,7 +649,7 @@ func TestAnUnansweredQuestionComesDownWhenTheWaitIsOver(t *testing.T) {
 	if fmt.Sprint(*deleted) != "[1]" {
 		t.Errorf("deleted %v, want [1]", *deleted)
 	}
-	a.HandleMessage(context.Background(), message("NVDA"))
+	handle(a, message("NVDA"))
 	if len(*deleted) != 1 || a.answering(context.Background(), 4242) != "" {
 		t.Error("the question was still waiting after it came down")
 	}
@@ -656,34 +664,60 @@ func TestAnAnswerFromAChatNotAskedIsChatter(t *testing.T) {
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
-	a.HandleMessage(context.Background(), message("/analyse"))
-	a.HandleMessage(context.Background(), from(commandChat, "NVDA"))
+	handle(a, message("/analyse"))
+	handle(a, from(commandChat, "NVDA"))
 	if got := repliesTo(*sent, commandChat); len(got) != 0 {
 		t.Errorf("a chat that was not asked got %q", got)
 	}
 }
 
 // A ticker that does not file with the SEC is ordinary -- foreign listings and
-// private companies -- so it gets an explanation, not a stack trace.
-func TestAnalyseExplainsATickerItCannotRead(t *testing.T) {
+// private companies -- so it gets an explanation, not a stack trace. It gets
+// it at once, without waiting its turn behind the analyses running, and
+// without a "reading..." note first (2026-10-03).
+func TestAnalyseExplainsATickerItCannotReadAtOnce(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
+	if err := a.work.hold(context.Background()); err != nil { // nothing in line could start
+		t.Fatal(err)
+	}
+	defer a.work.release()
 
 	a.HandleMessage(context.Background(), message("/analyse TENCENT"))
 
-	if len(*sent) != 2 { // the "reading..." note, then the explanation
-		t.Fatalf("got %d replies, want 2: %+v", len(*sent), *sent)
+	if len(*sent) != 1 {
+		t.Fatalf("got %d replies, want the explanation alone: %+v", len(*sent), *sent)
 	}
-	if !strings.Contains((*sent)[1].Text, "does not file with the SEC") {
-		t.Errorf("unhelpful failure reply: %s", (*sent)[1].Text)
+	if !strings.Contains((*sent)[0].Text, "does not file with the SEC") {
+		t.Errorf("unhelpful failure reply: %s", (*sent)[0].Text)
 	}
+}
+
+// A lookup that fails because the SEC's index could not be read is not a
+// wrong ticker: the analysis goes ahead and reads the index itself.
+func TestAnalyseGoesAheadWhenTheIndexCannotBeRead(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.Accounts = &fundamentals.Client{Lookup: unreachableLookup{}}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	handle(a, message("/analyse MU"))
+
+	if len(*sent) == 0 || !strings.Contains((*sent)[0].Text, "Reading MU") {
+		t.Errorf("the analysis did not go ahead: %+v", *sent)
+	}
+}
+
+type unreachableLookup struct{}
+
+func (unreachableLookup) LookupCIK(context.Context, string) (int, string, error) {
+	return 0, "", errors.New("load SEC ticker index: connection reset")
 }
 
 type failingLookup struct{}
 
 func (failingLookup) LookupCIK(context.Context, string) (int, string, error) {
-	return 0, "", errors.New("no SEC filer for ticker")
+	return 0, "", fmt.Errorf("%w for ticker", sec.ErrNoFiler)
 }
 
 // A brief that fails silently is indistinguishable from a quiet news day, so
@@ -743,7 +777,7 @@ func TestCommandsFromAnotherChatAreIgnored(t *testing.T) {
 		"/share",
 		"/help",
 	} {
-		a.HandleMessage(context.Background(), telegram.Message{
+		handle(a, telegram.Message{
 			Text: text,
 			Chat: telegram.Chat{ID: 999, Type: "private"},
 		})
@@ -771,7 +805,7 @@ func TestCommandsFromAnotherChatAreIgnored(t *testing.T) {
 func TestTheFirstChatToStartBecomesTheOwner(t *testing.T) {
 	a, sent := newTestApp(t)
 
-	a.HandleMessage(context.Background(), message("/start"))
+	handle(a, message("/start"))
 
 	if got := a.Prefs().ChatID; got != 4242 {
 		t.Errorf("ChatID = %d, want the first chat to /start", got)

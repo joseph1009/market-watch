@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/search"
+	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -106,12 +108,28 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 	case "help":
 		err = a.Bot.SendMessage(ctx, msg.Chat.ID, helpText)
 	case "now":
-		err = a.handleNow(ctx, msg)
+		// A brief takes minutes, and holds the jobs back while it runs, so
+		// it too runs in the background and the bot keeps reading.
+		a.detach(ctx, msg, command, func(ctx context.Context) error { return a.handleNow(ctx, msg) })
+		return
 	// Spelling and the earlier name both route here: a command that answers
 	// only to one spelling reads as broken to whoever typed the other.
+	// Both take minutes, so they run in the background, side by side, and the
+	// next message is read at once. On their own they only ask what to look
+	// at, which is quick. See jobs.go.
 	case "analyse", "analyze", "accounts":
-		err = a.handleAnalyse(ctx, msg, args)
+		// A ticker that can't be analysed is answered here and now, rather
+		// than after waiting its turn behind analyses that can (2026-10-03).
+		var ticker string
+		if ticker, err = a.analyseWhich(ctx, msg, args); ticker != "" {
+			a.background(ctx, msg, command, func(ctx context.Context) error { return a.handleAnalyse(ctx, msg, ticker) })
+			return
+		}
 	case "industry":
+		if len(args) > 0 {
+			a.background(ctx, msg, command, func(ctx context.Context) error { return a.handleIndustry(ctx, msg, args) })
+			return
+		}
 		err = a.handleIndustry(ctx, msg, args)
 	case "watchlist":
 		err = a.handleWatchlist(ctx, msg, args)
@@ -133,15 +151,20 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.Bot.SendMessage(ctx, msg.Chat.ID,
 			fmt.Sprintf("Unknown command %s. Try /help.", escape("/"+command)))
 	}
+	a.reportCommand(ctx, msg, command, err)
+}
 
-	if err != nil {
-		a.Log.Error("command failed", "command", command, "error", err)
-		// The reply is a second route out for an error's text, and errors are
-		// where a credential ends up. The logger scrubs its own output; this
-		// path has to scrub its own.
-		clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
-		_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
+// reportCommand tells the chat that a command failed, if it did.
+func (a *App) reportCommand(ctx context.Context, msg telegram.Message, command string, err error) {
+	if err == nil {
+		return
 	}
+	a.Log.Error("command failed", "command", command, "error", err)
+	// The reply is a second route out for an error's text, and errors are
+	// where a credential ends up. The logger scrubs its own output; this
+	// path has to scrub its own.
+	clean := logging.Scrub(err.Error(), a.Cfg.Secrets()...)
+	_ = a.Bot.SendMessage(ctx, msg.Chat.ID, "Something went wrong: "+escape(clean))
 }
 
 // access is what a chat may ask of the bot, least first.
@@ -516,18 +539,20 @@ var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "
 
 func escape(s string) string { return escaper.Replace(s) }
 
-// handleAnalyse reads one company's filed figures and writes them up.
+// analyseWhich does the quick part of /analyse, before it joins the line:
+// it asks which company when none is given, asks again when the answer is not
+// a ticker, and says at once when the SEC has no filer by that ticker. It
+// returns the ticker to analyse, or "" when it has answered already.
 //
-// Separate from the daily brief on purpose: the brief reports what happened
-// today, and this answers a different question -- what the accounts say about a
-// company, whenever you happen to ask.
-func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []string) (err error) {
+// A lookup that fails for any other reason, such as the SEC's index not
+// loading, lets the analysis go ahead: it reads the index again itself.
+func (a *App) analyseWhich(ctx context.Context, msg telegram.Message, args []string) (string, error) {
 	if a.Accounts == nil || a.Analyzer == nil {
-		return a.Bot.SendMessage(ctx, msg.Chat.ID,
+		return "", a.Bot.SendMessage(ctx, msg.Chat.ID,
 			"Reading filings is not configured on this instance.")
 	}
 	if len(args) == 0 {
-		return a.ask(ctx, msg.Chat.ID, "analyse",
+		return "", a.ask(ctx, msg.Chat.ID, "analyse",
 			"🔬 <b>Which company?</b> Send me its ticker, for example NVDA.\n\n"+
 				"I read what the company filed with the SEC — revenue, margins, cash and the balance sheet — then what the share has been doing and what has been written about it lately. "+
 				"Any SEC filer works, including foreign companies with a US listing such as TSM or BABA. "+
@@ -537,10 +562,29 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 
 	ticker, ok := asTicker(args[0])
 	if !ok {
-		return a.ask(ctx, msg.Chat.ID, "analyse",
+		return "", a.ask(ctx, msg.Chat.ID, "analyse",
 			fmt.Sprintf("%s is not a ticker. Send one such as NVDA or BRK.B, or any command to stop.", escape(args[0])),
 			"Ticker, e.g. NVDA")
 	}
+	if _, _, err := a.Accounts.Lookup.LookupCIK(ctx, ticker); errors.Is(err, sec.ErrNoFiler) {
+		return "", a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker))
+	}
+	return ticker, nil
+}
+
+// cannotRead is the reply for a ticker whose filings can't be read.
+func cannotRead(ticker string) string {
+	return fmt.Sprintf(
+		"I could not read %s. Either it does not file with the SEC — foreign listings and private companies mostly do not — or the ticker is wrong.",
+		escape(ticker))
+}
+
+// handleAnalyse reads one company's filed figures and writes them up.
+//
+// Separate from the daily brief on purpose: the brief reports what happened
+// today, and this answers a different question -- what the accounts say about a
+// company, whenever you happen to ask.
+func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker string) (err error) {
 	ctx, cached := a.Cache.Start(ctx, runcache.Analysis, ticker)
 	defer func() { cached.Finish(err) }()
 	if err := a.Bot.SendMessage(ctx, msg.Chat.ID,
@@ -580,9 +624,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, args []st
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)
 		cached.Fail(err)
-		return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
-			"I could not read %s. Either it does not file with the SEC — foreign listings and private companies mostly do not — or the ticker is wrong.",
-			escape(ticker)))
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker))
 	}
 
 	// The analysis is a run of its own, so its request and reply sit together
@@ -695,12 +737,13 @@ func (a *App) recordAnalysis(snapshot fundamentals.Snapshot, verdict fundamental
 		return
 	}
 	r.Source = ideas.SourceAnalysis
-	if a.Scorecard.Repeats(r, 24*time.Hour) {
-		a.Log.Info("analysis verdict already recorded", "ticker", snapshot.Ticker, "verdict", verdict.Verdict)
+	added, err := a.Scorecard.AddOnce(r, 24*time.Hour)
+	if err != nil {
+		a.Log.Warn("could not record the analysis verdict", "error", err)
 		return
 	}
-	if err := a.Scorecard.Add(r); err != nil {
-		a.Log.Warn("could not record the analysis verdict", "error", err)
+	if !added {
+		a.Log.Info("analysis verdict already recorded", "ticker", snapshot.Ticker, "verdict", verdict.Verdict)
 		return
 	}
 	a.Log.Info("analysis verdict recorded", "ticker", snapshot.Ticker, "verdict", verdict.Verdict, "confidence", verdict.Confidence)

@@ -149,9 +149,43 @@ is, what it needs from you, and why it is worth doing.
   brief is still four sorting batches of 40KB each, which is most of the
   reading. Batching by source would put near-identical items together, which
   would make each batch quicker to answer.
+- **Run each background request in a Fly Sprite.** Each `/analyse` or
+  `/industry` would get a sprite of its own, a small throwaway machine Fly
+  starts in about a second. Its Claude calls would run there, and the sprite
+  is deleted when the request ends. The brief stays on the server. The
+  server's 1 GB then only has to hold the brief, and nothing a request ran is
+  left behind. The relay's calls suit this. Each one sends a prompt into
+  `claude -p` and reads the reply, with web search as its only tool. Claude
+  Code comes installed on every sprite.
+
+  Sprites charge only for the CPU and memory used, by the second, and a
+  deleted sprite costs nothing. `claude -p` mostly waits on Anthropic. One
+  request should cost well under a cent, which is a guess until measured. It
+  doesn't change how much of the Claude plan is used.
+
+  What to settle when building it:
+  - Use the Go SDK's streaming exec, not the plain HTTP exec. The plain one
+    puts environment variables in the URL, and the Claude login is one.
+  - Check the sprite's Claude Code version against the one the Dockerfile
+    requires. If it's older, run that request on the server.
+  - If the Sprites API fails or is slow, run the request on the server, as
+    today.
+  - Keep three at a time, the brief alone and one at a time past 85%. Those
+    rules are about the plan, not memory.
+
+  It needs from you: a token limited to Sprites, set as `SPRITES_TOKEN` on
+  Fly, and a live test before it is deployed. The alternative is a 2 GB
+  machine, at about $6 a month more.
 
 ## Done
 
+- 3 October 2026, at the owner's request:
+  - `/analyse` and `/industry` run in the background, three at a time, in
+    the order asked. Other commands no longer wait behind them. Once any plan
+    window is 85% used, the chat is warned and they run one at a time. A
+    brief runs alone, with the rest waiting. When a chat's requests are done,
+    it is told how much of the plan is used. A ticker the SEC doesn't know is
+    answered at once, without waiting its turn.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.

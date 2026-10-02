@@ -40,7 +40,7 @@ func TestShareWithoutAChannelSaysHowToSetOneUp(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.remember("the brief of Thu 10 Sep", []string{"brief"})
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	if reply := lastReply(t, *sent); !strings.Contains(reply, "TELEGRAM_CHANNEL_ID") {
 		t.Errorf("reply = %q, want it to say how to set a channel up", reply)
@@ -52,7 +52,7 @@ func TestShareWithNothingSentSaysSo(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	if got := messagesTo(*sent, testChannel); len(got) != 0 {
 		t.Errorf("the channel got %q with nothing to share", got)
@@ -72,7 +72,7 @@ func TestSharePostsTheLatestOnce(t *testing.T) {
 	a.remember("the brief of Thu 10 Sep", []string{"old brief"})
 	a.remember("the NVDA analysis", []string{"part one", "part two"})
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	if got := messagesTo(*sent, testChannel); strings.Join(got, "|") != "part one|part two" {
 		t.Fatalf("channel got %q, want the analysis in order", got)
@@ -81,7 +81,7 @@ func TestSharePostsTheLatestOnce(t *testing.T) {
 		t.Errorf("reply = %q", reply)
 	}
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	if got := messagesTo(*sent, testChannel); len(got) != 2 {
 		t.Errorf("channel got %d messages after a second /share, want still 2", len(got))
@@ -107,7 +107,7 @@ func TestTheScheduledBriefIsPostedToTheChannel(t *testing.T) {
 		t.Errorf("the owner was told %q about a post that worked", got)
 	}
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 	if got := messagesTo(*sent, testChannel); len(got) != 2 {
 		t.Errorf("channel got %d messages, want no second copy", len(got))
 	}
@@ -171,7 +171,7 @@ func TestAFailedChannelPostIsReportedAndCanBeRetried(t *testing.T) {
 	mu.Lock()
 	refuse = false
 	mu.Unlock()
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	mu.Lock()
 	defer mu.Unlock()

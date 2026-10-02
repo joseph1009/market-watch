@@ -62,7 +62,7 @@ func TestLiveAnalysis(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Hour)
 	defer cancel()
-	if err := service.handleAnalyse(ctx, telegram.Message{Chat: telegram.Chat{ID: chat}}, []string{ticker}); err != nil {
+	if err := service.handleAnalyse(ctx, telegram.Message{Chat: telegram.Chat{ID: chat}}, ticker); err != nil {
 		t.Fatalf("analyse: %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func TestCannedAnalysis(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if err := service.handleAnalyse(ctx, telegram.Message{Chat: telegram.Chat{ID: chat}}, []string{ticker}); err != nil {
+	if err := service.handleAnalyse(ctx, telegram.Message{Chat: telegram.Chat{ID: chat}}, ticker); err != nil {
 		t.Fatalf("analyse: %v", err)
 	}
 }

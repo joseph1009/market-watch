@@ -1,7 +1,9 @@
 package ideas
 
 import (
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,37 @@ func TestARecordNeedsAChartToMeasureFrom(t *testing.T) {
 	}
 	if _, ok := NewRecord(idea, "", at); ok {
 		t.Error("a verdict with no chart was recorded; it could never be scored")
+	}
+}
+
+// Two analyses of one share can finish at the same moment. The verdict is
+// still counted once, and the file holds it once.
+func TestTheSameVerdictAddedAtOnceIsCountedOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scorecard.json")
+	s := &Scorecard{Path: path}
+	idea := model.Idea{Name: "Micron", Ticker: "MU", Exchange: "US", Verdict: model.Buy,
+		Trading: &model.Trading{Last: 100, Currency: "USD"}}
+	r, _ := NewRecord(idea, "MU", time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC))
+	r.Source = SourceAnalysis
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := s.AddOnce(r, 24*time.Hour); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if n := len(s.All()); n != 1 {
+		t.Errorf("recorded %d times, want once", n)
+	}
+	saved, err := LoadScorecard(path)
+	if err != nil || len(saved.All()) != 1 {
+		t.Errorf("the file holds %d records (%v), want one", len(saved.All()), err)
 	}
 }
 

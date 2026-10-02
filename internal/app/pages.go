@@ -44,6 +44,8 @@ func (a *App) send(ctx context.Context, chatID int64, out outgoing, broadcast bo
 		}
 		a.Log.Warn("could not send a summary and a page; sending in full", "page", out.title, "error", err)
 	}
+	a.sending.Lock()
+	defer a.sending.Unlock()
 	if broadcast {
 		return a.Bot.Broadcast(ctx, chatID, out.messages)
 	}

@@ -158,6 +158,13 @@ type App struct {
 	// plan is the Claude plan's latest standing, for /usage. See usage.go.
 	plan *planWatch
 
+	// work is /analyse and /industry running in the background. See jobs.go.
+	work jobs
+
+	// sending keeps a report sent as several messages together, so two
+	// reports finishing at once do not interleave in the chat.
+	sending sync.Mutex
+
 	// asked is the question each chat was last asked and not yet answered,
 	// such as /analyse's "which company?". See ask.go.
 	askMu sync.Mutex
@@ -399,6 +406,13 @@ func (a *App) brief(ctx context.Context, to int64, share, scheduled bool) (err e
 	// One report at a time, whoever asked for it.
 	a.running.Lock()
 	defer a.running.Unlock()
+
+	// And nothing else while it runs: the jobs already running finish first,
+	// and the rest wait for the brief. See jobs.go.
+	if err := a.work.hold(ctx); err != nil {
+		return err
+	}
+	defer a.work.release()
 
 	if a.Prefs().ChatID == 0 {
 		return ErrNoChat
@@ -849,6 +863,7 @@ func (a *App) Serve(ctx context.Context) error {
 	err := <-errs
 	cancel()
 	wg.Wait()
+	a.work.wait() // the jobs end once the context is cancelled
 
 	if errors.Is(err, context.Canceled) {
 		return nil

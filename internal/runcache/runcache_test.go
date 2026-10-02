@@ -28,11 +28,14 @@ func TestStartKeepsOnlyTheLatestRunOfEachKind(t *testing.T) {
 
 	_, first := c.Start(context.Background(), Brief, "")
 	first.Save("articles", []string{"yesterday"})
+	first.Finish(nil)
 	_, other := c.Start(context.Background(), Analysis, "MU")
 	other.Save("snapshot", map[string]string{"ticker": "MU"})
+	other.Finish(nil)
 
 	_, second := c.Start(context.Background(), Brief, "")
 	second.Save("prices", []int{1})
+	second.Finish(nil)
 
 	if _, err := os.Stat(filepath.Join(root, Brief, "articles.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("yesterday's articles survived a new brief: %v", err)
@@ -45,6 +48,78 @@ func TestStartKeepsOnlyTheLatestRunOfEachKind(t *testing.T) {
 	}
 }
 
+// Two analyses at once write apart and may finish in either order. The folder
+// keeps the one that finished last, whichever was asked for first.
+func TestTheRunThatFinishedLastIsKept(t *testing.T) {
+	root := t.TempDir()
+	clock := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
+	c := &Cache{Root: root, Now: func() time.Time { return clock }}
+
+	_, mu := c.Start(context.Background(), Analysis, "MU")
+	clock = clock.Add(time.Minute)
+	_, nvda := c.Start(context.Background(), Analysis, "NVDA")
+	mu.Save("snapshot", "MU")
+	nvda.Save("snapshot", "NVDA")
+	if _, err := os.Stat(filepath.Join(root, Analysis)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a run reached the analysis folder before it finished: %v", err)
+	}
+
+	clock = clock.Add(3 * time.Minute)
+	nvda.Finish(nil)
+	clock = clock.Add(time.Minute)
+	mu.Finish(nil)
+
+	if got := read(t, filepath.Join(root, Analysis, "snapshot.json")); !strings.Contains(got, "MU") {
+		t.Errorf("kept %s, want MU, the last to finish", got)
+	}
+	if left, _ := os.ReadDir(filepath.Join(root, running)); len(left) != 0 {
+		t.Errorf("%d runs were left under .running", len(left))
+	}
+}
+
+// A run whose end time is earlier than the one kept is thrown away, even if
+// it reaches the folder second: the timestamps decide, not the order the two
+// happen to be moved in.
+func TestARunThatEndedBeforeTheOneKeptIsThrownAway(t *testing.T) {
+	root := t.TempDir()
+	clock := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
+	c := &Cache{Root: root, Now: func() time.Time { return clock }}
+
+	_, mu := c.Start(context.Background(), Analysis, "MU")
+	_, nvda := c.Start(context.Background(), Analysis, "NVDA")
+	mu.Save("snapshot", "MU")
+	nvda.Save("snapshot", "NVDA")
+
+	clock = clock.Add(5 * time.Minute)
+	nvda.Finish(nil)
+	clock = clock.Add(-time.Minute) // MU ended a minute earlier, but is moved second
+	mu.Finish(nil)
+
+	if got := read(t, filepath.Join(root, Analysis, "snapshot.json")); !strings.Contains(got, "NVDA") {
+		t.Errorf("kept %s, want NVDA, which ended later", got)
+	}
+	if left, _ := os.ReadDir(filepath.Join(root, running)); len(left) != 0 {
+		t.Errorf("the run thrown away was left under .running: %d", len(left))
+	}
+}
+
+// A run cut short, by a restart say, stays to be read until the next run of
+// its kind starts, which clears it away.
+func TestARunCutShortIsClearedByTheNextOfItsKind(t *testing.T) {
+	root := t.TempDir()
+	_, cut := (&Cache{Root: root}).Start(context.Background(), Brief, "")
+	cut.Save("articles", "half done")
+
+	c := &Cache{Root: root} // the process started again
+	if left, _ := os.ReadDir(filepath.Join(root, running)); len(left) != 1 {
+		t.Fatalf("the cut-short run was not left to read: %d folders", len(left))
+	}
+	_, next := c.Start(context.Background(), Brief, "")
+	if left, _ := os.ReadDir(filepath.Join(root, running)); len(left) != 1 || filepath.Join(root, running, left[0].Name()) != next.Dir() {
+		t.Errorf("the cut-short run was not cleared: %v", left)
+	}
+}
+
 // A step that runs twice keeps both, and files go into subfolders by name.
 func TestSaveNumbersARepeatedName(t *testing.T) {
 	root := t.TempDir()
@@ -52,6 +127,7 @@ func TestSaveNumbersARepeatedName(t *testing.T) {
 	e.Save("verdicts", []string{"first round"})
 	e.Save("verdicts", []string{"stand-ins"})
 	e.Text("model/01-ideas-request.txt", "the prompt")
+	e.Finish(nil)
 
 	dir := filepath.Join(root, Recommendations)
 	if !strings.Contains(read(t, filepath.Join(dir, "verdicts.json")), "first round") ||

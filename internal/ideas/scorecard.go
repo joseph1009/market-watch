@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/model"
@@ -230,8 +231,12 @@ func NewRecord(idea model.Idea, chart string, at time.Time) (Record, bool) {
 }
 
 // Scorecard is the record of every verdict given.
+//
+// Its methods may be called at once: two analyses running side by side can
+// each record a verdict as they finish (2026-10-03).
 type Scorecard struct {
 	Path    string
+	mu      sync.Mutex
 	records []Record
 }
 
@@ -256,14 +261,28 @@ func (s *Scorecard) Add(records ...Record) error {
 	if len(records) == 0 {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.records = append(s.records, records...)
 	return s.save()
 }
 
-// Repeats reports whether the same verdict on the same share, from the same
-// source, was recorded within window before r: the same call made twice,
-// which should count once.
-func (s *Scorecard) Repeats(r Record, window time.Duration) bool {
+// AddOnce records r and saves, unless the same verdict on the same share,
+// from the same source, was recorded within window before it: the same call
+// made twice, which should count once. It checks and adds in one step, so
+// two analyses of one share finishing together are not both counted.
+func (s *Scorecard) AddOnce(r Record, window time.Duration) (added bool, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.repeats(r, window) {
+		return false, nil
+	}
+	s.records = append(s.records, r)
+	return true, s.save()
+}
+
+// repeats reports whether r was recorded within window before it.
+func (s *Scorecard) repeats(r Record, window time.Duration) bool {
 	for i := len(s.records) - 1; i >= 0; i-- {
 		old := s.records[i]
 		if r.At.Sub(old.At) > window {
@@ -277,12 +296,18 @@ func (s *Scorecard) Repeats(r Record, window time.Duration) bool {
 }
 
 // All returns every record, oldest first.
-func (s *Scorecard) All() []Record { return s.records }
+func (s *Scorecard) All() []Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Record(nil), s.records...)
+}
 
 // Due returns the charts that need a current price to score what is old
 // enough, newest verdicts first, at most limit of them. The benchmark is not
 // included; the caller always needs it.
 func (s *Scorecard) Due(now time.Time, limit int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []string
 	seen := map[string]bool{}
 	for i := len(s.records) - 1; i >= 0; i-- {
@@ -302,6 +327,8 @@ func (s *Scorecard) Due(now time.Time, limit int) []string {
 // Currencies returns the currencies other than the dollar that the verdicts
 // old enough to score are priced in, for their exchange rates to be read.
 func (s *Scorecard) Currencies(now time.Time) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []string
 	seen := map[string]bool{}
 	for _, r := range s.records {
@@ -320,6 +347,8 @@ func (s *Scorecard) Currencies(now time.Time) []string {
 // read for two years back, and a verdict older than that must still be
 // scored.
 func (s *Scorecard) Settle(paths map[string]Path, bench Path, rates Rates) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	changed := false
 	for i := range s.records {
 		if r, ok := settle(s.records[i], paths[s.records[i].Chart], bench, rates); ok && s.records[i].Entry == 0 {
@@ -423,6 +452,8 @@ func Called(r Record, path, bench Path, rates Rates) (float64, bool) {
 // Since returns the records from one source given since a time, oldest
 // first.
 func (s *Scorecard) Since(source string, since time.Time) []Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []Record
 	for _, r := range s.records {
 		if r.source() == source && !r.At.Before(since) {
@@ -436,6 +467,8 @@ func (s *Scorecard) Since(source string, since time.Time) []Record {
 // sessions, bench the index fund's, and rates the exchange rates of the
 // currencies Currencies names.
 func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var b strings.Builder
 	b.WriteString("<b>📊 Scorecard</b>\n\n")
 

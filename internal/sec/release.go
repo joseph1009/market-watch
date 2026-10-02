@@ -44,7 +44,7 @@ func (c *Client) EarningsRelease(ctx context.Context, ticker string, since time.
 	}
 	co, ok := index[strings.ToUpper(strings.TrimSpace(ticker))]
 	if !ok {
-		return Filing{}, "", fmt.Errorf("no SEC filer for ticker %q", ticker)
+		return Filing{}, "", fmt.Errorf("%w for ticker %q", ErrNoFiler, ticker)
 	}
 
 	var doc submissions

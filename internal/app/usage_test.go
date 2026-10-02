@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,7 +32,7 @@ func TestUsageSaysWhatIsLeftToACommandChat(t *testing.T) {
 		"seven_day": {Utilization: 0.21, ResetsAt: resets.Add(5 * 24 * time.Hour).Unix()},
 	}})
 
-	a.HandleMessage(context.Background(), from(commandChat, "/usage"))
+	handle(a, from(commandChat, "/usage"))
 
 	got := repliesTo(*sent, commandChat)
 	if len(got) != 1 {
@@ -56,7 +55,7 @@ func TestUsageWithoutClaudeCodeSaysWhy(t *testing.T) {
 	a, sent := newTestApp(t)
 	a.prefs.ChatID = 4242
 
-	a.HandleMessage(context.Background(), message("/usage"))
+	handle(a, message("/usage"))
 
 	got := messagesTo(*sent, 4242)
 	if len(got) != 1 || !strings.Contains(got[0], "Could not be read") || !strings.Contains(got[0], "no TAVILY_API_KEY") {

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -43,7 +42,7 @@ func TestLongMessagesGoOutAsASummaryWithAButtonToThePage(t *testing.T) {
 	a.Pages = kept
 	explainingRobotics(a)
 
-	a.HandleMessage(context.Background(), message("/industry robotics"))
+	handle(a, message("/industry robotics"))
 
 	var summary *sentMessage
 	for i := range *sent {
@@ -75,7 +74,7 @@ func TestLongMessagesGoOutAsASummaryWithAButtonToThePage(t *testing.T) {
 		}
 	}
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 	channel := messagesTo(*sent, testChannel)
 	if len(channel) != 1 || !strings.Contains(channel[0], "AI-written, unchecked, not advice.") {
 		t.Errorf("channel got %q", channel)
@@ -93,7 +92,7 @@ func TestAPageThatFailsSendsTheMessagesInFull(t *testing.T) {
 	a.Pages = &keptPages{err: errors.New("disk full")}
 	explainingRobotics(a)
 
-	a.HandleMessage(context.Background(), message("/industry robotics"))
+	handle(a, message("/industry robotics"))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	if !strings.Contains(owner, "Gears and motors") || !strings.Contains(owner, "Fanuc 🇯🇵 <code>6954.JP</code>") {

@@ -113,8 +113,11 @@ was answered. `- [!]` is one that failed or was given up, with the reason.
 
 The relay keeps the model calls. `DATA_DIR/cache` keeps everything else that
 the latest run of each kind was made from, and what it sent. So you can work
-out a change from the last run's data instead of making a new run. Each folder
-is emptied when a run of its kind starts, so it only ever holds the latest one.
+out a change from the last run's data instead of making a new run. A run
+writes under `.running/` and replaces its kind's folder when it finishes, so
+each folder only ever holds the latest one. If two analyses overlap, the one
+that finished last is kept. A run cut short stays under `.running/` until the
+next run of its kind starts.
 
 ```
 data/cache/brief/

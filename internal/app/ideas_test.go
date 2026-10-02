@@ -136,7 +136,7 @@ func TestACloserLookNotSharedStaysWithTheOwner(t *testing.T) {
 		t.Error("the closer look's messages were not recorded for clearing with the brief")
 	}
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 	channel := strings.Join(messagesTo(*sent, testChannel), "\n")
 	if channel != "the brief" {
 		t.Errorf("/share posted %q to the channel, want the brief and nothing of the verdicts", channel)
@@ -225,7 +225,7 @@ func TestTheScorecardCommandAnswersBeforeThereIsAnything(t *testing.T) {
 	}
 	a.Scorecard = card
 
-	a.HandleMessage(context.Background(), message("/scorecard"))
+	handle(a, message("/scorecard"))
 
 	if reply := lastReply(t, *sent); !strings.Contains(reply, "No verdicts yet") {
 		t.Errorf("reply = %q", reply)
@@ -442,7 +442,7 @@ func TestACloserLookAfterAnEarlyShareGoesAlone(t *testing.T) {
 	a.prefs.ChatID = 4242
 	a.Cfg.TelegramChannelID = testChannel
 	d := a.remember("the brief of Thu 10 Sep", []string{"the brief"})
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 	*sent = nil
 
 	a.shareBrief(context.Background(), d, &outgoing{messages: []string{"the closer look"}})

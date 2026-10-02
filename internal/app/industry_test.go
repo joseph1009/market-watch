@@ -39,7 +39,7 @@ func TestIndustryExplainsAndListsCompaniesByPart(t *testing.T) {
 		Verifier: knownTickers{"6954|JP": "FANUC CORP", "ATS|CN": "ATS CORP"},
 	}
 
-	a.HandleMessage(context.Background(), message("/industry robotics"))
+	handle(a, message("/industry robotics"))
 
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	for _, want := range []string{"🧭 Robotics — how the industry fits together", "<b>🧭 The big picture</b>",
@@ -52,7 +52,7 @@ func TestIndustryExplainsAndListsCompaniesByPart(t *testing.T) {
 		t.Errorf("owner's copy shows an unchecked ticker or the channel's note:\n%s", owner)
 	}
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 	if channel := strings.Join(messagesTo(*sent, testChannel), "\n"); !strings.Contains(channel, "AI-written, unchecked, not advice.") || !strings.Contains(channel, "Fanuc") {
 		t.Errorf("channel's copy:\n%s", channel)
 	}
@@ -65,12 +65,12 @@ func TestIndustryAsksWhichThenTakesTheAnswer(t *testing.T) {
 	a.prefs.ChatID = 4242
 	explainingRobotics(a)
 
-	a.HandleMessage(context.Background(), message("/industry"))
+	handle(a, message("/industry"))
 	if len(*sent) != 1 || !strings.Contains((*sent)[0].Text, "Which industry?") || !(*sent)[0].ReplyMarkup.ForceReply {
 		t.Fatalf("asked %+v", *sent)
 	}
 
-	a.HandleMessage(context.Background(), message("industrial robots"))
+	handle(a, message("industrial robots"))
 	owner := strings.Join(messagesTo(*sent, 4242), "\n")
 	if !strings.Contains(owner, "Mapping industrial robots") || !strings.Contains(owner, "Fanuc") {
 		t.Errorf("after the answer:\n%s", owner)

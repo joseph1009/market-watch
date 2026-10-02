@@ -44,7 +44,7 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 	defer cancel()
 	if a.Relay != nil {
 		var run *relay.Run
-		if ctx, run, err = a.Relay.Begin(ctx, "industry"); err != nil {
+		if ctx, run, err = a.Relay.Begin(ctx, "industry-"+topic); err != nil {
 			return err
 		}
 		a.Log.Info("relay run", "dir", run.Dir)

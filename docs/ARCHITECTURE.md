@@ -89,11 +89,11 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L775) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L789) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
-[`Publish`](../internal/app/app.go#L382) → [`brief(ctx, share: true)`](../internal/app/app.go#L398).
+[`Publish`](../internal/app/app.go#L385) → [`brief(ctx, share: true)`](../internal/app/app.go#L405).
 
 `brief` does three things before any work starts:
 
@@ -102,7 +102,7 @@ or from daylight saving. When the timer fires, it calls
 - It calls [`Relay.Begin`](../internal/relay/relay.go#L96). That creates a
   folder for this run and puts it on the context. Every model call the run
   makes lands in that folder, numbered in order.
-- It calls [`sendReport`](../internal/app/app.go#L478), which is the pipeline.
+- It calls [`sendReport`](../internal/app/app.go#L492), which is the pipeline.
 
 ### 2. Gathering
 
@@ -376,12 +376,12 @@ look was still running, the closer look then goes alone
 The channel only goes one way. Its readers can't reach `HandleMessage`. The bot
 takes commands only from the owner's chat, and from the owner's other chats
 listed in `TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS`.
-[`needs`](../internal/app/commands.go#L175) says which command each kind of chat
+[`needs`](../internal/app/commands.go#L198) says which command each kind of chat
 may use.
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L398) starts the closer look as soon as the
+[`brief`](../internal/app/app.go#L405) starts the closer look as soon as the
 owner has the brief. When it is done, it posts both to the channel. Until
 2026-10-01 the closer look waited twenty minutes after the brief, queued on the
 data volume. In those days the channel got the brief at once and the closer
@@ -496,7 +496,7 @@ of Massive making it available.
   address, and so are the Finnhub and FRED keys in theirs. The scrubber removes
   every credential the settings hold (`config.Secrets`). Error text sent to the
   chat is scrubbed of the same list.
-- [`app.New`](../internal/app/app.go#L172) builds the service. It loads the
+- [`app.New`](../internal/app/app.go#L179) builds the service. It loads the
   lists from `config/`, and the changes made to them from Telegram from the
   data volume.
 - It installs a SIGTERM handler, so a brief that is being sent finishes its
@@ -519,23 +519,44 @@ into the files in `config/`. It needs no credentials and sends nothing.
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) keeps asking Telegram for
 new messages (`getUpdates`). It hands each one to
-[`HandleMessage`](../internal/app/commands.go#L66), which checks that the
+[`HandleMessage`](../internal/app/commands.go#L68), which checks that the
 sender is allowed and then routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L202) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L222) | A brief for the owner only, which waits for `/share` |
+| `/start` | [`handleStart`](../internal/app/commands.go#L225) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L245) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L524) | Writes up a company (see below) |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L587) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L719) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L762) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L305) | Follow a company or stop following it; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L388) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L294) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L251) | Delete the bot's earlier messages |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L328) | Follow a company or stop following it; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L411) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L317) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L274) | Delete the bot's earlier messages |
+
+Most commands answer at once, so they are handled in turn. `/analyse` and
+`/industry` take minutes, so once they know what to look at they run in the
+background ([`background`](../internal/app/jobs.go)). Up to three run side by
+side, and the bot keeps reading new messages meanwhile. Each one has its own
+relay run and its own cache folder. Each model call is a new Claude Code
+process that keeps no session, so one job can't see what another asked.
+
+The limit of three is for the server's memory. Each job is a Claude Code
+process, the machine has 1 GB, and the brief has always run three at once.
+Jobs start in the order they were asked for. Before a job starts, `admit`
+reads the plan. Once any window is 85% used, the chat is warned once, and the
+jobs run one at a time. A job that has to wait tells the chat why. When a
+chat's jobs are all done, it gets one short message saying how much of each
+window is used.
+
+A brief runs alone. It waits for the jobs already running to finish, and no
+job starts until it is done (`hold` and `release`). `/now` runs in the
+background too, so the bot keeps answering while a brief is written. A
+report that falls back to several messages is sent under a lock, so two
+reports finishing together don't interleave.
 
 ### `/analyse`
 
@@ -547,7 +568,7 @@ Otherwise Telegram would reopen the reply box every time the chat is opened,
 until the question was answered. An answer that doesn't look like a ticker gets
 the question again. `/analyse NVDA` still works in one line.
 
-[`handleAnalyse`](../internal/app/commands.go#L524) runs within its own time
+[`handleAnalyse`](../internal/app/commands.go#L587) runs within its own time
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
@@ -561,7 +582,7 @@ following.
    It builds the current year so far beside the full years
    ([`buildYTD`](../internal/fundamentals/metrics.go#L547)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L729) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L772) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -768,6 +789,13 @@ type it.
 **[research.go](../internal/app/research.go)** holds what `/analyse` and the
 closer look read beside the accounts: `addExpectations`, `addRelease`,
 `backdrop`, and `searchCompany`, which is `/analyse`'s two searches.
+
+**[jobs.go](../internal/app/jobs.go)** runs `/analyse` and `/industry` in the
+background. `background` puts a job in line and starts it. `admit` waits for
+its turn: three at a time, one at a time once the plan is 85% used, and none
+while a brief holds them back. `hold` and `release` are the brief's side.
+`detach` runs `/now` in the background. `jobDone` sends the plan's standing
+once a chat's jobs are all done.
 
 **[usage.go](../internal/app/usage.go)** is `/usage`. `planWatch` keeps the
 plan's latest standing from any call. `planNow` takes a new reading when the
@@ -1304,9 +1332,15 @@ stories it missed, by source, most missed first.
 ### internal/runcache
 
 **[runcache.go](../internal/runcache/runcache.go)** keeps the latest run of
-each kind, to read afterwards. `Cache.Start` empties the kind's folder
-(`brief`, `analysis` or `recommendations`) and puts an `Entry` on the context.
-`From` finds it again deep in a pipeline. `Save` writes a step's data as JSON,
+each kind, to read afterwards. `Cache.Start` gives a new run a folder of its
+own under `.running/` and puts an `Entry` on the context. `From` finds it again
+deep in a pipeline. When the run finishes, `keep` moves it into its kind's
+folder (`brief`, `analysis`, `recommendations` or `industry`). Two runs of one
+kind can overlap and finish in either order. So `keep` compares the end
+times in `run.json`, and a run that ended before the one already kept is
+thrown away. The folder always holds the run that finished last. A run cut
+short, by a restart say, stays
+under `.running/` until the next run of its kind starts. `Save` writes a step's data as JSON,
 numbering a name that is used twice. `Text` writes the messages and the model
 calls. `Fail` and `Finish` write `run.json`. Everything written is scrubbed of
 the settings' secrets. Every method does nothing on a nil entry, so a run

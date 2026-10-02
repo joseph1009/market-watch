@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -60,7 +59,7 @@ func TestShareSendsTheChannelsCopy(t *testing.T) {
 	a.Cfg.TelegramChannelID = testChannel
 	a.rememberFor("the MU analysis", []string{"owner's copy"}, []string{"channel's copy"})
 
-	a.HandleMessage(context.Background(), message("/share"))
+	handle(a, message("/share"))
 
 	if got := messagesTo(*sent, testChannel); strings.Join(got, "|") != "channel's copy" {
 		t.Errorf("channel got %q", got)
