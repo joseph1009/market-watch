@@ -155,7 +155,7 @@ What passes between the functions:
 | 10 | [`report.Generator.Generate`](../internal/report/generate.go#L68) | [`buildPrompt`](../internal/report/prompt.go#L115) builds the prompt, with the calendar as a "Coming up" block ([`report.renderCalendar`](../internal/report/calendar.go#L15)); **Opus** writes the brief through the relay (stage `brief`), in plain English, emoji on each sub-heading, the key figure in a bullet in bold, and the overview ending with "What to watch"; and [`parseResponse`](../internal/report/parse.go#L21) splits it into the overview and sections. If there are no articles, a "no news" message goes out instead and the run stops. |
 | 11 | [`discover.Finder.Find`](../internal/discover/discover.go#L64) → [`FIGI.Verify`](../internal/discover/verify.go#L60) → [`Store.Note`](../internal/discover/store.go#L54) → [`priceCandidates`](../internal/app/prices.go#L267) | **Opus** names the companies in the news that nobody follows. Each ticker is checked against OpenFIGI, counted in `candidates.json` and priced. |
 | 12 | [`telegram.RenderWith`](../internal/telegram/render.go#L91) | The report becomes Telegram HTML messages, each under 4,096 characters: each sector's heading with its emoji ([sectors.yaml](../config/sectors.yaml)), the writer's `**marks**` in bold ([`highlight`](../internal/telegram/render.go#L388)), the first mention of each glossary term in a section linked to its explanation ([`linkTerms`](../internal/telegram/terms.go#L19)), and the "📅 Coming up" block after the overview ([`telegram.renderCalendar`](../internal/telegram/calendar.go#L25)). |
-| 13 | [`Bot.DeleteMessages`](../internal/telegram/client.go#L231) | With `REPLACE_PREVIOUS`, deletes the last brief. This happens after writing the new one, so a failed run loses nothing. |
+| 13 | [`Bot.DeleteMessages`](../internal/telegram/client.go#L237) | With `REPLACE_PREVIOUS`, deletes the last brief. This happens after writing the new one, so a failed run loses nothing. |
 | 14 | [`send`](../internal/app/pages.go#L39) | Sends to the owner, and records the message ids in `prefs.yaml`. With pages on, that is one message: [`BriefSummary`](../internal/telegram/summary.go#L56) (the overview's opening line, the writer's `IN SHORT` bullets, and the next 24 hours' high-impact releases and results) with a button to the whole brief as a page (see 8b). Without pages, or if the page fails, the messages in full. |
 | 15 | [`rememberSent`](../internal/app/channel.go#L69) | Keeps this delivery in memory for `/share`. |
 | 16 | [`Covered.Record`](../internal/history/history.go#L89), [`Runs.Add`](../internal/history/runs.go#L121) (+ [`recordSearch`](../internal/app/search.go#L80)) | Writes what the brief covered (only after delivery) and the run's numbers for `/stats`. |
@@ -326,7 +326,7 @@ What passes between the functions:
 
 ## 6. `/analyse`
 
-**Starts from:** the owner sending `/analyse`. The bot asks which company ([`ask`](../internal/app/ask.go#L29), with a reply opened and "Ticker, e.g. NVDA" in the box), and [`HandleMessage`](../internal/app/commands.go#L66) takes the chat's next message as the ticker ([`answering`](../internal/app/ask.go#L42)), within 10 minutes and unless a command comes first. An answer not shaped like a ticker ([`asTicker`](../internal/app/ask.go#L64)) is asked again. `/analyse NVDA` in one line still works, and the spellings `/analyze` and `/accounts` route here too.
+**Starts from:** the owner sending `/analyse`. The bot asks which company ([`ask`](../internal/app/ask.go#L31), with a reply opened and "Ticker, e.g. NVDA" in the box), and [`HandleMessage`](../internal/app/commands.go#L66) takes the chat's next message as the ticker ([`answering`](../internal/app/ask.go#L54)), within 10 minutes and unless a command comes first. A question dropped either way is deleted ([`withdraw`](../internal/app/ask.go#L102)), or Telegram would reopen the reply to it each time the chat is opened. An answer not shaped like a ticker ([`asTicker`](../internal/app/ask.go#L116)) is asked again. `/analyse NVDA` in one line still works, and the spellings `/analyze` and `/accounts` route here too.
 
 **Entry point:** [`handleAnalyse`](../internal/app/commands.go#L524)
 
@@ -362,7 +362,7 @@ What passes between the functions:
 
 ## 6b. `/industry`
 
-**Starts from:** the owner sending `/industry`. The bot asks which industry ([`ask`](../internal/app/ask.go#L29)), and the next message, however many words, is the topic (see 6). `/industry robotics` in one line still works.
+**Starts from:** the owner sending `/industry`. The bot asks which industry ([`ask`](../internal/app/ask.go#L31)), and the next message, however many words, is the topic (see 6). `/industry robotics` in one line still works.
 
 **Entry point:** [`handleIndustry`](../internal/app/industry.go#L21)
 
@@ -463,7 +463,7 @@ All arrive through [`Bot.Poll`](../internal/telegram/updates.go#L77) → [`Handl
 | `/schedule` | [`handleSchedule`](../internal/app/commands.go#L294) | When the next brief is due, in both time zones. |
 | `/stats` | [`handleStats`](../internal/app/commands.go#L719) → [`Runs.Summary`](../internal/history/runs.go#L138) | What recent briefs found, placed, moved and cost (`runs.json`). |
 | `/usage` (or `/credits`) | [`handleUsage`](../internal/app/usage.go#L51) → [`planNow`](../internal/app/usage.go#L62), [`Search.Usage`](../internal/search/search.go#L302) | What is left of the Claude plan (each window's share used and when it resets, from the last call if under five minutes old, else a one-word Haiku call through [`CheckLimits`](../internal/relay/answer.go#L291)) and of the month's Tavily credits. Any command chat may ask. |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L251) → [`ClearChat`](../internal/app/commands.go#L258) → [`SweepMessages`](../internal/telegram/client.go#L212) | Deletes the bot's messages from the last 300 ids. Telegram only allows deleting messages under 48 hours old. |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L251) → [`ClearChat`](../internal/app/commands.go#L258) → [`SweepMessages`](../internal/telegram/client.go#L218) | Deletes the bot's messages from the last 300 ids. Telegram only allows deleting messages under 48 hours old. |
 
 ---
 

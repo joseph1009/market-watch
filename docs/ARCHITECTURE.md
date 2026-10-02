@@ -487,8 +487,9 @@ checks the sender is the owner and routes on the command:
 `/analyse` on its own asks which company, and the chat's next message is the
 ticker ([`ask`](../internal/app/ask.go), `answering`): the question opens a
 reply, which also lets the answer through in a group, waits ten minutes, and
-is dropped by any command sent instead. An answer that is not shaped like a
-ticker is asked again. `/analyse NVDA` still works in one line.
+is dropped by any command sent instead. A dropped question is deleted, since
+Telegram reopens the reply to it each time the chat is opened until it is
+answered. An answer that is not shaped like a ticker is asked again. `/analyse NVDA` still works in one line.
 
 [`handleAnalyse`](../internal/app/commands.go#L524), under its own budget so it
 does not inherit whatever the caller's context has left:
@@ -677,7 +678,8 @@ turns a stored series into a scorecard path.
 **[ask.go](../internal/app/ask.go)** — a command that asks for what it needs:
 `ask` sends the question and remembers it for the chat, `answering` takes it
 back when the next message comes, `forget` drops it when a command comes
-instead; `asTicker` reads a ticker as people type it.
+instead, `expire` when ten minutes pass, and `withdraw` deletes a dropped
+question from the chat; `asTicker` reads a ticker as people type it.
 
 **[research.go](../internal/app/research.go)** — what `/analyse` and the closer
 look read beside the accounts: `addExpectations`, `addRelease`, `backdrop`, and

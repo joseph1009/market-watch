@@ -69,12 +69,12 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		// The answer to a question the bot asked this chat, such as the
 		// ticker /analyse waits for; otherwise ordinary chatter, not
 		// addressed to the bot.
-		if command = a.answering(msg.Chat.ID); command == "" {
+		if command = a.answering(ctx, msg.Chat.ID); command == "" {
 			return
 		}
 		args = []string{strings.TrimSpace(msg.Text)} // the whole message is the answer
 	} else {
-		a.forget(msg.Chat.ID) // a command instead of the answer
+		a.forget(ctx, msg.Chat.ID) // a command instead of the answer
 	}
 
 	// Only the owner's chat and the chats the owner listed are answered. The bot

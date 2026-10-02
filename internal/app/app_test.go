@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -39,19 +40,37 @@ type sentMessage struct {
 // directory, so commands can be exercised without the network.
 func newTestApp(t *testing.T) (*App, *[]sentMessage) {
 	t.Helper()
+	a, sent, _ := newTestAppDeleting(t)
+	return a, sent
+}
+
+// newTestAppDeleting is newTestApp that also returns the ids of the messages
+// the bot deleted. A sent message's id is its place in the sent list, from 1.
+func newTestAppDeleting(t *testing.T) (*App, *[]sentMessage, *[]int64) {
+	t.Helper()
 
 	var (
-		mu   sync.Mutex
-		sent []sentMessage
+		mu      sync.Mutex
+		sent    []sentMessage
+		deleted []int64
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/sendMessage") {
-			body, _ := io.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
 			var m sentMessage
 			_ = json.Unmarshal(body, &m)
-			mu.Lock()
 			sent = append(sent, m)
-			mu.Unlock()
+			_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d}}`, len(sent))
+			return
+		case strings.HasSuffix(r.URL.Path, "/deleteMessage"):
+			var d struct {
+				MessageID int64 `json:"message_id"`
+			}
+			_ = json.Unmarshal(body, &d)
+			deleted = append(deleted, d.MessageID)
 		}
 		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
 	}))
@@ -86,7 +105,7 @@ func newTestApp(t *testing.T) (*App, *[]sentMessage) {
 		prefs: prefs,
 		Now:   func() time.Time { return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) },
 	}
-	return a, &sent
+	return a, &sent, &deleted
 }
 
 func message(text string) telegram.Message {
@@ -569,9 +588,10 @@ func TestAnalyseAsksWhichCompanyThenTakesTheAnswer(t *testing.T) {
 }
 
 // An answer that is not a ticker is asked again; a command instead of the
-// answer, or an answer after the wait, drops the question.
+// answer, or an answer after the wait, drops the question and takes it down,
+// or Telegram reopens the reply to it every time the chat is opened.
 func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
-	a, sent := newTestApp(t)
+	a, sent, deleted := newTestAppDeleting(t)
 	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
 	a.Analyzer = &fundamentals.Analyzer{}
 
@@ -580,20 +600,50 @@ func TestAnalyseQuestionIsDroppedByACommandOrTheWait(t *testing.T) {
 	if len(*sent) != 2 || !strings.Contains((*sent)[1].Text, "is not a ticker") || !(*sent)[1].ReplyMarkup.ForceReply {
 		t.Fatalf("a non-ticker answer got %+v", *sent)
 	}
+	if len(*deleted) != 0 {
+		t.Errorf("an answered question was taken down: %v", *deleted)
+	}
 
 	a.HandleMessage(context.Background(), message("/help"))
 	a.HandleMessage(context.Background(), message("NVDA"))
 	if len(*sent) != 3 {
 		t.Errorf("an answer after another command was taken: %+v", (*sent)[3:])
 	}
+	if fmt.Sprint(*deleted) != "[2]" {
+		t.Errorf("deleted %v, want the question the command replaced, [2]", *deleted)
+	}
 
-	*sent = nil
 	start := a.now()
 	a.HandleMessage(context.Background(), message("/analyse"))
 	a.Now = func() time.Time { return start.Add(answerWithin + time.Minute) }
 	a.HandleMessage(context.Background(), message("NVDA"))
-	if len(*sent) != 1 {
-		t.Errorf("an answer after the wait was taken: %+v", (*sent)[1:])
+	if len(*sent) != 4 {
+		t.Errorf("an answer after the wait was taken: %+v", (*sent)[4:])
+	}
+	if fmt.Sprint(*deleted) != "[2 4]" {
+		t.Errorf("deleted %v, want the question nobody answered in time too, [2 4]", *deleted)
+	}
+}
+
+// A question nobody answers comes down when the wait is over, without
+// waiting for the next message; one that has been replaced is left alone.
+func TestAnUnansweredQuestionComesDownWhenTheWaitIsOver(t *testing.T) {
+	a, _, deleted := newTestAppDeleting(t)
+	a.Accounts = &fundamentals.Client{Lookup: failingLookup{}}
+	a.Analyzer = &fundamentals.Analyzer{}
+
+	a.HandleMessage(context.Background(), message("/analyse"))
+	a.expire(4242, 7) // a question since replaced
+	if len(*deleted) != 0 {
+		t.Fatalf("took down %v for a question no longer waiting", *deleted)
+	}
+	a.expire(4242, 1)
+	if fmt.Sprint(*deleted) != "[1]" {
+		t.Errorf("deleted %v, want [1]", *deleted)
+	}
+	a.HandleMessage(context.Background(), message("NVDA"))
+	if len(*deleted) != 1 || a.answering(context.Background(), 4242) != "" {
+		t.Error("the question was still waiting after it came down")
 	}
 }
 

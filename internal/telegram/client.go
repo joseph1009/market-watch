@@ -156,14 +156,20 @@ func (c *Client) SendLinked(ctx context.Context, chatID int64, html string, link
 // Ask sends a question and opens the reader's reply to it, with placeholder
 // in the box. The answer comes back as a reply to the bot, which is what lets
 // it through in a group: there a bot sees only commands and replies to it.
-func (c *Client) Ask(ctx context.Context, chatID int64, html, placeholder string) error {
-	return c.call(ctx, "sendMessage", sendMessageRequest{
+// It returns the question's id: Telegram keeps opening the reply to it each
+// time the chat is opened until it is answered or deleted.
+func (c *Client) Ask(ctx context.Context, chatID int64, html, placeholder string) (int64, error) {
+	var sent struct {
+		MessageID int64 `json:"message_id"`
+	}
+	err := c.call(ctx, "sendMessage", sendMessageRequest{
 		ChatID:                chatID,
 		Text:                  html,
 		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
 		ReplyMarkup:           &forceReply{ForceReply: true, Placeholder: placeholder},
-	}, nil)
+	}, &sent)
+	return sent.MessageID, err
 }
 
 // SendReport delivers the rendered brief in order and returns the ids of what
