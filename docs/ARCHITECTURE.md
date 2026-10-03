@@ -557,7 +557,7 @@ sender is allowed and then routes on the command:
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L587) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L763) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L772) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L328) | Follow a company or stop following it; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L411) | Turn a feed on or off |
@@ -609,7 +609,7 @@ following.
    It builds the current year so far beside the full years
    ([`buildYTD`](../internal/fundamentals/metrics.go#L551)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L773) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L782) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -661,6 +661,10 @@ following.
    That is the last section the analysis writes: BUY, HOLD or SELL against the
    S&P 500 over twelve months, the same call the closer look makes, with a
    confidence and a short reason. It is kept short and shown last.
+   [`SplitShort`](../internal/fundamentals/verdict.go) takes out IN SHORT,
+   the analysis's own summary in plain words. It says what the company does,
+   who buys it, what is coming, and one point for and one against. It is the
+   chat's summary, and the full analysis leaves it out.
 7. [`RenderAnalysis`](../internal/telegram/render.go) and
    [`RenderRelated`](../internal/telegram/related.go#L23) lay it out.
    `RenderAnalysis` rules off each section with a heading in capitals, makes
@@ -1367,8 +1371,9 @@ names, `renderSources` the links, and `renderFooter` the token counts.
 verdict last.
 
 **[summary.go](../internal/telegram/summary.go)** writes the one-message
-summaries. `AnalysisSummary` leads with the best point of each group in the
-case for and the case against, then the verdict in one line.
+summaries. `AnalysisSummary` gives the analysis's IN SHORT section, then the
+verdict in one line. An analysis without that section gives the best point
+of each group in the case for and the case against instead.
 
 **[ideas.go](../internal/telegram/ideas.go)** has `RenderPicks` and
 `renderIdea`, the closer look's layout: `Picks` of `ThemeView`s, reactions

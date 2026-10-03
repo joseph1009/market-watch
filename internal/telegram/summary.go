@@ -170,17 +170,26 @@ func pickLines(idea model.Idea) string {
 	return head + "\n" + verdict
 }
 
-// AnalysisSummary is the case for the company and the case against it, the
-// strongest point of each group, then the verdict in a line. The owner wants
-// the analysis read for the argument, not for the call (2026-10-02). Where
-// the prose has no case sections, the verdict's reasons stand in for them.
-func AnalysisSummary(heading string, v AnalysisVerdict, prose string, opts IdeasOptions) Summary {
+// AnalysisSummary is the analysis's own summary, short, then the verdict in
+// a line. The summary says what the company does, who buys it, what is
+// coming, and a point for and against, in plain words: the owner wants a
+// general understanding from it, not the technical case (2026-10-03).
+//
+// An analysis without one gives the case for the company and the case
+// against it instead, the strongest point of each group. Where the prose has
+// no case sections either, the verdict's reasons stand in.
+func AnalysisSummary(heading string, v AnalysisVerdict, short, prose string, opts IdeasOptions) Summary {
 	text := "🔬 <b>" + escape(heading) + "</b>"
 	argued := false
-	for _, side := range []string{caseFor, caseAgainst} {
-		if bullets := leadBullets(section(prose, side)); len(bullets) > 0 {
-			text += "\n\n" + block(side, spaced(bullets))
-			argued = true
+	if s := shortBlocks(short); s != "" {
+		text += "\n\n" + s
+		argued = true
+	} else {
+		for _, side := range []string{caseFor, caseAgainst} {
+			if bullets := leadBullets(section(prose, side)); len(bullets) > 0 {
+				text += "\n\n" + block(side, spaced(bullets))
+				argued = true
+			}
 		}
 	}
 	if v.Verdict != "" {
@@ -220,6 +229,42 @@ func section(prose, heading string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// shortBlocks is the analysis's own summary as labelled blocks: each
+// sub-heading in capitals over its bullets, and the "For:" and "Against:"
+// that open a bullet in bold.
+func shortBlocks(short string) string {
+	var blocks, bullets []string
+	label := ""
+	flush := func() {
+		switch {
+		case len(bullets) == 0:
+		case label == "":
+			blocks = append(blocks, spaced(bullets))
+		default:
+			blocks = append(blocks, block(escape(label), spaced(bullets)))
+		}
+		bullets = nil
+	}
+	for _, line := range strings.Split(short, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, subheadingMarker):
+			flush()
+			label = strings.ToUpper(strings.Trim(line[len(subheadingMarker):], "*: "))
+		case strings.HasPrefix(line, "- "):
+			bullet := inline(line[2:])
+			for _, lead := range []string{"For:", "Against:"} {
+				if strings.HasPrefix(bullet, lead) {
+					bullet = "<b>" + lead + "</b>" + bullet[len(lead):]
+				}
+			}
+			bullets = append(bullets, "• "+bullet)
+		}
+	}
+	flush()
+	return strings.Join(blocks, "\n\n")
 }
 
 // leadBullets is the first bullet under each sub-heading: the prompt asks

@@ -26,22 +26,9 @@ type Verdict struct {
 // reads as one, the prose comes back whole and the verdict empty.
 func SplitVerdict(prose string) (string, Verdict) {
 	lines := strings.Split(prose, "\n")
-	start := -1
-	for i, line := range lines {
-		if strings.Trim(strings.TrimSpace(line), "#*: ") == VerdictMarker {
-			start = i
-			break
-		}
-	}
+	start, end := sectionAt(lines, VerdictMarker)
 	if start < 0 {
 		return prose, Verdict{}
-	}
-	end := len(lines)
-	for i := start + 1; i < len(lines); i++ {
-		if heading(lines[i]) {
-			end = i
-			break
-		}
 	}
 
 	var v Verdict
@@ -66,6 +53,45 @@ func SplitVerdict(prose string) (string, Verdict) {
 
 	rest := append(append([]string{}, lines[:start]...), lines[end:]...)
 	return strings.TrimSpace(strings.Join(rest, "\n")), v
+}
+
+// ShortMarker heads the analysis's own summary: what the company does, who
+// buys it, what is coming, and a point for and against, in plain words. The
+// chat shows it as the summary, and the full analysis leaves it out.
+const ShortMarker = "IN SHORT"
+
+// SplitShort takes the summary section out of the analysis prose. The prose
+// comes back without it, and the summary empty where there is none.
+func SplitShort(prose string) (string, string) {
+	lines := strings.Split(prose, "\n")
+	start, end := sectionAt(lines, ShortMarker)
+	if start < 0 {
+		return prose, ""
+	}
+	short := strings.TrimSpace(strings.Join(lines[start+1:end], "\n"))
+	rest := append(append([]string{}, lines[:start]...), lines[end:]...)
+	return strings.TrimSpace(strings.Join(rest, "\n")), short
+}
+
+// sectionAt is where the section headed marker starts, and where the next
+// section starts after it. The start is -1 where there is no such section.
+func sectionAt(lines []string, marker string) (start, end int) {
+	start = -1
+	for i, line := range lines {
+		if strings.Trim(strings.TrimSpace(line), "#*: ") == marker {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return -1, len(lines)
+	}
+	for i := start + 1; i < len(lines); i++ {
+		if heading(lines[i]) {
+			return start, i
+		}
+	}
+	return start, len(lines)
 }
 
 // field reads "LABEL: value" in any case.

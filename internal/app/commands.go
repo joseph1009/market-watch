@@ -659,8 +659,9 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	}
 	prose, verdict := fundamentals.SplitVerdict(prose)
 	cached.Save("verdict", verdict)
+	prose, short := fundamentals.SplitShort(prose)
 
-	owner := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{})
+	owner := a.analysisOut(snapshot, prose, short, verdict, related, telegram.IdeasOptions{})
 	cached.Save("related", related)
 	cached.Text("messages.html", joinMessages(owner.messages))
 	cached.Text("summary.html", owner.summary.Text)
@@ -672,23 +673,23 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	// reader there needs.
 	// Only what the owner was sent: /share passes on the owner's latest.
 	if msg.Chat.ID == a.Prefs().ChatID {
-		channel := a.analysisOut(snapshot, prose, verdict, related, telegram.IdeasOptions{ForChannel: true})
+		channel := a.analysisOut(snapshot, prose, short, verdict, related, telegram.IdeasOptions{ForChannel: true})
 		a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
 	}
 	a.recordAnalysis(snapshot, verdict)
 	return nil
 }
 
-// analysisOut is an analysis to send: its messages, and its case for and
-// against as the summary of them.
-func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) outgoing {
+// analysisOut is an analysis to send: its messages, and its own short
+// summary of them, headed by the company's name.
+func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose, short string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) outgoing {
 	v := telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body}
 	doc := telegram.AnalysisDoc(snapshot.Ticker, snapshot.Company, v, prose, pageAccounts(snapshot), relatedList(related),
 		opts, a.Terms, a.now(), a.Cfg.DisplayLocation)
 	return outgoing{
 		title:    snapshot.Ticker + " · " + snapshot.Company,
 		messages: analysisMessages(snapshot, prose, verdict, related, opts),
-		summary:  telegram.AnalysisSummary(analysisHeading(snapshot), v, prose, opts),
+		summary:  telegram.AnalysisSummary(summaryHeading(snapshot), v, short, prose, opts),
 		doc:      &doc,
 	}
 }
@@ -704,6 +705,14 @@ func relatedList(related []fundamentals.Related) []telegram.Related {
 
 func analysisHeading(snapshot fundamentals.Snapshot) string {
 	return fmt.Sprintf("%s — the case for and against", snapshot.Ticker)
+}
+
+// summaryHeading heads an analysis's summary: "MU · Micron Technology".
+func summaryHeading(snapshot fundamentals.Snapshot) string {
+	if snapshot.Company == "" {
+		return snapshot.Ticker
+	}
+	return snapshot.Ticker + " · " + snapshot.Company
 }
 
 // analysisMessages lays an analysis out for the owner or the channel: the

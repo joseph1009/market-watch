@@ -64,3 +64,19 @@ func TestProseWithoutAVerdictIsLeftWhole(t *testing.T) {
 		}
 	}
 }
+
+// The summary is cut out of the prose, wherever it falls, and the sections
+// either side of it stay.
+func TestTheShortSummaryIsCutOut(t *testing.T) {
+	text := "THE BUSINESS\n- Memory chips.\n\nTHE VERDICT\nVERDICT: BUY\n\nIN SHORT\n### What it does\n- Memory.\n\nCOMPANIES TO READ\nx"
+	prose, short := SplitShort(text)
+	if short != "### What it does\n- Memory." {
+		t.Errorf("short = %q", short)
+	}
+	if prose != "THE BUSINESS\n- Memory chips.\n\nTHE VERDICT\nVERDICT: BUY\n\nCOMPANIES TO READ\nx" {
+		t.Errorf("prose = %q", prose)
+	}
+	if prose, short := SplitShort("THE BUSINESS\n- Memory chips."); short != "" || prose != "THE BUSINESS\n- Memory chips." {
+		t.Errorf("without a summary: %q, %q", prose, short)
+	}
+}
