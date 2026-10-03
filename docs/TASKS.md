@@ -29,8 +29,6 @@ is, what it needs from you, and why it is worth doing.
   and company releases, the eighteen media feeds can be turned off. They are
   the part of the source list that breaks most. RUNBOOK.md, "News search",
   explains how to read the list.
-- **`marketwatch-top` returns HTTP 400.** It is one feed of 44, and it fails
-  every time. It is worth replacing or turning off.
 
 ## Brief quality
 
@@ -70,7 +68,7 @@ is, what it needs from you, and why it is worth doing.
 
   What is left is `collectPrices` in `internal/app/prices.go`. It reads US
   listings only, from the quote feed and then the charts for whatever the feed
-  misses. It prices every company followed. Today all 95 tickers trade in New
+  misses. It prices every company followed. Today all 98 tickers trade in New
   York, so nothing is missing. But a Tokyo or London listing added to
   `config/companies.yaml` would get no price, no moves line and no mover
   search. Giving each company an exchange, and spelling its symbol with
@@ -94,11 +92,6 @@ is, what it needs from you, and why it is worth doing.
   day's outsized moves for the closer look's reactions. A line of them in the
   overview would give the brief the same view at no extra cost. It would show
   the biggest moves among companies of some size, followed or not.
-- **Tickers for the companies followed by name.** Morgan Stanley, Moderna and
-  Spotify are followed by name alone. So they have no price, no moves line and
-  no filings. Their tickers were left out because MS and SPOT match ordinary
-  words. Now `match: name` in `config/companies.yaml` keeps a ticker out of the
-  matching while still pricing it, so they could have one.
 
 ## Verdicts
 

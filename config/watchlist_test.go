@@ -27,8 +27,8 @@ func TestTheFilesHoldTheWatchlistAndFeeds(t *testing.T) {
 	if got := strings.Join(ids, " "); got != want {
 		t.Errorf("sectors = %s\nwant       %s", got, want)
 	}
-	if symbols != 95 {
-		t.Errorf("%d tickers, want 95", symbols)
+	if symbols != 98 {
+		t.Errorf("%d tickers, want 98", symbols)
 	}
 
 	feeds, err := Feeds()

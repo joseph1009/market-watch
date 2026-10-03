@@ -84,9 +84,9 @@ financials:
   - {symbol: BX, name: Blackstone}
   - {symbol: KKR, name: KKR}
   - {symbol: APO, name: Apollo Global}
-  # No ticker: MS is also the network that renamed itself MS NOW, and as a
-  # bare two-letter symbol it matched that. The name finds the bank.
-  - {name: Morgan Stanley}
+  # Matched by name only: MS is also the network that renamed itself MS NOW,
+  # and as a bare two-letter symbol it matched that. The symbol still prices it.
+  - {symbol: MS, name: Morgan Stanley, match: name}
   - {name: Allstate}
   - {name: Mastercard}
   - {name: Chubb}
@@ -107,7 +107,7 @@ healthcare:
   - {symbol: VRTX, name: Vertex Pharmaceuticals}
   - {symbol: ELV, name: Elevance}
   - {symbol: HUM, name: Humana}
-  - {name: Moderna}
+  - {symbol: MRNA, name: Moderna, match: name}
 
 industrials-defense:
   - {symbol: CAT, name: Caterpillar}
@@ -167,4 +167,4 @@ media:
   # No ticker: SPOT is a word in any all-caps headline about spot prices.
   # Paramount is left to the sector's description, since as a name it would
   # match "of paramount importance".
-  - {name: Spotify}
+  - {symbol: SPOT, name: Spotify, match: name}
