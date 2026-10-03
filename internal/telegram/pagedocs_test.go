@@ -89,7 +89,7 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 		{Label: "FY to 31 Dec 2024", Figures: map[string]float64{"revenue": 2.8e9, "operatingIncome": -105e6}},
 	}}
 	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Thin margin."}
-	page := render(AnalysisDoc("GRAB", "Grab Holdings", v, "THE BUSINESS\n\n### What it sells\n- Rides.", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	page := render(AnalysisDoc("GRAB", "Grab Holdings", v, "THE BUSINESS\n\n### What it sells\n- Rides.", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
 		"<h1>Grab Holdings</h1>", `<span class="badge hold">HOLD</span>`, "Thin margin.",
 		"<th class=\"num\">FY Dec 2024</th><th class=\"num\">FY Dec 2025</th>",
@@ -105,6 +105,26 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 	}
 }
 
+// An analysis's citations link to its footnotes, on the page and in the
+// chat, as the brief's do.
+func TestTheAnalysisCitationsLinkToTheirSources(t *testing.T) {
+	v := AnalysisVerdict{Verdict: model.Hold, Body: "### Why\n- Rivals are building [2]."}
+	prose := "THE BUSINESS\n\n### What it sells\n- Rides [1]."
+	sources := []pages.Link{{Title: "CNBC", URL: "https://www.cnbc.com/a"}, {Title: "Reuters", URL: "https://www.reuters.com/b"}}
+	page := render(AnalysisDoc("GRAB", "Grab Holdings", v, prose, Accounts{}, nil, sources, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{`<a href="https://www.cnbc.com/a" class="cite"`, `<a href="https://www.reuters.com/b" class="cite"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+	chat := strings.Join(RenderAnalysis("GRAB", v, prose, sources, IdeasOptions{}), "\n")
+	for _, want := range []string{`Rides <a href="https://www.cnbc.com/a">[1]</a>`, `building <a href="https://www.reuters.com/b">[2]</a>`} {
+		if !strings.Contains(chat, want) {
+			t.Errorf("the chat is missing %q:\n%s", want, chat)
+		}
+	}
+}
+
 // A quarter's column is headed by its months, and the rows' names stay in
 // view while the figures scroll on a phone.
 func TestTheAnalysisPageNamesQuartersByTheirMonths(t *testing.T) {
@@ -112,7 +132,7 @@ func TestTheAnalysisPageNamesQuartersByTheirMonths(t *testing.T) {
 		{Label: "3 months to 31 Jan 2026", Figures: map[string]float64{"revenue": 9e8}},
 		{Label: "3m to Oct 2025", Figures: map[string]float64{"revenue": 8e8}},
 	}, TTM: &Period{Label: "12 months to 31 Jan 2026", Figures: map[string]float64{"revenue": 3.4e9}}}
-	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
 		`<table class="labelled">`,
 		"<th class=\"num\">Aug–Oct 2025</th><th class=\"num\">Nov–Jan 2026</th><th class=\"num\">Last 12 months</th>",
@@ -172,7 +192,7 @@ func TestTheAnalysisPageSetsTheCompanyBesideItsIndustry(t *testing.T) {
 	acc := Accounts{Peers: &Peers{About: "<i>Nasdaq's Semiconductors group.</i>", Rows: []PeerRow{
 		{Label: "Operating margin", Company: "26.1%", Median: "2.4%", Range: "-10.2% to 16.1%", Above: "56 of 65"},
 	}}}
-	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{"Beside its industry", "Operating margin", "<b>26.1%</b>", "-10.2% to 16.1%", "56 of 65", "Nasdaq's Semiconductors group."} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
@@ -191,7 +211,7 @@ func TestTheAnalysisPageDrawsThePriceAndTheCash(t *testing.T) {
 		{Label: "FY to 31 Dec 2025", Figures: map[string]float64{"operatingCashFlow": 5e9, "capitalExpenditure": 2e9}},
 		{Label: "FY to 31 Dec 2024", Figures: map[string]float64{"operatingCashFlow": 4e9, "capitalExpenditure": 3e9}},
 	}}
-	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{"The price over the year", "200-day average", "Cash from the business against what it invests", "<b>$3.00bn</b>", "<b>$1.00bn</b>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)

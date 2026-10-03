@@ -13,6 +13,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/pages"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/relay"
 	"github.com/joseph1009/market-watch/internal/runcache"
@@ -657,11 +658,12 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	} else {
 		related = nil
 	}
-	prose, verdict := fundamentals.SplitVerdict(prose)
-	cached.Save("verdict", verdict)
-	prose, short := fundamentals.SplitShort(prose)
+	w := splitAnalysis(prose, related)
+	cached.Save("verdict", w.verdict)
+	cached.Save("sources", w.sources)
+	cached.Save("terms", w.terms)
 
-	owner := a.analysisOut(snapshot, prose, short, verdict, related, telegram.IdeasOptions{})
+	owner := a.analysisOut(snapshot, w, telegram.IdeasOptions{})
 	cached.Save("related", related)
 	cached.Text("messages.html", joinMessages(owner.messages))
 	cached.Text("summary.html", owner.summary.Text)
@@ -673,25 +675,59 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	// reader there needs.
 	// Only what the owner was sent: /share passes on the owner's latest.
 	if msg.Chat.ID == a.Prefs().ChatID {
-		channel := a.analysisOut(snapshot, prose, short, verdict, related, telegram.IdeasOptions{ForChannel: true})
+		channel := a.analysisOut(snapshot, w, telegram.IdeasOptions{ForChannel: true})
 		a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
 	}
-	a.recordAnalysis(snapshot, verdict)
+	a.recordAnalysis(snapshot, w.verdict)
 	return nil
+}
+
+// analysisParts is an analysis's reply taken apart: the prose the reader reads,
+// and the parts shown on their own.
+type analysisParts struct {
+	prose   string
+	short   string // IN SHORT, the chat's summary
+	verdict fundamentals.Verdict
+	related []fundamentals.Related
+	sources []fundamentals.Source // the footnotes
+	terms   []string              // the terms it used, to link to a definition
+}
+
+// splitAnalysis takes the verdict, the summary and the links out of the
+// prose. The related list was cut out and checked before.
+func splitAnalysis(prose string, related []fundamentals.Related) analysisParts {
+	w := analysisParts{related: related}
+	// The terms go first: one written in capitals on its own line, "HBM",
+	// would read as a heading to the sections before it.
+	prose, w.terms = fundamentals.SplitTerms(fundamentals.TrimPreamble(prose))
+	prose, w.verdict = fundamentals.SplitVerdict(prose)
+	prose, w.short = fundamentals.SplitShort(prose)
+	w.prose, w.sources = fundamentals.SplitSources(prose)
+	return w
 }
 
 // analysisOut is an analysis to send: its messages, and its own short
 // summary of them, headed by the company's name.
-func (a *App) analysisOut(snapshot fundamentals.Snapshot, prose, short string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) outgoing {
-	v := telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body}
-	doc := telegram.AnalysisDoc(snapshot.Ticker, snapshot.Company, v, prose, pageAccounts(snapshot), relatedList(related),
-		opts, a.Terms, a.now(), a.Cfg.DisplayLocation)
+func (a *App) analysisOut(snapshot fundamentals.Snapshot, w analysisParts, opts telegram.IdeasOptions) outgoing {
+	v := telegram.AnalysisVerdict{Verdict: w.verdict.Verdict, Confidence: w.verdict.Confidence, Body: w.verdict.Body}
+	terms := telegram.WithSearches(a.Terms, w.terms)
+	doc := telegram.AnalysisDoc(snapshot.Ticker, readableName(snapshot.Company), v, w.prose, pageAccounts(snapshot), relatedList(w.related),
+		sourceLinks(w.sources), opts, terms, a.now(), a.Cfg.DisplayLocation)
 	return outgoing{
-		title:    snapshot.Ticker + " · " + snapshot.Company,
-		messages: analysisMessages(snapshot, prose, verdict, related, opts),
-		summary:  telegram.AnalysisSummary(summaryHeading(snapshot), v, short, prose, opts),
+		title:    summaryHeading(snapshot),
+		messages: analysisMessages(snapshot, w, opts),
+		summary:  telegram.AnalysisSummary(summaryHeading(snapshot), v, w.short, w.prose, opts, terms),
 		doc:      &doc,
 	}
+}
+
+// sourceLinks is an analysis's sources as the chat and the page list them.
+func sourceLinks(sources []fundamentals.Source) []pages.Link {
+	out := make([]pages.Link, 0, len(sources))
+	for _, s := range sources {
+		out = append(out, pages.Link{Title: s.Title, URL: s.URL})
+	}
+	return out
 }
 
 // relatedList is the related companies as the chat and the page show them.
@@ -712,19 +748,38 @@ func summaryHeading(snapshot fundamentals.Snapshot) string {
 	if snapshot.Company == "" {
 		return snapshot.Ticker
 	}
-	return snapshot.Ticker + " · " + snapshot.Company
+	return snapshot.Ticker + " · " + readableName(snapshot.Company)
+}
+
+// readableName is the name the SEC files a company under as a reader would
+// write it: "MICRON TECHNOLOGY INC" is "Micron Technology". A name in capitals
+// is put in title case, but for words of three letters or fewer, which are
+// more often initials ("AMD") than words.
+func readableName(filed string) string {
+	name := search.PlainName(filed)
+	if name != strings.ToUpper(name) {
+		return name
+	}
+	words := strings.Fields(name)
+	for i, w := range words {
+		if len([]rune(w)) > 3 {
+			words[i] = w[:1] + strings.ToLower(w[1:])
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // analysisMessages lays an analysis out for the owner or the channel: the
-// analysis, the verdict, the related companies, and where the figures came
-// from.
-func analysisMessages(snapshot fundamentals.Snapshot, prose string, verdict fundamentals.Verdict, related []fundamentals.Related, opts telegram.IdeasOptions) []string {
+// analysis, the verdict, the related companies, the sources, and where the
+// figures came from.
+func analysisMessages(snapshot fundamentals.Snapshot, w analysisParts, opts telegram.IdeasOptions) []string {
 	messages := telegram.RenderAnalysis(analysisHeading(snapshot),
-		telegram.AnalysisVerdict{Verdict: verdict.Verdict, Confidence: verdict.Confidence, Body: verdict.Body},
-		prose, opts)
-	if block := telegram.RenderRelated(relatedList(related)); block != "" {
+		telegram.AnalysisVerdict{Verdict: w.verdict.Verdict, Confidence: w.verdict.Confidence, Body: w.verdict.Body},
+		w.prose, sourceLinks(w.sources), opts)
+	if block := telegram.RenderRelated(relatedList(w.related)); block != "" {
 		messages = append(messages, block)
 	}
+	messages = append(messages, telegram.RenderSourceList(sourceLinks(w.sources))...)
 	return append(messages, fmt.Sprintf(
 		"<i>%s, from filings up to %s</i>",
 		escape(snapshot.Company),

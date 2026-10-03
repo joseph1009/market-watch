@@ -585,7 +585,7 @@ type PeerRow struct {
 // accounts as tables and charts, the reading of them, the verdict, and the
 // companies to read beside it. The verdict is last, as in the chat
 // (RenderAnalysis says why).
-func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Accounts, related []Related, opts IdeasOptions, terms []model.Term, now time.Time, where *time.Location) pages.Doc {
+func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Accounts, related []Related, sources []pages.Link, opts IdeasOptions, terms []model.Term, now time.Time, where *time.Location) pages.Doc {
 	doc := pages.Doc{Kicker: "Analysis · " + ticker, Title: company,
 		Dek: []string{escape(now.In(where).Format("Monday 2 January 2006"))}}
 	if price := priceParts(acc.Price, acc.Trading); len(price) > 0 {
@@ -602,12 +602,13 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		t.Note = p.About
 		doc.Parts = append(doc.Parts, pages.Section{ID: "peers", Title: "Beside its industry", Parts: []pages.Part{t}})
 	}
+	cited := sourceArticles(sources)
 	if prose != "" {
 		var blocks []string
 		for _, seg := range plainSegments(prose) {
 			blocks = append(blocks, seg.blocks...)
 		}
-		doc.Parts = append(doc.Parts, pages.Prose(linkTerms(blocks, terms)))
+		doc.Parts = append(doc.Parts, pages.Prose(linkTerms(cite(blocks, cited), terms)))
 	}
 	if v.Verdict != "" {
 		doc.Note = analysisNote(opts)
@@ -615,7 +616,7 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		if v.Confidence != "" {
 			card.Meta = append(card.Meta, v.Confidence+" confidence")
 		}
-		card.Parts = append(card.Parts, pages.Prose(linkTerms(paragraphs(v.Body), terms)))
+		card.Parts = append(card.Parts, pages.Prose(linkTerms(cite(paragraphs(v.Body), cited), terms)))
 		doc.Parts = append(doc.Parts, card)
 	}
 	if len(related) > 0 {
@@ -625,6 +626,15 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		}
 		t.Note = "<i>Every ticker checked against its exchange. Not recommendations.</i>"
 		doc.Parts = append(doc.Parts, pages.Section{ID: "related", Title: "Companies to read next to it", Parts: []pages.Part{t}})
+	}
+	// The web pages the analysis drew on, as footnotes to the whole of it.
+	if len(sources) > 0 {
+		numbered := make([]pages.Link, len(sources))
+		for i, l := range sources {
+			l.N = i + 1
+			numbered[i] = l
+		}
+		doc.Parts = append(doc.Parts, pages.Sources{Title: "Sources", Links: numbered})
 	}
 	if !acc.AsOf.IsZero() {
 		doc.Footer = []string{"<i>" + escape(company) + ", from filings up to " + acc.AsOf.Format("2 Jan 2006") + "</i>"}

@@ -178,11 +178,14 @@ func pickLines(idea model.Idea) string {
 // An analysis without one gives the case for the company and the case
 // against it instead, the strongest point of each group. Where the prose has
 // no case sections either, the verdict's reasons stand in.
-func AnalysisSummary(heading string, v AnalysisVerdict, short, prose string, opts IdeasOptions) Summary {
+//
+// The glossary's terms are linked the first time they appear, as on the
+// page, since the summary no longer says what they mean.
+func AnalysisSummary(heading string, v AnalysisVerdict, short, prose string, opts IdeasOptions, terms []model.Term) Summary {
 	text := "🔬 <b>" + escape(heading) + "</b>"
 	argued := false
 	if s := shortBlocks(short); s != "" {
-		text += "\n\n" + s
+		text += "\n\n" + linkTerms([]string{s}, terms)[0]
 		argued = true
 	} else {
 		for _, side := range []string{caseFor, caseAgainst} {

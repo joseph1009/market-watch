@@ -315,30 +315,30 @@ chart source.
 Since 1 October 2026 the brief has been written in plainer English, with about
 twice the room. Each sub-heading and sector heading has an emoji
 ([config/sectors.yaml](../config/sectors.yaml)). The key figure in a bullet is
-marked `**so**`, and [`highlight`](../internal/telegram/render.go#L394) shows
-it in bold. [`linkTerms`](../internal/telegram/terms.go#L19) links the first
+marked `**so**`, and [`highlight`](../internal/telegram/render.go#L416) shows
+it in bold. [`linkTerms`](../internal/telegram/terms.go#L20) links the first
 mention in a section of each term in
 [config/glossary.yaml](../config/glossary.yaml) to a page that explains it. It
 leaves tags, links and bold text alone.
 [`renderCalendar`](../internal/telegram/calendar.go#L25) lays out the look
 ahead.
 
-[`telegram.RenderWith`](../internal/telegram/render.go#L91) turns the report
+[`telegram.RenderWith`](../internal/telegram/render.go#L92) turns the report
 into Telegram's HTML. It lays out the overview, each section under its line of
 biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L750)), the quiet
+([`renderCandidates`](../internal/telegram/render.go#L787)), the quiet
 watchlists, the source links, and a footer of token counts. Citations become
-links through [`linkCitations`](../internal/telegram/render.go#L707).
+links through [`linkCitations`](../internal/telegram/render.go#L744).
 
 The brief is written as sub-headings, each a `### ` line, over one-sentence
-bullets. [`paragraphs`](../internal/telegram/render.go#L256) keeps each
-sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L351)
+bullets. [`paragraphs`](../internal/telegram/render.go#L278) keeps each
+sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L373)
 makes the sub-heading bold and turns each `- ` into a bullet, with a blank line
 between bullets. The section headings are in capitals so they stand above the
 sub-headings. A block written the older way, as a label and a dash, still gets
-its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L295)).
+its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L317)).
 
-[`pack`](../internal/telegram/render.go#L415) then spreads the pieces across
+[`pack`](../internal/telegram/render.go#L437) then spreads the pieces across
 messages, within Telegram's limit of 4,096 characters. It breaks between
 sections rather than in the middle of a thought. It never leaves a heading
 alone at the end of a message.
@@ -395,7 +395,7 @@ look was still running, the closer look then goes alone
 The channel only goes one way. Its readers can't reach `HandleMessage`. The bot
 takes commands only from the owner's chat, and from the owner's other chats
 listed in `TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS`.
-[`needs`](../internal/app/commands.go#L198) says which command each kind of chat
+[`needs`](../internal/app/commands.go#L199) says which command each kind of chat
 may use.
 
 ### 8. Worth a closer look
@@ -546,23 +546,23 @@ for it to write each call to.
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) keeps asking Telegram for
 new messages (`getUpdates`). It hands each one to
-[`HandleMessage`](../internal/app/commands.go#L68), which checks that the
+[`HandleMessage`](../internal/app/commands.go#L69), which checks that the
 sender is allowed and then routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L225) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L245) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
+| `/start` | [`handleStart`](../internal/app/commands.go#L226) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L246) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L587) | Writes up a company (see below) |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L588) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L772) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L827) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L328) | Follow a company or stop following it; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L411) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L317) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L274) | Delete the bot's earlier messages |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L329) | Follow a company or stop following it; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L412) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L318) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L275) | Delete the bot's earlier messages |
 
 Most commands answer at once, so they are handled in turn. `/analyse` and
 `/industry` take minutes, so once they know what to look at they run in the
@@ -595,7 +595,7 @@ Otherwise Telegram would reopen the reply box every time the chat is opened,
 until the question was answered. An answer that doesn't look like a ticker gets
 the question again. `/analyse NVDA` still works in one line.
 
-[`handleAnalyse`](../internal/app/commands.go#L587) runs within its own time
+[`handleAnalyse`](../internal/app/commands.go#L588) runs within its own time
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
@@ -609,7 +609,7 @@ following.
    It builds the current year so far beside the full years
    ([`buildYTD`](../internal/fundamentals/metrics.go#L551)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L782) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L837) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -665,6 +665,15 @@ following.
    the analysis's own summary in plain words. It says what the company does,
    who buys it, what is coming, and one point for and one against. It is the
    chat's summary, and the full analysis leaves it out.
+   [`SplitSources`](../internal/fundamentals/sources.go) takes out SOURCES,
+   the web pages the analysis drew on, and any address written into the text
+   anyway. They are shown as numbered footnotes at the end, in the chat and
+   on the page. The text cites them by number, [3], as the brief does. The
+   numbers are redone to follow the footnotes, and each links to its page.
+   [`SplitTerms`](../internal/fundamentals/verdict.go) takes out TERMS, the
+   words the analysis used that a reader might not know. The analysis does
+   not define them. `telegram.WithSearches` links each to its glossary page,
+   or to a Google search for its meaning where the glossary has none.
 7. [`RenderAnalysis`](../internal/telegram/render.go) and
    [`RenderRelated`](../internal/telegram/related.go#L23) lay it out.
    `RenderAnalysis` rules off each section with a heading in capitals, makes
@@ -1371,8 +1380,8 @@ names, `renderSources` the links, and `renderFooter` the token counts.
 verdict last.
 
 **[summary.go](../internal/telegram/summary.go)** writes the one-message
-summaries. `AnalysisSummary` gives the analysis's IN SHORT section, then the
-verdict in one line. An analysis without that section gives the best point
+summaries. `AnalysisSummary` gives the analysis's IN SHORT section, with its
+glossary terms linked, then the verdict in one line. An analysis without that section gives the best point
 of each group in the case for and the case against instead.
 
 **[ideas.go](../internal/telegram/ideas.go)** has `RenderPicks` and

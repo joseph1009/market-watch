@@ -1,15 +1,18 @@
-# Terms the brief links to a plain explanation.
+# Terms the brief and /analyse link to a plain explanation.
 #
-# The first time one of these words appears in a section of the brief, the
-# reader can tap it to read what it means. The writer is still told to say
-# what a term means in plain words; the link is for the reader who wants
-# more than a few words.
+# The first time one of these words appears in a section of the brief, or
+# anywhere in an analysis, the reader can tap it to read what it means. The
+# brief's writer is still told to say what a term means in plain words. The
+# analysis's is told not to, since the owner found the definitions crowded
+# out the analysis and spelled out words they knew (2026-10-04).
 #
 # Each entry is a page and the words that lead to it. A word written in
 # capitals (EPS, VIX) matches only in capitals, so "eps" inside another word,
 # or an ordinary word that happens to share the letters, is left alone; any
 # other word matches whatever its case. Every link was checked to open the
-# right page when it was added (2026-10-01): check a new one the same way.
+# right page when it was added (2026-10-01; the company terms from net margin
+# on, 2026-10-04): check a new one the same way. Investopedia turns away
+# scripts, so a new one there cannot be checked; those since are elsewhere.
 
 - url: https://www.investopedia.com/terms/t/treasury-yield.asp
   words: [Treasury yield, Treasury yields, bond yield, bond yields]
@@ -90,11 +93,11 @@
 - url: https://www.investopedia.com/terms/t/tariff.asp
   words: [tariff, tariffs]
 - url: https://www.investopedia.com/terms/e/eps.asp
-  words: [EPS, earnings per share]
+  words: [EPS, earnings per share, earnings a share]
 - url: https://www.investopedia.com/terms/p/price-earningsratio.asp
   words: [price-to-earnings, P/E]
 - url: https://www.investopedia.com/terms/c/consensusestimate.asp
-  words: [consensus estimate, consensus forecast]
+  words: [consensus estimate, consensus forecast, consensus]
 - url: https://www.investopedia.com/terms/g/guidance.asp
   words: [guidance]
 - url: https://www.investopedia.com/terms/f/freecashflow.asp
@@ -126,7 +129,7 @@
 - url: https://www.investopedia.com/terms/p/pricetarget.asp
   words: [price target, price targets]
 - url: https://www.investopedia.com/terms/m/movingaverage.asp
-  words: [50-day average, 200-day average, moving average]
+  words: [50-day average, 200-day average, fifty-day average, two-hundred-day average, moving average]
 - url: https://en.wikipedia.org/wiki/Annual_recurring_revenue
   words: [annual recurring revenue, ARR]
 - url: https://en.wikipedia.org/wiki/High_Bandwidth_Memory
@@ -135,3 +138,37 @@
   words: [EUV, extreme ultraviolet]
 - url: https://en.wikipedia.org/wiki/Foundry_model
   words: [foundry, foundries]
+- url: https://en.wikipedia.org/wiki/Profit_margin
+  words: [net margin, net margins, profit margin, profit margins]
+- url: https://en.wikipedia.org/wiki/Net_income
+  words: [net income, net profit]
+- url: https://en.wikipedia.org/wiki/Earnings_before_interest_and_taxes
+  words: [operating income, operating profit, EBIT]
+- url: https://corporatefinanceinstitute.com/resources/accounting/gaap/
+  words: [GAAP]
+- url: https://corporatefinanceinstitute.com/resources/accounting/non-gaap-earnings/
+  words: [non-GAAP]
+- url: https://corporatefinanceinstitute.com/resources/valuation/forward-pe-ratio/
+  words: [forward P/E, forward price-to-earnings]
+- url: https://en.wikipedia.org/wiki/PEG_ratio
+  words: [PEG ratio, PEG]
+- url: https://en.wikipedia.org/wiki/EV/EBITDA
+  words: [EV/EBITDA]
+- url: https://en.wikipedia.org/wiki/Book_value
+  words: [book value]
+- url: https://en.wikipedia.org/wiki/P/B_ratio
+  words: [price-to-book, P/B]
+- url: https://en.wikipedia.org/wiki/Return_on_equity
+  words: [return on equity, ROE]
+- url: https://en.wikipedia.org/wiki/Current_ratio
+  words: [current ratio]
+- url: https://en.wikipedia.org/wiki/Capital_expenditure
+  words: [capital spending, capital expenditure, capex]
+- url: https://en.wikipedia.org/wiki/Volatility_(finance)
+  words: [volatility]
+- url: https://en.wikipedia.org/wiki/Lock-up_period
+  words: [lock-up, lock-up period, lockup]
+- url: https://en.wikipedia.org/wiki/Dynamic_random-access_memory
+  words: [DRAM]
+- url: https://en.wikipedia.org/wiki/Flash_memory
+  words: [NAND, flash memory]

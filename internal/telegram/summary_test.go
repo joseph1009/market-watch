@@ -124,13 +124,13 @@ WHAT WOULD SETTLE IT
 func TestTheAnalysisSummaryIsItsOwnShortSummary(t *testing.T) {
 	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Thin margin.\n\n### What would change it\n- Lending losses."}
 	short := "### What it does\n- Rides and food delivery in an app [2].\n\n### Who buys it\n- Commuters and diners across Southeast Asia.\n\n" +
-		"### What is coming\n- Results on 12 November. Watch whether lending losses grow.\n\n" +
+		"### What is coming\n- Results on 12 November, with EPS expected at US$0.04. EPS matters.\n\n" +
 		"### For and against\n- For: it leads in **six countries**.\n- Against: rivals subsidise rides."
-	s := AnalysisSummary("GRAB · Grab Holdings", v, short, groundedProse, IdeasOptions{})
+	s := AnalysisSummary("GRAB · Grab Holdings", v, short, groundedProse, IdeasOptions{}, testTerms)
 	want := "🔬 <b>GRAB · Grab Holdings</b>\n\n" +
 		"<b>WHAT IT DOES</b>\n• Rides and food delivery in an app.\n\n" +
 		"<b>WHO BUYS IT</b>\n• Commuters and diners across Southeast Asia.\n\n" +
-		"<b>WHAT IS COMING</b>\n• Results on 12 November. Watch whether lending losses grow.\n\n" +
+		"<b>WHAT IS COMING</b>\n• Results on 12 November, with <a href=\"https://example.com/eps\">EPS</a> expected at US$0.04. EPS matters.\n\n" +
 		"<b>FOR AND AGAINST</b>\n• <b>For:</b> it leads in <b>six countries</b>.\n\n• <b>Against:</b> rivals subsidise rides.\n\n" +
 		"<b>THE VERDICT</b>\n⚪ <b>HOLD</b> · low confidence\n"
 	if !strings.HasPrefix(s.Text, want) {
@@ -147,7 +147,7 @@ func TestTheAnalysisSummaryIsItsOwnShortSummary(t *testing.T) {
 // group of the case for and against, then the verdict in a line with its note.
 func TestTheAnalysisSummaryIsTheCaseForAndAgainst(t *testing.T) {
 	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Thin margin.\n\n### What would change it\n- Lending losses."}
-	s := AnalysisSummary("GRAB — the case for and against", v, "", groundedProse, IdeasOptions{ForChannel: true})
+	s := AnalysisSummary("GRAB — the case for and against", v, "", groundedProse, IdeasOptions{ForChannel: true}, nil)
 	want := "🔬 <b>GRAB — the case for and against</b>\n\n" +
 		"<b>THE CASE FOR IT</b>\n• Leads ride-hailing in six countries.\n\n• Margin is <b>1.9%</b>.\n\n• Scale lowers the cost of each ride.\n\n" +
 		"<b>THE CASE AGAINST IT</b>\n• Rivals subsidise rides.\n\n• HBM\n\n" +
@@ -168,7 +168,7 @@ func TestTheAnalysisSummaryIsTheCaseForAndAgainst(t *testing.T) {
 // Prose without the case sections falls back to the verdict's reasons.
 func TestAnAnalysisSummaryWithoutTheCaseGivesTheVerdictsReasons(t *testing.T) {
 	v := AnalysisVerdict{Verdict: model.Hold, Confidence: "low", Body: "### Why\n- Margin is **1.9%** [3].\n\n### What would change it\n- November's cash flow."}
-	s := AnalysisSummary("GRAB — the case for and against", v, "", "THE BUSINESS\n- Rides.", IdeasOptions{})
+	s := AnalysisSummary("GRAB — the case for and against", v, "", "THE BUSINESS\n- Rides.", IdeasOptions{}, nil)
 	for _, want := range []string{"<b>THE VERDICT</b>", "⚪ <b>HOLD</b> · low confidence", "<b>Why</b>\n• Margin is <b>1.9%</b>."} {
 		if !strings.Contains(s.Text, want) {
 			t.Errorf("summary is missing %q:\n%s", want, s.Text)

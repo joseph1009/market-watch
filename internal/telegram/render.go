@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/pages"
 )
 
 const (
@@ -225,6 +226,27 @@ func renderSources(category string, articles []model.Article, limit int) []strin
 		if runeLen(current)+1+runeLen(line) > maxSourceBlockRunes {
 			blocks = append(blocks, current)
 			current = "<i>" + escape(category) + " (continued)</i>"
+		}
+		current += "\n" + line
+	}
+	return append(blocks, current)
+}
+
+// RenderSourceList is an analysis's sources as footnotes at its end:
+// numbered links, split across messages where they run long. The text names
+// the outlet and the date; the owner found the addresses pasted beside the
+// points hard to read (2026-10-03).
+func RenderSourceList(links []pages.Link) []string {
+	if len(links) == 0 {
+		return nil
+	}
+	var blocks []string
+	current := "<b>SOURCES</b>"
+	for i, l := range links {
+		line := fmt.Sprintf("%d. <a href=\"%s\">%s</a>", i+1, escape(l.URL), escape(l.Title))
+		if runeLen(current)+1+runeLen(line) > maxSourceBlockRunes {
+			blocks = append(blocks, current)
+			current = "<b>SOURCES</b> (continued)"
 		}
 		current += "\n" + line
 	}
@@ -642,10 +664,15 @@ func analysisNote(opts IdeasOptions) string {
 // verdict. The verdict comes last, where it is written. The owner asked on
 // 2026-10-02 for the analysis to be about the case for and against the
 // company, not about whether to buy it, so the call is a line for the record
-// at the end rather than the headline.
-func RenderAnalysis(heading string, v AnalysisVerdict, prose string, opts IdeasOptions) []string {
+// at the end rather than the headline. Its citations, [3], link to the
+// sources, which follow it as numbered footnotes.
+func RenderAnalysis(heading string, v AnalysisVerdict, prose string, sources []pages.Link, opts IdeasOptions) []string {
+	cited := sourceArticles(sources)
 	segs := headingSegments(heading)
-	segs = append(segs, plainSegments(prose)...)
+	for _, seg := range plainSegments(prose) {
+		seg.blocks = cite(seg.blocks, cited)
+		segs = append(segs, seg)
+	}
 	if v.Verdict != "" {
 		note := analysisOwnerNote
 		if opts.ForChannel {
@@ -659,13 +686,23 @@ func RenderAnalysis(heading string, v AnalysisVerdict, prose string, opts IdeasO
 			line += " · " + escape(v.Confidence) + " confidence"
 		}
 		blocks := []string{divider + "\n<b>" + VerdictHeading + "</b>\n" + line + "\n" + note}
-		blocks = append(blocks, paragraphs(v.Body)...)
+		blocks = append(blocks, cite(paragraphs(v.Body), cited)...)
 		segs = append(segs, segment{blocks: blocks})
 	}
 	if len(segs) == 0 {
 		return nil
 	}
 	return pack(segs)
+}
+
+// sourceArticles is an analysis's footnotes as the articles its citations
+// count: [1] is the first.
+func sourceArticles(sources []pages.Link) []model.Article {
+	out := make([]model.Article, 0, len(sources))
+	for _, s := range sources {
+		out = append(out, model.Article{Title: s.Title, URL: s.URL})
+	}
+	return out
 }
 
 // VerdictHeading is what the analysis's verdict is shown under.

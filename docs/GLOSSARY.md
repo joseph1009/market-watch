@@ -46,7 +46,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Coming up.** The block under the overview. It lists what is due from now to the end of the week. Economic releases come from ForexFactory's calendar, with their time, forecast and previous figure (🔴 high impact, 🟠 medium). Company results come from Nasdaq's earnings calendar, with what analysts expect a share to earn (⭐ marks a company you follow). The overview's last sub-heading, **What to watch**, says which of these matter and why ([app/calendar.go](../internal/app/calendar.go)).
 
-**Linked terms.** Finance words in the brief. The first time one appears in a section, it links to an explanation, mostly on Investopedia. The list is in [config/glossary.yaml](../config/glossary.yaml), and each link in it has been checked.
+**Linked terms.** Finance words in the brief and in /analyse. The first time one appears in a section of the brief, or anywhere in an analysis, it links to an explanation on Investopedia, Wikipedia or Corporate Finance Institute. The analysis does not define these words itself, so the link is the definition. It also lists the other terms it used, and those the list lacks link to a Google search for their meaning. The list is in [config/glossary.yaml](../config/glossary.yaml), and each link in it has been checked.
 
 **`/analyse`.** The command that writes up one company. It covers what the company does, where it is heading, whether its figures hold up, and the case for and against it. A short verdict comes last.
 

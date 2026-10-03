@@ -28,10 +28,10 @@ CONFIDENCE: medium
 // carries the warning a reader there needs, which the owner's does not.
 func TestAnAnalysisShowsItsVerdictLastAndWarnsTheChannel(t *testing.T) {
 	snap := fundamentals.Snapshot{Ticker: "MU", Company: "MICRON TECHNOLOGY INC"}
-	prose, verdict := fundamentals.SplitVerdict(writtenAnalysis)
+	w := splitAnalysis(writtenAnalysis, nil)
 
-	owner := strings.Join(analysisMessages(snap, prose, verdict, nil, telegram.IdeasOptions{}), "\n")
-	channel := strings.Join(analysisMessages(snap, prose, verdict, nil, telegram.IdeasOptions{ForChannel: true}), "\n")
+	owner := strings.Join(analysisMessages(snap, w, telegram.IdeasOptions{}), "\n")
+	channel := strings.Join(analysisMessages(snap, w, telegram.IdeasOptions{ForChannel: true}), "\n")
 
 	for name, text := range map[string]string{"owner": owner, "channel": channel} {
 		v, b := strings.Index(text, "THE VERDICT"), strings.Index(text, "THE BUSINESS")
@@ -48,6 +48,20 @@ func TestAnAnalysisShowsItsVerdictLastAndWarnsTheChannel(t *testing.T) {
 	for _, want := range []string{"AI-written, unchecked, not advice."} {
 		if !strings.Contains(channel, want) {
 			t.Errorf("the channel's copy is missing %q:\n%s", want, channel)
+		}
+	}
+}
+
+// A name filed in capitals is written as a reader would write it.
+func TestTheCompanysNameIsReadable(t *testing.T) {
+	for filed, want := range map[string]string{
+		"MICRON TECHNOLOGY INC":        "Micron Technology",
+		"ADVANCED MICRO DEVICES INC":   "Advanced Micro Devices",
+		"IBM CORP":                     "IBM",
+		"Rivian Automotive, Inc. / DE": "Rivian Automotive",
+	} {
+		if got := readableName(filed); got != want {
+			t.Errorf("readableName(%q) = %q, want %q", filed, got, want)
 		}
 	}
 }

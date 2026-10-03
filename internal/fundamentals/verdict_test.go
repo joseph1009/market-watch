@@ -65,6 +65,33 @@ func TestProseWithoutAVerdictIsLeftWhole(t *testing.T) {
 	}
 }
 
+// The terms are cut out, once each, even where a term in capitals looks like
+// a heading, and the sources after them stay.
+func TestTheTermsAreCutOut(t *testing.T) {
+	text := "THE BUSINESS\n- HBM chips.\n\nIN SHORT\n### What it does\n- Memory.\n\nTERMS\n- forward P/E\nHBM\n- CoWoS | chip packaging\n- hbm\n\nSOURCES\n1. CNBC|https://www.cnbc.com/a"
+	prose, terms := SplitTerms(text)
+	if want := []string{"forward P/E", "HBM", "CoWoS"}; strings.Join(terms, ",") != strings.Join(want, ",") {
+		t.Errorf("terms = %q", terms)
+	}
+	if prose != "THE BUSINESS\n- HBM chips.\n\nIN SHORT\n### What it does\n- Memory.\n\nSOURCES\n1. CNBC|https://www.cnbc.com/a" {
+		t.Errorf("prose = %q", prose)
+	}
+	if prose, terms := SplitTerms("THE BUSINESS\n- Memory."); terms != nil || prose != "THE BUSINESS\n- Memory." {
+		t.Errorf("without terms: %q, %q", prose, terms)
+	}
+}
+
+// The model's word on its own work, before the first section, is dropped.
+func TestThePreambleIsDropped(t *testing.T) {
+	text := "Searches are done. I checked the results and am now writing the report.\n\nTHE BUSINESS\n- Memory chips."
+	if got := TrimPreamble(text); got != "THE BUSINESS\n- Memory chips." {
+		t.Errorf("TrimPreamble = %q", got)
+	}
+	if got := TrimPreamble("- No headings at all."); got != "- No headings at all." {
+		t.Errorf("without a heading: %q", got)
+	}
+}
+
 // The summary is cut out of the prose, wherever it falls, and the sections
 // either side of it stay.
 func TestTheShortSummaryIsCutOut(t *testing.T) {

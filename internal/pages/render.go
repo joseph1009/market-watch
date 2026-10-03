@@ -235,9 +235,10 @@ func safe(line string, inSources bool) string {
 }
 
 // explains reports whether a link is to an explanation of a word, as the
-// glossary's are (config/glossary.yaml), rather than to a source.
+// glossary's are (config/glossary.yaml), or a search for one, rather than to
+// a source.
 func explains(url string) bool {
-	for _, host := range []string{"https://www.investopedia.com/", "https://en.wikipedia.org/"} {
+	for _, host := range []string{"https://www.investopedia.com/", "https://en.wikipedia.org/", "https://corporatefinanceinstitute.com/", "https://www.google.com/search"} {
 		if strings.HasPrefix(url, host) {
 			return true
 		}

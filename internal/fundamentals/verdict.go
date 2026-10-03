@@ -73,6 +73,68 @@ func SplitShort(prose string) (string, string) {
 	return strings.TrimSpace(strings.Join(rest, "\n")), short
 }
 
+// TermsMarker heads the analysis's list of the terms it used that a reader
+// outside finance might not know. The analysis does not define them; each is
+// linked to a definition instead (the owner's choice, 2026-10-04).
+const TermsMarker = "TERMS"
+
+// SplitTerms takes the terms section out of the analysis prose, and gives its
+// terms once each, as written. A term in capitals on a line of its own,
+// "HBM", reads like a section heading, so the section runs on to the next
+// heading of more than one word, or to SOURCES.
+func SplitTerms(prose string) (string, []string) {
+	lines := strings.Split(prose, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.Trim(strings.TrimSpace(line), "#*: ") == TermsMarker {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return prose, nil
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		t := strings.Trim(strings.TrimSpace(lines[i]), "#*: ")
+		if heading(lines[i]) && (strings.Contains(t, " ") || t == SourcesMarker) {
+			end = i
+			break
+		}
+	}
+	var terms []string
+	seen := map[string]bool{}
+	for _, line := range lines[start+1 : end] {
+		t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "-•*"))
+		// "HBM | high-bandwidth memory" or "HBM: ..." is the term before it.
+		if i := strings.IndexAny(t, "|:"); i >= 0 {
+			t = strings.TrimSpace(t[:i])
+		}
+		t = strings.Trim(t, `"'*`)
+		if t == "" || len(t) > 40 || seen[strings.ToLower(t)] {
+			continue
+		}
+		seen[strings.ToLower(t)] = true
+		terms = append(terms, t)
+	}
+	rest := append(append([]string{}, lines[:start]...), lines[end:]...)
+	return strings.TrimSpace(strings.Join(rest, "\n")), terms
+}
+
+// TrimPreamble drops what the reply says before its first section: the
+// model's account of its own work ("Searches are done. I checked the
+// results..."), which the owner found in a report on 2026-10-03. A reply with
+// no section heading at all comes back whole.
+func TrimPreamble(prose string) string {
+	lines := strings.Split(prose, "\n")
+	for i, line := range lines {
+		if heading(line) {
+			return strings.TrimSpace(strings.Join(lines[i:], "\n"))
+		}
+	}
+	return prose
+}
+
 // sectionAt is where the section headed marker starts, and where the next
 // section starts after it. The start is -1 where there is no such section.
 func sectionAt(lines []string, marker string) (start, end int) {

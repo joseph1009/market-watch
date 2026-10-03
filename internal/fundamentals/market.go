@@ -163,8 +163,12 @@ func (s Snapshot) news() string {
 		if summary := trimSummary(a.Summary); summary != "" {
 			fmt.Fprintf(&b, "    %s\n", summary)
 		}
+		// The address, so an analysis can list the story among its sources.
+		if a.URL != "" {
+			fmt.Fprintf(&b, "    Address: %s\n", a.URL)
+		}
 	}
-	b.WriteString("Cite these by outlet and date when you use them, and say when a report is unconfirmed or when it contradicts what the filings show. Where a story would change the figures, say which line it would land on and in which period.\n")
+	b.WriteString("Say when a report is unconfirmed or when it contradicts what the filings show. Where a story would change the figures, say which line it would land on and in which period.\n")
 	return b.String()
 }
 
