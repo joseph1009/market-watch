@@ -135,3 +135,28 @@ func TestSpacedBulletsAreOneList(t *testing.T) {
 		t.Errorf("page = %s", got)
 	}
 }
+
+// A line chart draws each line as a path, with a gap where a value is
+// missing, and names its range and its dates; paired columns draw two bars a
+// period with what they make under them.
+func TestLinesAndPairsAreDrawn(t *testing.T) {
+	doc := Doc{Title: "t", Parts: []Part{
+		Lines{Title: "The price over the year", LowText: "90", HighText: "120", From: "Oct 2025", To: "2 Oct 2026",
+			Lines: []Line{{Label: "Closing price", Values: []float64{100, 120, 90}}, {Label: "50-day average", Tone: 1, Values: []float64{0, 110, 105}}}},
+		Pairs{Title: "Cash", A: "Cash from operations", B: "Capital spending",
+			Items: []Pair{{Label: "2024", A: 10, B: 4, Text: "$6m"}, {Label: "2025", A: 12, B: 15, Text: "-$3m"}}},
+	}}
+	page := Fragment(Page{Title: "t", Doc: &doc})
+	for _, want := range []string{
+		`<path class="line tone0" d="M0.0 `, `<path class="line tone1" d="M500.0 `,
+		`<span class="line-high">120</span>`, "Oct 2025", "2 Oct 2026", "50-day average",
+		`class="pair-bar tone0"`, `class="pair-bar tone1"`, "<b>-$3m</b>2025", "Capital spending",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "<script") {
+		t.Error("a chart brought a script")
+	}
+}

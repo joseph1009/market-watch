@@ -73,6 +73,17 @@ type Trading struct {
 	// they were read. A share up 30% in a year when the market rose 25% has
 	// barely led it, and the share's own figures cannot say so.
 	Market []Return
+
+	// Path is the last year's closes, each with the 50- and 200-day averages
+	// as they stood that day, oldest first: what the analysis page draws.
+	Path []PricePoint `json:",omitempty"`
+}
+
+// PricePoint is one session's close and its averages. An average is zero
+// where there was not yet history enough for it.
+type PricePoint struct {
+	Date               time.Time
+	Close, MA50, MA200 float64
 }
 
 // MarketOver is the S&P 500's move over the named stretch, if it was read.

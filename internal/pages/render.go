@@ -375,6 +375,19 @@ table.labelled tr.marked td:first-child { background: var(--box); }
 .col-labels { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 10px; margin-top: 8px; font-size: 12px; line-height: 1.3; color: var(--muted); text-align: center; }
 .col-labels b { display: block; color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 
+.line-plot { position: relative; height: 180px; padding-left: 56px; }
+.line-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.line-high, .line-low { position: absolute; left: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.line-high { top: 0; } .line-low { bottom: 0; }
+.line { fill: none; stroke-width: 1.5px; stroke-linejoin: round; }
+.line.tone0 { stroke: var(--link); stroke-width: 2.25px; } .line.tone1 { stroke: var(--medium); } .line.tone2 { stroke: var(--mark); }
+.line-ends { display: flex; justify-content: space-between; margin: 6px 0 0 56px; font-size: 12px; color: var(--muted); }
+.key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.swatch { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.swatch.tone0 { background: var(--link); } .swatch.tone1 { background: var(--medium); } .swatch.tone2 { background: var(--mark); }
+.pair-bar { position: absolute; width: 30%; border-radius: 3px; }
+.pair-bar.tone0 { left: 16%; background: var(--link); } .pair-bar.tone1 { right: 16%; background: var(--medium); }
+
 .range-track { position: relative; height: 10px; margin: 30px 6px 30px; background: var(--track); border-radius: 5px; }
 .range-mark { position: absolute; top: -6px; width: 2px; height: 22px; background: var(--mark); }
 .range-mark:nth-child(even) span { bottom: auto; top: 24px; }

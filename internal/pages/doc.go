@@ -93,6 +93,42 @@ type Columns struct {
 	Note  string // Telegram HTML
 }
 
+// Line is one series on a line chart: a value a point, oldest first. A
+// zero is a gap, such as an average before there was history enough for it.
+type Line struct {
+	Label  string // plain text, for the key
+	Values []float64
+	Tone   int // 0 the main line, 1 and 2 the lines read against it
+}
+
+// Lines is a line chart over time, such as a price and its averages. Its
+// lowest and highest values are written at the side, and its first and last
+// dates under it.
+type Lines struct {
+	Title    string // plain text
+	Lines    []Line
+	LowText  string // plain text: the lowest value
+	HighText string // and the highest
+	From, To string // plain text: the first and last dates
+	Note     string // Telegram HTML
+}
+
+// Pair is one period of a paired column chart: two figures side by side.
+type Pair struct {
+	Label string // plain text
+	A, B  float64
+	Text  string // plain text, printed under the pair: what the two make together
+}
+
+// Pairs is a column chart of two figures a period, side by side, oldest
+// first: what came in against what went out.
+type Pairs struct {
+	Title string // plain text
+	A, B  string // plain text: the two figures' names, for the key
+	Items []Pair
+	Note  string // Telegram HTML
+}
+
 // Mark is a point placed on a range.
 type Mark struct {
 	Label string // plain text
@@ -322,6 +358,113 @@ func (b Bars) write(w *writer) {
 	}
 	if b.Note != "" {
 		w.WriteString("<p class=\"small\">" + safe(b.Note, false) + "</p>\n")
+	}
+	w.WriteString("</figure>\n")
+}
+
+// chartWidth and chartHeight are a line chart's drawing box. It is stretched
+// to the page's width, and its lines keep their width as it stretches.
+const chartWidth, chartHeight = 1000.0, 300.0
+
+func (l Lines) write(w *writer) {
+	low, high := math.Inf(1), math.Inf(-1)
+	points := 0
+	for _, line := range l.Lines {
+		points = max(points, len(line.Values))
+		for _, v := range line.Values {
+			if v != 0 {
+				low, high = math.Min(low, v), math.Max(high, v)
+			}
+		}
+	}
+	if points < 2 || !(high > low) {
+		return
+	}
+	pad := (high - low) * 0.05
+	low, high = low-pad, high+pad
+	w.WriteString("<figure class=\"chart lines\">\n")
+	if l.Title != "" {
+		w.WriteString("<figcaption>" + text(l.Title) + "</figcaption>\n")
+	}
+	w.WriteString("<div class=\"line-plot\"><span class=\"line-high\">" + text(l.HighText) + "</span><span class=\"line-low\">" + text(l.LowText) + "</span>")
+	w.WriteString(fmt.Sprintf("<svg viewBox=\"0 0 %.0f %.0f\" preserveAspectRatio=\"none\" role=\"img\" aria-label=\"%s\">", chartWidth, chartHeight, text(l.Title)))
+	// The main line last, so it is drawn over the others.
+	for i := len(l.Lines) - 1; i >= 0; i-- {
+		line := l.Lines[i]
+		var d strings.Builder
+		pen := false
+		for j, v := range line.Values {
+			if v == 0 {
+				pen = false
+				continue
+			}
+			x := chartWidth * float64(j) / float64(points-1)
+			y := chartHeight * (high - v) / (high - low)
+			if pen {
+				d.WriteString(fmt.Sprintf("L%.1f %.1f", x, y))
+			} else {
+				d.WriteString(fmt.Sprintf("M%.1f %.1f", x, y))
+				pen = true
+			}
+		}
+		if d.Len() > 0 {
+			w.WriteString(fmt.Sprintf("<path class=\"line tone%d\" d=\"%s\" vector-effect=\"non-scaling-stroke\"/>", line.Tone, d.String()))
+		}
+	}
+	w.WriteString("</svg></div>\n")
+	w.WriteString("<div class=\"line-ends\"><span>" + text(l.From) + "</span><span>" + text(l.To) + "</span></div>\n")
+	w.WriteString("<div class=\"key\">")
+	for _, line := range l.Lines {
+		w.WriteString(fmt.Sprintf("<span><i class=\"swatch tone%d\"></i>%s</span>", line.Tone, text(line.Label)))
+	}
+	w.WriteString("</div>\n")
+	if l.Note != "" {
+		w.WriteString("<p class=\"small\">" + safe(l.Note, false) + "</p>\n")
+	}
+	w.WriteString("</figure>\n")
+}
+
+func (p Pairs) write(w *writer) {
+	if len(p.Items) == 0 {
+		return
+	}
+	// Both figures on one scale, from zero, or from below it where one is
+	// negative.
+	var top, bottom float64
+	for _, it := range p.Items {
+		top = math.Max(top, math.Max(it.A, it.B))
+		bottom = math.Min(bottom, math.Min(it.A, it.B))
+	}
+	span := top - bottom
+	if span <= 0 {
+		return
+	}
+	zero := 100 * top / span
+	bar := func(v float64, tone string) string {
+		height := 100 * math.Abs(v) / span
+		at := zero - height
+		if v < 0 {
+			at = zero
+		}
+		return fmt.Sprintf("<span class=\"pair-bar %s\" style=\"top:%.2f%%;height:%.2f%%\"></span>", tone, at, math.Max(height, 0.8))
+	}
+	w.WriteString("<figure class=\"chart pairs\">\n")
+	if p.Title != "" {
+		w.WriteString("<figcaption>" + text(p.Title) + "</figcaption>\n")
+	}
+	w.WriteString(fmt.Sprintf("<div class=\"col-plot\" style=\"--cols:%d\">\n", len(p.Items)))
+	for _, it := range p.Items {
+		w.WriteString(fmt.Sprintf("<div class=\"col\"><span class=\"col-zero\" style=\"top:%.2f%%\"></span>%s%s</div>\n",
+			zero, bar(it.A, "tone0"), bar(it.B, "tone1")))
+	}
+	w.WriteString("</div>\n<div class=\"col-labels\" style=\"--cols:" + fmt.Sprint(len(p.Items)) + "\">")
+	for _, it := range p.Items {
+		w.WriteString("<span><b>" + text(it.Text) + "</b>" + text(it.Label) + "</span>")
+	}
+	w.WriteString("</div>\n")
+	w.WriteString("<div class=\"key\"><span><i class=\"swatch tone0\"></i>" + text(p.A) + "</span><span><i class=\"swatch tone1\"></i>" + text(p.B) + "</span></div>\n")
+	if p.Note != "" {
+		w.WriteString("<p class=\"small\">" + safe(p.Note, false) + "</p>\n")
 	}
 	w.WriteString("</figure>\n")
 }

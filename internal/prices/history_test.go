@@ -303,3 +303,21 @@ func TestFetchKeepsWhenEachSessionOpened(t *testing.T) {
 		t.Errorf("first bar opened %v, dated %v", first.Opened, first.Date)
 	}
 }
+
+// The path is the last year's closes with the averages as they stood each
+// day, and no average before there was history enough for it.
+func TestSummariseKeepsTheYearsPath(t *testing.T) {
+	s := series(400, 1_000_000)
+	got := Summarise(s, s.Bars[len(s.Bars)-1].Date.AddDate(0, 0, 1))
+
+	if len(got.Path) != 366 {
+		t.Fatalf("path has %d points, want the 366 days of the last year", len(got.Path))
+	}
+	first, last := got.Path[0], got.Path[len(got.Path)-1]
+	if first.Close != 134 || first.MA50 != 0 || first.MA200 != 0 {
+		t.Errorf("first point = %+v, want 134 with no averages yet", first)
+	}
+	if last.Close != 499 || last.MA50 != got.MA50 || last.MA200 != got.MA200 {
+		t.Errorf("last point = %+v, want the close and the averages Summarise gives", last)
+	}
+}

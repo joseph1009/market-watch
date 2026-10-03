@@ -339,7 +339,28 @@ func Summarise(s Series, now time.Time) model.Trading {
 			t.Low52, t.LowAt = b.Low, b.Date
 		}
 	}
+	t.Path = path(s.Bars, year)
 	return t
+}
+
+// path is each session's close from a date on, with the 50- and 200-day
+// averages as they stood that day.
+func path(bars []Bar, from time.Time) []model.PricePoint {
+	var out []model.PricePoint
+	for i, b := range bars {
+		if b.Date.Before(from) || b.Close <= 0 {
+			continue
+		}
+		p := model.PricePoint{Date: b.Date, Close: b.Close}
+		if i >= 49 {
+			p.MA50 = mean(closes(bars[i-49 : i+1]))
+		}
+		if i >= 199 {
+			p.MA200 = mean(closes(bars[i-199 : i+1]))
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // change is the move from the last close at or before a date to the latest one,

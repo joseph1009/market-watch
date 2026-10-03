@@ -115,10 +115,6 @@ is, what it needs from you, and why it is worth doing.
   given tools of our own through an MCP server (`--mcp-config`). The Go side
   could then offer `find_concepts`, `read_concept` and `compute` to the
   analysis call. Until then, every analysis works from the table.
-- **Charts.** The trading history is described in words. A picture would
-  carry more of it in less space, for example the price against its averages,
-  or free cash flow against capital spending. Telegram takes images, but
-  drawing one needs a Go plotting library.
 - **Companies with no US listing.** The analysis reads SEC filings, so it
   can't cover Tencent, Keyence or anything else without a US listing. Japan's
   EDINET is a free XBRL service and would cover Tokyo. Hong Kong and mainland
@@ -179,6 +175,10 @@ is, what it needs from you, and why it is worth doing.
     companies in its Nasdaq industry worth US$500m or more, from the SEC's
     figures for the last calendar year. The analysis page shows it as a
     table.
+  - Charts on the pages: the price's last year against its 50- and 200-day
+    averages, on the analysis page and each closer-look card, and cash from
+    operations against capital spending, year by year. They are drawn as
+    inline SVG, so no plotting library or image was needed.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.

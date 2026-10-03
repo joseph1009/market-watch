@@ -465,10 +465,42 @@ func priceParts(q *model.Quote, tr *model.Trading) []pages.Part {
 		r.Note = fmt.Sprintf("<i>In %s. The marks are the average closing price over the last 50 and 200 sessions.</i>", escape(unit))
 		parts = append(parts, r)
 	}
+	if line, ok := priceLine(tr, unit); ok {
+		parts = append(parts, line)
+	}
 	if len(moves) > 1 {
 		parts = append(parts, pages.Bars{Title: "Its moves", Items: moves})
 	}
 	return parts
+}
+
+// priceLine is the share's closing price over its last year, against its 50-
+// and 200-day averages as they stood each day. Whether the price is above or
+// below them, and since when, is most of what a chart reader looks for.
+func priceLine(tr *model.Trading, unit string) (pages.Lines, bool) {
+	if len(tr.Path) < 20 {
+		return pages.Lines{}, false
+	}
+	price := pages.Line{Label: "Closing price", Tone: 0}
+	ma50 := pages.Line{Label: "50-day average", Tone: 1}
+	ma200 := pages.Line{Label: "200-day average", Tone: 2}
+	low, high := tr.Path[0].Close, tr.Path[0].Close
+	for _, p := range tr.Path {
+		price.Values = append(price.Values, p.Close)
+		ma50.Values = append(ma50.Values, p.MA50)
+		ma200.Values = append(ma200.Values, p.MA200)
+		low, high = min(low, p.Close), max(high, p.Close)
+	}
+	first, last := tr.Path[0].Date, tr.Path[len(tr.Path)-1].Date
+	return pages.Lines{
+		Title:    "The price over the year",
+		Lines:    []pages.Line{price, ma50, ma200},
+		LowText:  formatPrice(low),
+		HighText: formatPrice(high),
+		From:     first.Format("Jan 2006"),
+		To:       last.Format("2 Jan 2006"),
+		Note:     fmt.Sprintf("<i>Daily closes in %s, with the year's highest and lowest close at the side. The averages are of the last 50 and 200 closes, as they stood each day.</i>", escape(unit)),
+	}, true
 }
 
 // moveChips is a line of share moves, each coloured by its direction.
@@ -678,6 +710,19 @@ func accountsParts(acc Accounts) []pages.Part {
 		}
 		if len(margin.Items) > 1 {
 			parts = append(parts, margin)
+		}
+		cash := pages.Pairs{Title: "Cash from the business against what it invests, year by year",
+			A: "Cash from operations", B: "Capital spending"}
+		for _, y := range years {
+			in, ok1 := y.Figures["operatingCashFlow"]
+			out, ok2 := y.Figures["capitalExpenditure"]
+			if ok1 && ok2 {
+				cash.Items = append(cash.Items, pages.Pair{Label: shortPeriod(y.Label), A: in, B: out, Text: money(in-out, acc.Currency)})
+			}
+		}
+		if len(cash.Items) > 1 {
+			cash.Note = "<i>The bold figure under each year is its free cash flow: the cash from operations left after capital spending.</i>"
+			parts = append(parts, cash)
 		}
 	}
 	if len(parts) > 0 {

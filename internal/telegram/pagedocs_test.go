@@ -179,3 +179,22 @@ func TestTheAnalysisPageSetsTheCompanyBesideItsIndustry(t *testing.T) {
 		}
 	}
 }
+
+// The analysis page draws the price's year against its averages, and the
+// cash the business makes against what it invests.
+func TestTheAnalysisPageDrawsThePriceAndTheCash(t *testing.T) {
+	tr := &model.Trading{Last: 120, High52: 130, Low52: 80}
+	for i := 0; i < 30; i++ {
+		tr.Path = append(tr.Path, model.PricePoint{Date: time.Date(2025, 10, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i), Close: 90 + float64(i), MA50: 95})
+	}
+	acc := Accounts{Trading: tr, Years: []Period{
+		{Label: "FY to 31 Dec 2025", Figures: map[string]float64{"operatingCashFlow": 5e9, "capitalExpenditure": 2e9}},
+		{Label: "FY to 31 Dec 2024", Figures: map[string]float64{"operatingCashFlow": 4e9, "capitalExpenditure": 3e9}},
+	}}
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{"The price over the year", "200-day average", "Cash from the business against what it invests", "<b>$3.00bn</b>", "<b>$1.00bn</b>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

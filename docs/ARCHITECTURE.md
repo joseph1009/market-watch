@@ -1291,9 +1291,14 @@ page under a random id and deletes pages a month old. `Store.Handler` and
 `Store.Serve` answer `GET /r/<id>` and nothing else.
 
 **[doc.go](../internal/pages/doc.go)** has `Doc` and its parts: sections,
-tables, bar and column charts, a price's range, facts, a company's card, an
-industry's chain, and folded sources. The charts are HTML and CSS, with no
-scripts and no images.
+tables, bar and column charts, a line chart (`Lines`), paired columns
+(`Pairs`), a price's range, facts, a company's card, an industry's chain, and
+folded sources. The charts are HTML, CSS and inline SVG, with no scripts and
+no images. The line chart draws the price's last year against its 50- and
+200-day averages, from `model.Trading.Path`, on the analysis page and on each
+closer-look card. The paired columns set a company's cash from operations
+beside its capital spending, year by year, with the free cash flow under
+each year.
 
 **[render.go](../internal/pages/render.go)** has `Render` and `Fragment`. They
 lay a page out from its `Doc`, or from Telegram's messages when it has none.
