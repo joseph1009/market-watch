@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/search"
@@ -113,6 +114,61 @@ func (a *App) companyName(ctx context.Context, ticker string) string {
 		return ""
 	}
 	return name
+}
+
+// marketMovesShown is how many of the market's outsized moves the line under
+// the overview names: one line on a phone.
+const marketMovesShown = 5
+
+// marketMoves are the last session's biggest moves across the whole US
+// market, followed or not, for the line under the overview. They are the
+// moves the closer look's reactions start from (market.Moves): several times
+// the share's usual daily move, on heavy trading, among companies worth
+// US$2bn or more. The market's history is brought up to date first.
+//
+// None when there is no history yet, or when its latest session is one the
+// previous brief already reported, as on the morning after a holiday.
+func (a *App) marketMoves(ctx context.Context, since time.Time) []model.MarketMove {
+	if a.MarketStore == nil {
+		return nil
+	}
+	a.topUpMarket(ctx)
+	listings, err := a.listings(ctx)
+	if err != nil {
+		a.Log.Warn("no moves across the market: Nasdaq's listings could not be read", "error", err)
+		return nil
+	}
+	panel, err := a.MarketStore.Load(a.now().Add(-reactionHistory), nil)
+	if err != nil {
+		a.Log.Warn("no moves across the market: the market's recent history could not be read", "error", err)
+		return nil
+	}
+	if len(panel.Dates) < 62 {
+		return nil // still filling, or no Massive key; the closer look says so
+	}
+	closed := sessionClose(panel.Last())
+	if !since.IsZero() && !closed.After(since) {
+		return nil
+	}
+	moves := market.Moves(panel, listings, market.DefaultRules, moveTimes, moveBusy)
+	out := make([]model.MarketMove, 0, marketMovesShown)
+	for _, m := range moves[:min(marketMovesShown, len(moves))] {
+		out = append(out, model.MarketMove{
+			Quote: model.Quote{Symbol: m.Symbol, Price: m.Price, Percent: 100 * m.Percent, AsOf: closed},
+			Name:  market.PlainName(m.Name), Times: m.Times, Busy: m.Busy,
+		})
+	}
+	return out
+}
+
+// sessionClose is when a session, dated as the market's history dates it,
+// closed: four in the afternoon in New York.
+func sessionClose(day time.Time) time.Time {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		ny = time.FixedZone("EST", -5*60*60)
+	}
+	return time.Date(day.Year(), day.Month(), day.Day(), 16, 0, 0, 0, ny)
 }
 
 // trendsFor reads the price history of the shares that moved furthest, so the

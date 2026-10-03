@@ -1283,6 +1283,25 @@ func TestRenderPutsTheBiggestMovesUnderTheHeading(t *testing.T) {
 	}
 }
 
+// The market's outsized moves sit under the overview's heading, in the
+// message and on the page.
+func TestTheMovesAcrossTheMarketSitUnderTheOverview(t *testing.T) {
+	rep := testReport()
+	rep.MarketMoves = []model.MarketMove{
+		{Quote: model.Quote{Symbol: "FICO", Percent: -26.5}, Name: "Fair Isaac"},
+		{Quote: model.Quote{Symbol: "IOVA", Percent: 31.5}, Name: "Iovance"},
+	}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if want := "<b>OVERVIEW</b>\n<i>Across the market: FICO -26.5% · IOVA +31.5%</i>"; !strings.Contains(out, want) {
+		t.Errorf("rendered brief lacks %q:\n%s", want, out)
+	}
+	page := render(BriefDoc(rep, Market{}, Options{Display: time.UTC}))
+	if !strings.Contains(page, "Across the market") || !strings.Contains(page, "FICO -26.5%") {
+		t.Errorf("page lacks the line:\n%s", page)
+	}
+}
+
 // The week's picks come under their themes, each theme with its numbers and
 // what the research found, labelled popular or early; the reactions follow,
 // then the earlier picks. A pick says where it fits and what its price is

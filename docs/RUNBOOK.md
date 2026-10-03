@@ -528,7 +528,9 @@ like "Why did McDonald's (MCD) shares fall?". There are at most five a brief,
 the biggest moves first. To find them, every watchlist share is priced at the
 start of the run. That takes about two minutes at Finnhub's free pace, and runs
 alongside the feeds. The log line `searched movers` names them. The same prices
-give each section its line of biggest moves under the heading.
+give each section its line of biggest moves under the heading. The line
+under the overview, "Across the market", comes from the market's history
+instead, so it needs the Massive key.
 
 **What a search returns.** Tavily sends back a short passage from each
 article, chosen as the most relevant part. It doesn't send the whole page or a

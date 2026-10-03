@@ -93,3 +93,23 @@ func TestTrendSaysNothingOfVolumeMidSession(t *testing.T) {
 		t.Errorf("trend = %q, want no volume comparison for a partial session", got)
 	}
 }
+
+// The market's outsized moves reach the prompt with each company's name, so
+// an article about one can be found, and are carried to the renderer.
+func TestPromptShowsTheMovesAcrossTheMarket(t *testing.T) {
+	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
+	moves := []model.MarketMove{{Quote: model.Quote{Symbol: "FICO", Percent: -26.5}, Name: "Fair Isaac", Times: 11.3, Busy: 8}}
+	g := &Generator{Completer: fake, Now: testTime, MarketMoves: moves}
+
+	rep, err := g.Generate(context.Background(), testArticles(), reportGroups())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	want := "- FICO (Fair Isaac): -26.5%, 11.3 times its usual daily move, on 8.0 times its usual trading"
+	if !strings.Contains(fake.prompt, want) || !strings.Contains(fake.prompt, "shown this line under the overview") {
+		t.Errorf("prompt missing %q:\n%s", want, fake.prompt)
+	}
+	if len(rep.MarketMoves) != 1 {
+		t.Errorf("market moves = %+v, want FICO carried to the renderer", rep.MarketMoves)
+	}
+}

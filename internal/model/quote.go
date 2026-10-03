@@ -61,3 +61,26 @@ func Moves(quotes []Quote) string {
 	}
 	return strings.Join(parts, " · ")
 }
+
+// MarketMove is a share anywhere in the US market that moved far beyond its
+// usual on the last session, followed or not: what the brief's line under the
+// overview shows. The program picks them from the market's history, as the
+// closer look's reactions do.
+type MarketMove struct {
+	Quote
+	Name string `json:"name"`
+
+	// Times is the move against the share's usual daily move, and Busy the
+	// value traded against its usual session's.
+	Times float64 `json:"times"`
+	Busy  float64 `json:"busy"`
+}
+
+// MarketQuotes are the moves as quotes, for the line that shows them.
+func MarketQuotes(moves []MarketMove) []Quote {
+	out := make([]Quote, len(moves))
+	for i, m := range moves {
+		out[i] = m.Quote
+	}
+	return out
+}

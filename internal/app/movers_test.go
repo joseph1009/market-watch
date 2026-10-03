@@ -14,6 +14,7 @@ import (
 
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/history"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/report"
@@ -138,5 +139,39 @@ func TestABriefPricesTheWatchlistAndSearchesForTheMover(t *testing.T) {
 	}
 	if run := a.Runs.All()[0]; run.SearchCredits != len(search.Queries(a.prefs.Groups))+1 {
 		t.Errorf("credits = %d, want the regular searches and one for the mover", run.SearchCredits)
+	}
+}
+
+// The line under the overview names the market's outsized moves, followed or
+// not, biggest against their usual first, and leaves out a share that only
+// drifted.
+func TestMarketMovesAreTheOutsizedMovesAcrossTheMarket(t *testing.T) {
+	a, _ := newTestApp(t)
+	fakeMarket(t, a, 70, []market.Listing{
+		{Symbol: "RMBS", Name: "Rambus Inc. Common Stock", MarketCap: 8e9},
+		{Symbol: "FICO", Name: "Fair Isaac Corporation Common Stock", MarketCap: 13e9},
+		{Symbol: "CALM", Name: "Calm Holdings Inc. Common Stock", MarketCap: 8e9},
+		{Symbol: "TINY", Name: "Tiny Corp. Common Stock", MarketCap: 5e8},
+	}, map[string]float64{"RMBS": 0.15, "FICO": -0.26, "TINY": 0.40}, nil)
+
+	got := a.marketMoves(context.Background(), time.Date(2026, 9, 9, 11, 30, 0, 0, time.UTC))
+
+	if line := model.Moves(model.MarketQuotes(got)); line != "FICO -26.0% · RMBS +15.0%" {
+		t.Errorf("line = %q, want FICO then RMBS, without the drifting or the small", line)
+	}
+	if len(got) > 0 && (got[0].Name != "Fair Isaac" || got[0].Times < moveTimes) {
+		t.Errorf("first = %+v, want Fair Isaac's name and how far beyond its usual", got[0])
+	}
+}
+
+// A session the previous brief already reported, as on the morning after a
+// holiday, is not shown as the day's.
+func TestMarketMovesLeaveOutASessionAlreadyReported(t *testing.T) {
+	a, _ := newTestApp(t)
+	fakeMarket(t, a, 70, []market.Listing{{Symbol: "RMBS", Name: "Rambus Inc. Common Stock", MarketCap: 8e9}},
+		map[string]float64{"RMBS": 0.15}, nil)
+
+	if got := a.marketMoves(context.Background(), time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)); len(got) != 0 {
+		t.Errorf("got %+v from the session the last brief reported", got)
 	}
 }

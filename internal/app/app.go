@@ -513,6 +513,13 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	due := make(chan model.Calendar, 1)
 	go func() { due <- a.collectCalendar(ctx, watched) }()
 
+	// The biggest moves across the whole market, from its history, for the
+	// line under the overview. Topping the history up may take minutes, and
+	// nothing waits on it until the brief is written.
+	since := a.searchSince()
+	widely := make(chan []model.MarketMove, 1)
+	go func() { widely <- a.marketMoves(ctx, since) }()
+
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
 	// bolted on afterwards.
@@ -523,7 +530,6 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	// A share that moved well beyond the market gets a search of its own for
 	// why, so the reason reaches the brief whether or not a feed carried it.
 	quotes := <-priced
-	since := a.searchSince()
 	moved := movers(quotes, watched, since)
 	found = search.Merge(found, a.searchMovers(ctx, moved, companyNames(prefs.Groups)))
 
@@ -641,7 +647,9 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	a.Generator.Trends = a.trendsFor(ctx, moved)
 	a.Generator.MovesSince = since
 	a.Generator.Calendar = <-due
+	a.Generator.MarketMoves = <-widely
 	cached.Save("calendar", a.Generator.Calendar)
+	cached.Save("market_moves", a.Generator.MarketMoves)
 	cached.Save("levels", a.Generator.Levels)
 	cached.Save("trends", a.Generator.Trends)
 

@@ -12,11 +12,11 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 ## What the reader sees
 
-**Brief.** The daily message. It goes out on weekdays at 07:30 New York time, two hours before the US market opens. In Singapore that is 19:30 while the US is on daylight saving time (until 1 November), and 20:30 after that. It starts with an overview, then has one section for each sector. Every claim carries a numbered link to its article. [`sendReport`](../internal/app/app.go#L478) builds it.
+**Brief.** The daily message. It goes out on weekdays at 07:30 New York time, two hours before the US market opens. In Singapore that is 19:30 while the US is on daylight saving time (until 1 November), and 20:30 after that. It starts with an overview, then has one section for each sector. Every claim carries a numbered link to its article. [`sendReport`](../internal/app/app.go#L492) builds it.
 
 **Sector, section, watchlist.** These all mean the brief's sections, such as chips or banks. Each one is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). A "followed" company is one listed there.
 
-**Moves line.** The line under a section's heading. It shows the biggest moves of that section's shares on the day ([report/moves.go](../internal/report/moves.go)).
+**Moves line.** The line under a section's heading. It shows the biggest moves of that section's shares on the day ([report/moves.go](../internal/report/moves.go)). The overview has one too, "Across the market". It shows the day's biggest moves among all US companies worth US$2bn or more, each against the share's usual ([movers.go](../internal/app/movers.go)).
 
 **Movers.** Followed shares that moved at least 3 percentage points more than the S&P 500 fund, up or down. Up to 5 of them get a news search of their own, asking why they moved ([movers.go](../internal/app/movers.go)).
 

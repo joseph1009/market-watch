@@ -89,11 +89,11 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L789) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L797) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
-[`Publish`](../internal/app/app.go#L385) → [`brief(ctx, share: true)`](../internal/app/app.go#L405).
+[`Publish`](../internal/app/app.go#L389) → [`brief(ctx, share: true)`](../internal/app/app.go#L405).
 
 `brief` does three things before any work starts:
 
@@ -120,11 +120,11 @@ allowed for the scan ran out.
 
 [`collectFilings`](../internal/app/filings.go#L25) runs next, so that filings
 are treated like any other news rather than added at the end. It calls
-[`sec.Client.Collect`](../internal/sec/sec.go#L106). That looks each watchlist
+[`sec.Client.Collect`](../internal/sec/sec.go#L107). That looks each watchlist
 ticker up in EDGAR's ticker index and reads its recent filings. It keeps only
-the 8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L269)),
+the 8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L270)),
 and turns each filing into a `model.Article` with
-[`Filing.article`](../internal/sec/sec.go#L172).
+[`Filing.article`](../internal/sec/sec.go#L173).
 
 [`collectSearch`](../internal/app/search.go#L26) runs next, for the same
 reason. [`search.Queries`](../internal/search/queries.go#L56) builds the
@@ -139,12 +139,12 @@ plus the outlet's domain, such as `web:reuters.com`. It is ranked with that
 outlet's weight. Search is an extra, like the filings. Without a key, or on a
 day Tavily is down, the brief comes from the feeds alone.
 
-When the prices are in, [`movers`](../internal/app/movers.go#L33) picks the
+When the prices are in, [`movers`](../internal/app/movers.go#L34) picks the
 watchlist shares that moved at least three percentage points more than the
 S&P 500 fund, up or down. It picks at most five, the biggest moves first, and
 none from a session the previous brief already reported. Because the moves are
 measured against the market, a sell-off doesn't set off a search for every
-share that fell with it. [`searchMovers`](../internal/app/movers.go#L71) then
+share that fell with it. [`searchMovers`](../internal/app/movers.go#L72) then
 asks why each one moved, for example "Why did McDonald's (MCD) shares fall
 today?". The question comes from
 [`search.MoverQuery`](../internal/search/queries.go#L135). It uses the company's
@@ -152,6 +152,14 @@ name as [config/companies.yaml](../config/companies.yaml) gives it, or as the
 SEC files it where that file has none.
 [`search.Merge`](../internal/search/search.go#L273) adds the results to the
 other searches'.
+
+Alongside the prices, [`marketMoves`](../internal/app/movers.go#L131) looks
+past the watchlist. It reads the whole market's history and picks the last
+session's five biggest moves against each share's usual, among companies worth
+US$2bn or more, followed or not. These are the moves the closer look's
+reactions start from (`market.Moves`). Each moved at least three times its
+usual daily move, on at least twice its usual trading. A session the previous
+brief already reported gives none.
 
 Then [`feed.Collect`](../internal/feed/collect.go#L115), the heart of the
 gathering, runs these steps:
@@ -240,7 +248,7 @@ the consumer price index and its core, asked for as the change from a year
 earlier.
 
 The prices read at the start go to the brief whole. For the movers,
-[`trendsFor`](../internal/app/movers.go#L121) also reads each one's price
+[`trendsFor`](../internal/app/movers.go#L177) also reads each one's price
 history from the chart source. That gives its 50- and 200-day averages, its
 range over the year, and the day's volume against its usual. With these, the
 brief can say what kind of move it was.
@@ -250,19 +258,21 @@ the brief.
 
 ### 4. Writing
 
-[`report.Generator.Generate`](../internal/report/generate.go#L68) does four
+[`report.Generator.Generate`](../internal/report/generate.go#L73) does four
 things:
 
 - [`splitByCoverage`](../internal/report/prompt.go#L83) decides which
   watchlists have enough news for a section, and which are just quiet.
-- [`buildPrompt`](../internal/report/prompt.go#L115) puts the prompt together.
+- [`buildPrompt`](../internal/report/prompt.go#L118) puts the prompt together.
   It starts with the market levels
-  ([`renderMarketData`](../internal/report/prompt.go#L340)) and the prices with
-  the movers' history ([`renderPrices`](../internal/report/prompt.go#L363)).
+  ([`renderMarketData`](../internal/report/prompt.go#L347)) and the prices with
+  the movers' history ([`renderPrices`](../internal/report/prompt.go#L385)),
+  then the moves across the market
+  ([`renderMarketMoves`](../internal/report/prompt.go#L362)).
   Then come each active section's articles under its line of biggest moves
   ([`sectionMoves`](../internal/report/moves.go#L30)). Last comes the general
   news the overview may draw on. Every article gets a citation number from
-  [`numbering`](../internal/report/prompt.go#L245). The writer is told that the
+  [`numbering`](../internal/report/prompt.go#L252). The writer is told that the
   reader sees the moves line, so it explains the moves rather than listing
   them.
 - The call goes through `Completer`, which is the relay.
@@ -296,7 +306,7 @@ chart source.
 Since 1 October 2026 the brief has been written in plainer English, with about
 twice the room. Each sub-heading and sector heading has an emoji
 ([config/sectors.yaml](../config/sectors.yaml)). The key figure in a bullet is
-marked `**so**`, and [`highlight`](../internal/telegram/render.go#L388) shows
+marked `**so**`, and [`highlight`](../internal/telegram/render.go#L394) shows
 it in bold. [`linkTerms`](../internal/telegram/terms.go#L19) links the first
 mention in a section of each term in
 [config/glossary.yaml](../config/glossary.yaml) to a page that explains it. It
@@ -307,19 +317,19 @@ ahead.
 [`telegram.RenderWith`](../internal/telegram/render.go#L91) turns the report
 into Telegram's HTML. It lays out the overview, each section under its line of
 biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L744)), the quiet
+([`renderCandidates`](../internal/telegram/render.go#L750)), the quiet
 watchlists, the source links, and a footer of token counts. Citations become
-links through [`linkCitations`](../internal/telegram/render.go#L701).
+links through [`linkCitations`](../internal/telegram/render.go#L707).
 
 The brief is written as sub-headings, each a `### ` line, over one-sentence
-bullets. [`paragraphs`](../internal/telegram/render.go#L250) keeps each
-sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L345)
+bullets. [`paragraphs`](../internal/telegram/render.go#L256) keeps each
+sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L351)
 makes the sub-heading bold and turns each `- ` into a bullet, with a blank line
 between bullets. The section headings are in capitals so they stand above the
 sub-headings. A block written the older way, as a label and a dash, still gets
-its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L289)).
+its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L295)).
 
-[`pack`](../internal/telegram/render.go#L409) then spreads the pieces across
+[`pack`](../internal/telegram/render.go#L415) then spreads the pieces across
 messages, within Telegram's limit of 4,096 characters. It breaks between
 sections rather than in the middle of a thought. It never leaves a heading
 alone at the end of a message.
@@ -334,7 +344,7 @@ releases and results, each written as "… @ time".
 The page is laid out from the report, not from the messages, by
 [`BriefDoc`](../internal/telegram/pagedocs.go#L43). It shows the markets as a
 table and a bar chart, from the FRED readings and the benchmark funds
-([`pageMarket`](../internal/app/pages.go#L123)). Then it shows the overview,
+([`pageMarket`](../internal/app/pages.go#L125)). Then it shows the overview,
 what is coming up as a table for each day, and each sector with its biggest
 moves and its own sources. The wording is the same as the messages'.
 [`pages.Render`](../internal/pages/render.go#L35) lets through only Telegram's
@@ -358,7 +368,7 @@ cost and did, for `/stats`. When search is on,
 It counts how many kept stories no feed carried, and how many of the brief's
 citations came from search alone. It also lists, by source, the cited stories
 that no search found. The citations are read back out of the text by
-[`Report.Referenced`](../internal/model/report.go#L105). These numbers are what
+[`Report.Referenced`](../internal/model/report.go#L110). These numbers are what
 will decide whether search can take over from the media feeds.
 
 ### 7. The channel
@@ -1284,7 +1294,8 @@ messages. `RenderWith` puts the pieces together, and `pack` spreads them across
 messages. `paragraphs` and `bullets` turn the `### ` sub-headings and `- `
 points into bold lines and bullets (`emphasizeLabel` handles the older
 label-and-dash blocks). `linkCitations` turns `[3]` into a link. Each section's
-heading carries its line of biggest moves. `renderCandidates` draws the new
+heading carries its line of biggest moves, and the overview's heading the
+line of moves across the market. `renderCandidates` draws the new
 names, `renderSources` the links, and `renderFooter` the token counts.
 `RenderPlain` does the same for an analysis, and `RenderAnalysis` puts the
 verdict last.

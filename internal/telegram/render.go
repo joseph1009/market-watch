@@ -100,8 +100,14 @@ func RenderWith(rep model.Report, opts Options) []string {
 	}}}
 
 	if rep.Overview != "" {
+		heading := divider + "\n<b>OVERVIEW</b>"
+		// The market's biggest moves sit under the heading, as a section's
+		// moves do under its own.
+		if len(rep.MarketMoves) > 0 {
+			heading += "\n<i>Across the market: " + escape(model.Moves(model.MarketQuotes(rep.MarketMoves))) + "</i>"
+		}
 		segs = append(segs, segment{blocks: append(
-			[]string{divider + "\n<b>OVERVIEW</b>"}, linkTerms(cite(paragraphs(rep.Overview), rep.Cited), opts.Terms)...)})
+			[]string{heading}, linkTerms(cite(paragraphs(rep.Overview), rep.Cited), opts.Terms)...)})
 	}
 
 	// What is due comes straight after the overview: the reader has just

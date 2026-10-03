@@ -107,6 +107,9 @@ type market struct {
 
 	// calendar is what is due, for the look ahead.
 	calendar model.Calendar
+
+	// moves are the outsized moves across the whole market.
+	moves []model.MarketMove
 }
 
 // buildPrompt renders the articles into the user turn. Articles are ordered by
@@ -148,6 +151,10 @@ func buildPrompt(articles []model.Article, groups []model.Group, m market, now t
 		b.WriteString("\n")
 	}
 	if block := renderPrices(m.quotes, m.trends, display); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n")
+	}
+	if block := renderMarketMoves(m.moves); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
@@ -346,6 +353,21 @@ func renderMarketData(levels []prices.Reading) string {
 	b.WriteString("\nMarket levels, as reported by FRED. These are measured values, not claims made by any article -- use them to anchor the macro section, and do not attribute them to a source:\n")
 	for _, r := range levels {
 		b.WriteString("- " + r.Line() + "\n")
+	}
+	return b.String()
+}
+
+// renderMarketMoves lists the outsized moves across the market, with each
+// company's name so an article about it can be found.
+func renderMarketMoves(moves []model.MarketMove) string {
+	if len(moves) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nAcross the market, the last session's biggest moves against each share's usual, among companies worth US$2bn or more, followed or not. The reader is shown this line under the overview:\n")
+	for _, m := range moves {
+		fmt.Fprintf(&b, "- %s (%s): %s, %.1f times its usual daily move, on %.1f times its usual trading\n",
+			m.Symbol, m.Name, m.Move(), m.Times, m.Busy)
 	}
 	return b.String()
 }

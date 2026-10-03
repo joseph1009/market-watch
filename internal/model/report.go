@@ -46,6 +46,11 @@ type Report struct {
 	// after the overview so the reader knows what is coming, not only what
 	// happened.
 	Calendar Calendar `json:"calendar,omitempty"`
+
+	// MarketMoves are the last session's outsized moves across the whole US
+	// market, followed or not, biggest against their usual first. They are
+	// shown in a line under the overview.
+	MarketMoves []MarketMove `json:"market_moves,omitempty"`
 }
 
 // Usage is how much text one run sent and got back.

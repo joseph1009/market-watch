@@ -88,10 +88,6 @@ is, what it needs from you, and why it is worth doing.
 - **Promotion.** A command to move a company from "new names in the news"
   straight into a sector. `/watchlist add <sector> <ticker> <name>` already
   does this. The new command would just save typing.
-- **Market-wide movers in the brief.** The market's history already finds the
-  day's outsized moves for the closer look's reactions. A line of them in the
-  overview would give the brief the same view at no extra cost. It would show
-  the biggest moves among companies of some size, followed or not.
 
 ## Verdicts
 
@@ -179,6 +175,9 @@ is, what it needs from you, and why it is worth doing.
     brief runs alone, with the rest waiting. When a chat's requests are done,
     it is told how much of the plan is used. A ticker the SEC doesn't know is
     answered at once, without waiting its turn.
+  - A line under the brief's overview, "Across the market", shows the day's
+    five biggest moves among US companies worth US$2bn or more, followed or
+    not. They are the moves the closer look's reactions start from.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.

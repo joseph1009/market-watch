@@ -68,8 +68,12 @@ func BriefDoc(rep model.Report, market Market, opts Options) pages.Doc {
 	}
 
 	if body := withoutHeadline(rep.Overview); body != "" {
-		doc.Parts = append(doc.Parts, pages.Section{ID: "overview", Title: "Overview",
-			Parts: []pages.Part{pages.Prose(linkTerms(cite(paragraphs(body), rep.Cited), opts.Terms))}})
+		var parts []pages.Part
+		if len(rep.MarketMoves) > 0 {
+			parts = append(parts, moveChips("Across the market", model.MarketQuotes(rep.MarketMoves)))
+		}
+		parts = append(parts, pages.Prose(linkTerms(cite(paragraphs(body), rep.Cited), opts.Terms)))
+		doc.Parts = append(doc.Parts, pages.Section{ID: "overview", Title: "Overview", Parts: parts})
 	}
 
 	if coming := comingUp(rep.Calendar, rep.GeneratedAt, display); len(coming) > 0 {
@@ -85,11 +89,7 @@ func BriefDoc(rep model.Report, market Market, opts Options) pages.Doc {
 		}
 		sec := pages.Section{ID: anchorID(s.GroupID), Title: title}
 		if len(s.Movers) > 0 {
-			chips := pages.Chips{Label: "Biggest moves"}
-			for _, q := range s.Movers {
-				chips.Items = append(chips.Items, pages.Chip{Text: q.Symbol + " " + q.Move(), Tone: direction(q.Percent)})
-			}
-			sec.Parts = append(sec.Parts, chips)
+			sec.Parts = append(sec.Parts, moveChips("Biggest moves", s.Movers))
 		}
 		if s.Body != "" {
 			sec.Parts = append(sec.Parts, pages.Prose(linkTerms(cite(paragraphs(s.Body), rep.Cited), opts.Terms)))
@@ -469,6 +469,15 @@ func priceParts(q *model.Quote, tr *model.Trading) []pages.Part {
 		parts = append(parts, pages.Bars{Title: "Its moves", Items: moves})
 	}
 	return parts
+}
+
+// moveChips is a line of share moves, each coloured by its direction.
+func moveChips(label string, quotes []model.Quote) pages.Chips {
+	chips := pages.Chips{Label: label}
+	for _, q := range quotes {
+		chips.Items = append(chips.Items, pages.Chip{Text: q.Symbol + " " + q.Move(), Tone: direction(q.Percent)})
+	}
+	return chips
 }
 
 func direction(v float64) string {
