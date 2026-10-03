@@ -241,6 +241,12 @@ func (run *Run) Ask(ctx context.Context, stage, system, prompt string) (Reply, e
 	run.Note("- [ ] %s asked, %s to read in %s", stage, Size(len(body)), filepath.Base(q.RequestPath()))
 
 	reply, err := run.answer.Answer(ctx, q)
+	// What a tool server was asked, where the call had one, is kept beside
+	// the request and the reply.
+	if data, readErr := os.ReadFile(q.ToolsLog()); readErr == nil {
+		cache.Text("model/"+filepath.Base(q.ToolsLog()), string(data))
+		run.Note("- %s used its tools %d times, listed in %s", stage, strings.Count(string(data), "\n"), filepath.Base(q.ToolsLog()))
+	}
 	if err != nil {
 		run.Note("- [!] %s failed: %s", stage, oneLine(err.Error()))
 		cache.Text("model/"+filepath.Base(q.Base)+"-failed.txt", err.Error())

@@ -139,8 +139,19 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 	}
 	if webStages[q.Stage] {
 		// Exactly these two tools exist for the call, and no MCP server is
-		// loaded, whatever this machine's own settings say.
-		args = append(args, "--tools", webTools, "--allowedTools", webTools, "--strict-mcp-config")
+		// loaded, whatever this machine's own settings say -- except the
+		// service's own, where the call carries one (tools.go).
+		allowed := webTools
+		if t, ok := toolsFrom(ctx); ok {
+			config, extra, err := t.mcpConfig(q)
+			if err != nil {
+				return Reply{}, err
+			}
+			defer os.Remove(config)
+			args = append(args, "--mcp-config", config)
+			allowed = allowList(webTools, extra)
+		}
+		args = append(args, "--tools", webTools, "--allowedTools", allowed, "--strict-mcp-config")
 	} else {
 		// No tools. Every other stage is reading and writing: the request
 		// carries all it needs, and a model that could run commands or fetch

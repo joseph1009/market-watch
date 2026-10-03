@@ -32,6 +32,16 @@ import (
 // the playbook is as much use to the analysis that remains.
 var systemPrompt = config.Prompt("analysis.system") + "\n\n" + config.Method
 
+// toolsPrompt is the same with what the tools are for between the two, for
+// an analysis that has them (tools.go).
+func toolsPrompt() (string, error) {
+	tools, err := config.RenderPrompt("analysis.tools", struct{ Lookups int }{ToolLookups})
+	if err != nil {
+		return "", err
+	}
+	return config.Prompt("analysis.system") + "\n\n" + strings.TrimSpace(tools) + "\n\n" + config.Method, nil
+}
+
 // Analysis is a written reading of one company's accounts.
 type Analysis struct {
 	Snapshot Snapshot
@@ -44,11 +54,24 @@ type Analysis struct {
 type Analyzer struct {
 	Completer report.Completer
 	Now       func() time.Time
+
+	// Tools, when set, offers the call the account tools for the company
+	// with this CIK, by returning a context that carries them. Nil writes
+	// from the facts and the web alone.
+	Tools func(ctx context.Context, cik int) context.Context
 }
 
 // Analyze reads the accounts and writes them up.
 func (a *Analyzer) Analyze(ctx context.Context, snap Snapshot) (Analysis, error) {
-	completion, err := a.Completer.Complete(ctx, systemPrompt, a.prompt(snap))
+	system := systemPrompt
+	if a.Tools != nil && snap.CIK > 0 {
+		withTools, err := toolsPrompt()
+		if err != nil {
+			return Analysis{}, err
+		}
+		system, ctx = withTools, a.Tools(ctx, snap.CIK)
+	}
+	completion, err := a.Completer.Complete(ctx, system, a.prompt(snap))
 	if err != nil {
 		return Analysis{}, fmt.Errorf("analyze %s: %w", snap.Ticker, err)
 	}

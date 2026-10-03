@@ -87,6 +87,10 @@ type Client struct {
 	// calendar year.
 	FramesURL string
 
+	// FactsURL overrides the company facts endpoint in tests. It takes a
+	// CIK.
+	FactsURL string
+
 	// framesMu keeps one frame from being read twice at once when the
 	// closer look judges several companies side by side.
 	framesMu sync.Mutex
@@ -365,7 +369,11 @@ func (c *Client) Tags(ctx context.Context, cik int) ([]TagInfo, error) {
 			Units map[string]json.RawMessage `json:"units"`
 		} `json:"facts"`
 	}
-	if err := c.getBig(ctx, fmt.Sprintf(companyFactsURL, cik), &body); err != nil {
+	url := companyFactsURL
+	if c.FactsURL != "" {
+		url = c.FactsURL
+	}
+	if err := c.getBig(ctx, fmt.Sprintf(url, cik), &body); err != nil {
 		return nil, err
 	}
 
@@ -427,7 +435,9 @@ func (c *Client) getBig(ctx context.Context, url string, into any) error {
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	// Accept-Encoding is left unset so net/http asks for gzip and unpacks it.
+	// Set by hand, the SEC's gzip reached the decoder still packed, and
+	// find_concepts failed on every company.
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {

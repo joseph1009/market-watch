@@ -110,6 +110,12 @@ type Config struct {
 	// Triage: without ratings there is nothing to tell it which to look at.
 	Review bool
 
+	// AnalysisTools gives /analyse three tools of the service's own: find
+	// what the company reports to the SEC, read any of it, and calculate
+	// exactly. They are served to Claude Code as an MCP server for the
+	// analysis call alone. Off, the analysis works from its facts and the web.
+	AnalysisTools bool
+
 	// UserAgent identifies the service to publishers. Empty means the feed
 	// package's own default, which carries no contact address -- SEC EDGAR
 	// answers that with 403, so a real deployment sets this.
@@ -303,6 +309,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.Review, err = envBool("REVIEW", true); err != nil {
+		return nil, err
+	}
+	if cfg.AnalysisTools, err = envBool("ANALYSIS_TOOLS", true); err != nil {
 		return nil, err
 	}
 	if cfg.Discover, err = envBool("DISCOVER", true); err != nil {

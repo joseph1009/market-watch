@@ -250,6 +250,7 @@ type record struct {
 	Dir       string   `json:"dir"`
 	APIKey    bool     `json:"api_key"`
 	AuthToken bool     `json:"auth_token"`
+	MCPConfig string   `json:"mcp_config"`
 }
 
 func recorded(t *testing.T, path string) record {

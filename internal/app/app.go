@@ -279,7 +279,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		HTTP:      &http.Client{Timeout: 30 * time.Second},
 		UserAgent: cfg.UserAgent,
 	}
-	a.Analyzer = &fundamentals.Analyzer{Completer: rel.Stage(relay.Analysis)}
+	a.Analyzer = &fundamentals.Analyzer{Completer: rel.Stage(relay.Analysis), Tools: analysisTools(cfg, log)}
 	a.Industry = &industry.Explainer{
 		Completer: rel.Plain(relay.Industry),
 		Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},

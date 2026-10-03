@@ -108,13 +108,6 @@ is, what it needs from you, and why it is worth doing.
 
 ## /analyse — further
 
-- **Give it its tools back.** The analysis used to be written by an agent
-  that could look up any figure the company files and calculate exactly.
-  Today it works from a fixed table and does the sums in its head. That agent
-  talked to the API directly, so it went when the API did. Claude Code can be
-  given tools of our own through an MCP server (`--mcp-config`). The Go side
-  could then offer `find_concepts`, `read_concept` and `compute` to the
-  analysis call. Until then, every analysis works from the table.
 - **Companies with no US listing.** The analysis reads SEC filings, so it
   can't cover Tencent, Keyence or anything else without a US listing. Japan's
   EDINET is a free XBRL service and would cover Tokyo. Hong Kong and mainland
@@ -179,6 +172,10 @@ is, what it needs from you, and why it is worth doing.
     averages, on the analysis page and each closer-look card, and cash from
     operations against capital spending, year by year. They are drawn as
     inline SVG, so no plotting library or image was needed.
+  - `/analyse` has its tools back: `find_concepts`, `read_concept` and
+    `compute`, served to Claude Code by the service itself as an MCP server,
+    for the analysis call alone. It may look up 16 figures beyond those it is
+    given, and calculates exactly. `ANALYSIS_TOOLS=false` turns them off.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.

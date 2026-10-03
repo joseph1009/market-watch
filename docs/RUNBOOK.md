@@ -50,7 +50,12 @@ owner's request. You can still move one stage to another model with its
 
 Only six stages have tools: `scout`, `research`, `review`, `verdicts`,
 `analysis` and `industry`. Their tools are web search and reading pages,
-nothing else. They get no shell, no files and no connectors. Each is told what
+nothing else. They get no shell, no files and no connectors. The analysis
+also gets three tools the service serves itself, for that call alone:
+`find_concepts`, `read_concept` and `compute`. They read only that company's
+SEC figures, and calculate. What it looked up is in the run's
+`NN-analysis-tools.txt`, beside the request and reply, and in
+`data/cache/analysis/model/`. `ANALYSIS_TOOLS=false` turns them off. Each is told what
 to search for:
 - the review searches only to learn what an unfamiliar company does;
 - the verdicts search to check a case in a second source;

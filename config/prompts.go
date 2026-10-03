@@ -123,6 +123,7 @@ var required = map[string][]string{
 	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "VALUE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers", "THE VERDICT", "VERDICT:", "CONFIDENCE:"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
+	"analysis.tools":   {"find_concepts", "read_concept", "compute", "{{.Lookups}}"},
 	"industry.system":  {"### ", "COMPANIES BY PART", "part|name|ticker|exchange|why"},
 }
 

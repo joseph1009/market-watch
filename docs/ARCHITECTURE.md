@@ -73,6 +73,7 @@ and the answer is written beside it.
 | [internal/telegram](../internal/telegram/) | The Telegram client, and all the layout of messages and summaries |
 | [internal/pages](../internal/pages/) | The web pages that long messages are sent as. They hold tables, charts and cards laid out from the same data as the messages. They are kept for a month and served at a random address |
 | [internal/relay](../internal/relay/) | Every model call. It writes the request, runs Claude Code and keeps the reply |
+| [internal/mcp](../internal/mcp/) | A small MCP server, so Claude Code can call tools of the service's own. `/analyse` uses it |
 | [internal/runcache](../internal/runcache/) | What the latest brief, analysis and closer look were made from and sent, one folder each |
 | [internal/history](../internal/history/) | What earlier briefs covered, and what each run cost |
 | [internal/logging](../internal/logging/) | A log handler that scrubs secrets out of every line |
@@ -498,11 +499,12 @@ of Massive making it available.
 
 ### Start-up
 
-[`main`](../cmd/market-watch/main.go#L27) reads five flags: `--once`,
-`--share`, `--check`, `--clear` and `--fold`. It then calls
-[`run`](../cmd/market-watch/main.go#L57), which does the following.
+[`main`](../cmd/market-watch/main.go#L31) reads five flags: `--once`,
+`--share`, `--check`, `--clear` and `--fold`, and `--mcp-accounts`, which
+only Claude Code uses (below). It then calls
+[`run`](../cmd/market-watch/main.go#L71), which does the following.
 
-- [`config.Load`](../config/config.go#L200) reads the environment, and `.env`
+- [`config.Load`](../config/config.go#L206) reads the environment, and `.env`
   through [`LoadDotEnv`](../config/dotenv.go#L22). It reports every missing
   variable at once, rather than one per run.
 - [`config.LoadPrompts`](../config/prompts.go#L61) checks that the prompts file
@@ -520,7 +522,7 @@ of Massive making it available.
 - It installs a SIGTERM handler, so a brief that is being sent finishes its
   delivery.
 
-`--check` runs [`runCheck`](../cmd/market-watch/main.go#L195). It checks
+`--check` runs [`runCheck`](../cmd/market-watch/main.go#L209). It checks
 Telegram, the channel, the feeds, the search key, the schedule and Claude Code,
 and reports on each separately. It proves the search key with
 [`search.Client.Usage`](../internal/search/search.go#L302), which costs
@@ -528,10 +530,17 @@ nothing, whereas a test search would spend a credit. Tavily's count of credits
 used runs late, so the run record keeps its own count, from each search's
 reply. The deploy script runs `--check` on the machine after each deploy.
 
-`--fold` runs [`runFold`](../cmd/market-watch/main.go#L134) and nothing else.
+`--fold` runs [`runFold`](../cmd/market-watch/main.go#L148) and nothing else.
 [scripts/sync-from-fly.sh](../scripts/sync-from-fly.sh) has just copied the
 Telegram changes to the watchlist and feeds into `./data`. `--fold` writes them
 into the files in `config/`. It needs no credentials and sends nothing.
+
+`--mcp-accounts <CIK>` runs [`runAccountTools`](../cmd/market-watch/main.go#L326)
+and nothing else. Claude Code starts the program this way for an analysis
+call, and talks to it over standard input and output
+([`mcp.Serve`](../internal/mcp/mcp.go#L55)). It serves that one company's
+account tools until Claude Code closes its input. `--tools-log` names a file
+for it to write each call to.
 
 ### The bot loop
 
@@ -638,7 +647,7 @@ following.
    analysis page shows it as a table.
 5. [`Snapshot.Table`](../internal/fundamentals/table.go#L46) lays the figures
    out as a table with fixed-width columns.
-   [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L50) sends it to
+   [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L65) sends it to
    Opus, with [`method.md`](../config/method.md), the house method for reading
    accounts, added to the system prompt. The method includes CAN SLIM's
    questions as a reference, with where each one misleads. Since 2026-10-02
@@ -709,22 +718,43 @@ The answerer is normally [`Claude`](../internal/relay/answer.go#L83). It runs
 The system prompt goes in a temporary file, because Windows limits a command
 line to 32K characters. The working folder is the run's own, so the call sees
 no `CLAUDE.md` and no project settings. `ANTHROPIC_API_KEY` is removed from the
-child process's environment ([`childEnv`](../internal/relay/answer.go#L382)),
+child process's environment ([`childEnv`](../internal/relay/answer.go#L393)),
 so the subscription is used rather than API credit.
 
 Its output is Claude Code's stream (`--output-format stream-json`), which
-[`parseStream`](../internal/relay/answer.go#L225) reads. It gets the result,
+[`parseStream`](../internal/relay/answer.go#L236) reads. It gets the result,
 and the plan's standing (`rate_limit_event`: how much of each window is used,
 and when it resets). `OnLimits` passes that to `/usage`. When the last reading
 is more than five minutes old, `/usage` takes a new one with
-[`CheckLimits`](../internal/relay/answer.go#L291), a one-word call to Haiku.
+[`CheckLimits`](../internal/relay/answer.go#L302), a one-word call to Haiku.
 
 Tools are off for every stage except six: `scout`, `research`, `review`,
 `verdicts`, `analysis` and `industry`. Those get web search and web fetch and
-nothing else: no shell, no files, no MCP. A headline in a feed should never be
-able to steer a model into running a command.
+nothing else: no shell, no files, and no MCP server of this machine's. A
+headline in a feed should never be able to steer a model into running a
+command.
 
-The other answerer, [`Session`](../internal/relay/answer.go#L416), waits for a
+The one exception is the analysis, which also gets three tools of the
+service's own (`ANALYSIS_TOOLS`, on by default). Until 22 September an agent
+of ours could look up any figure a company files and calculate exactly. It
+called the API directly, so it went when the API did. Now the same tools are
+served to Claude Code as an MCP server.
+[`analysisTools`](../internal/app/tools.go#L20) puts a
+[`relay.Tools`](../internal/relay/tools.go#L14) on the analysis call's
+context. `Claude.Answer` writes it to a config file for `--mcp-config`, and
+approves the tools by name. The server is this program, started with
+`--mcp-accounts` and the company's CIK. Its tools
+([`fundamentals.AccountTools`](../internal/fundamentals/tools.go#L46)) are:
+- `find_concepts`, which searches the tags the company reports;
+- `read_concept`, which reads one tag's years, quarters and balance dates;
+- `compute`, the calculator.
+
+The lookups are limited to 16 a call, in the server, and calculations to 50.
+Each call is written to a `-tools.txt` file beside the request and reply,
+copied into the run cache, and counted in the ledger. A stage without tools
+never gets the server, whatever its context carries.
+
+The other answerer, [`Session`](../internal/relay/answer.go#L427), waits for a
 person to write the reply file. That is how you watch a run or answer it by
 hand.
 
@@ -1189,6 +1219,9 @@ and spreads them across days. `SetNews` gives the searches first call on
 **[related.go](../internal/fundamentals/related.go)** has `SplitRelated`,
 `VerifyRelated` and `RelatedFor`.
 
+**[tools.go](../internal/fundamentals/tools.go)** has `AccountTools`, the
+analysis's three tools for one company, with the lookup limit.
+
 **[peers.go](../internal/fundamentals/peers.go)** has `Client.Peers`, which
 reads the SEC's frames and places a company in its industry group, and
 `PeerGroup.Facts`, which writes that out for the analysis and the verdicts.
@@ -1359,6 +1392,17 @@ removes the API key. `parseStream` reads the result and the plan's `Limits`
 from the stream. `CheckLimits` takes a reading for `/usage`. `Session.Answer`
 waits for a person.
 
+**[tools.go](../internal/relay/tools.go)** is a tool server offered to one
+call. `WithTools` puts it on a context, and `mcpConfig` writes it out for
+`--mcp-config`.
+
+### internal/mcp
+
+**[mcp.go](../internal/mcp/mcp.go)** has `Serve`, which speaks the Model
+Context Protocol on standard input and output: `initialize`, `tools/list`,
+`tools/call` and `ping`, one JSON message a line. A tool's error goes back to
+the model as its result, for it to read and try again.
+
 ### internal/history
 
 **[history.go](../internal/history/history.go)** keeps what earlier briefs
@@ -1426,7 +1470,7 @@ copies these down from Fly. It keeps what they replace in `data/.backup/`.
 ## Configuration
 
 All settings are environment variables, read once by
-[`config.Load`](../config/config.go#L200). The deployed values are in
+[`config.Load`](../config/config.go#L206). The deployed values are in
 [fly.toml](../fly.toml). The secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](../scripts/fly-deploy.sh) without being printed.
 [.env.example](../.env.example) explains every one. What the service follows

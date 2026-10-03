@@ -10,7 +10,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -20,7 +22,9 @@ import (
 
 	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/app"
+	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
+	"github.com/joseph1009/market-watch/internal/mcp"
 	"github.com/joseph1009/market-watch/internal/relay"
 )
 
@@ -30,7 +34,17 @@ func main() {
 	check := flag.Bool("check", false, "verify configuration and credentials, then exit without sending anything")
 	clear := flag.Bool("clear", false, "delete the bot's earlier messages from the chat, then exit")
 	fold := flag.Bool("fold", false, "write the watchlist and feed changes made from Telegram, as synced into DATA_DIR, into config/, then exit")
+	tools := flag.Int("mcp-accounts", 0, "serve one company's account tools, by its SEC CIK, to Claude Code on standard input and output, until it closes them")
+	toolsLog := flag.String("tools-log", "", "with -mcp-accounts, a file to write each tool call to")
 	flag.Parse()
+
+	if *tools > 0 {
+		if err := runAccountTools(*tools, *toolsLog); err != nil {
+			fmt.Fprintln(os.Stderr, "market-watch:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *fold {
 		if err := runFold(); err != nil {
@@ -304,4 +318,22 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		return fmt.Errorf("every source failed")
 	}
 	return nil
+}
+
+// runAccountTools serves one company's account tools to Claude Code, which
+// starts it for an analysis call (relay.Tools) and closes its input when the
+// call ends. Standard output carries the protocol and nothing else.
+func runAccountTools(cik int, logPath string) error {
+	var log io.Writer
+	if logPath != "" {
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err == nil {
+			defer f.Close()
+			log = f
+		}
+	}
+	reader := &fundamentals.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, UserAgent: os.Getenv("USER_AGENT")}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return mcp.Serve(ctx, os.Stdin, os.Stdout, "accounts", "1", fundamentals.AccountTools(reader, cik, log))
 }

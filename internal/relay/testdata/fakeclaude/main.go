@@ -18,7 +18,7 @@ func main() {
 		return
 	}
 
-	var modelName, system string
+	var modelName, system, mcpConfig string
 	for i := 0; i < len(args)-1; i++ {
 		switch args[i] {
 		case "--model":
@@ -26,6 +26,10 @@ func main() {
 		case "--system-prompt-file":
 			b, _ := os.ReadFile(args[i+1])
 			system = string(b)
+		case "--mcp-config":
+			b, _ := os.ReadFile(args[i+1])
+			mcpConfig = string(b)
+			toolsUsed(b)
 		}
 	}
 	stdin, _ := io.ReadAll(os.Stdin)
@@ -40,6 +44,7 @@ func main() {
 			"dir":        wd,
 			"api_key":    os.Getenv("ANTHROPIC_API_KEY") != "",
 			"auth_token": os.Getenv("ANTHROPIC_AUTH_TOKEN") != "",
+			"mcp_config": mcpConfig,
 		})
 		_ = os.WriteFile(path, record, 0o644)
 	}
@@ -74,5 +79,25 @@ func main() {
 			},
 		})
 		fmt.Print(string(out))
+	}
+}
+
+// toolsUsed stands in for a tool server that was asked something: it writes
+// a line to the log file the server was given with -tools-log.
+func toolsUsed(config []byte) {
+	var c struct {
+		MCPServers map[string]struct {
+			Args []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if json.Unmarshal(config, &c) != nil {
+		return
+	}
+	for _, s := range c.MCPServers {
+		for i := 0; i < len(s.Args)-1; i++ {
+			if s.Args[i] == "-tools-log" {
+				_ = os.WriteFile(s.Args[i+1], []byte("12:00:00  compute 1 + 1 = 2\n"), 0o644)
+			}
+		}
 	}
 }
