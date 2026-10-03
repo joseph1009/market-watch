@@ -18,6 +18,8 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Moves line.** The line under a section's heading. It shows the biggest moves of that section's shares on the day ([report/moves.go](../internal/report/moves.go)). The overview has one too, "Across the market". It shows the day's biggest moves among all US companies worth US$2bn or more, each against the share's usual ([movers.go](../internal/app/movers.go)).
 
+**Industry group, peers.** The companies in the same industry as Nasdaq's list files them, worth US$500m or more. `/analyse` and the verdicts set a company's growth, margins and multiples beside theirs, on the SEC's figures for the last calendar year ([peers.go](../internal/fundamentals/peers.go)).
+
 **Movers.** Followed shares that moved at least 3 percentage points more than the S&P 500 fund, up or down. Up to 5 of them get a news search of their own, asking why they moved ([movers.go](../internal/app/movers.go)).
 
 **Covered, repeat.** A story that an earlier brief already carried. It is marked rather than dropped, so the brief reports it only as an update. The record is kept in `covered.json` ([history.go](../internal/history/history.go)).

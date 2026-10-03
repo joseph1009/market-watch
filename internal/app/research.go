@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/joseph1009/market-watch/internal/consensus"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
+	"github.com/joseph1009/market-watch/internal/market"
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/search"
@@ -36,7 +39,62 @@ const (
 	// expectationsBudget bounds the six Nasdaq reads for one company, which
 	// take one to three seconds each.
 	expectationsBudget = 45 * time.Second
+
+	// peersBudget bounds reading the SEC's figures for an industry group:
+	// about sixteen requests the first time in a week, none after.
+	peersBudget = time.Minute
 )
+
+// addPeers sets a US listing beside the others in its industry group of
+// Nasdaq's list, on the SEC's figures for the last calendar year.
+func (a *App) addPeers(ctx context.Context, snap *fundamentals.Snapshot) {
+	if a.Accounts == nil || a.Filings == nil {
+		return
+	}
+	listings, err := a.listings(ctx)
+	if err != nil {
+		a.Log.Info("no peers: Nasdaq's listings could not be read", "ticker", snap.Ticker, "error", err)
+		return
+	}
+	industry := ""
+	for _, l := range listings {
+		if strings.EqualFold(l.Symbol, snap.Ticker) {
+			industry = l.Industry
+			break
+		}
+	}
+	if industry == "" {
+		return
+	}
+	var peers []fundamentals.Peer
+	seen := map[int]bool{} // a company listed in two share classes counts once
+	for _, l := range listings {
+		if l.Industry != industry || l.NotListedInAmerica {
+			continue
+		}
+		if l.MarketCap < fundamentals.PeerMarketCap && !strings.EqualFold(l.Symbol, snap.Ticker) {
+			continue
+		}
+		cik, _, err := a.Filings.LookupCIK(ctx, l.Symbol)
+		if err != nil || seen[cik] {
+			continue
+		}
+		seen[cik] = true
+		peers = append(peers, fundamentals.Peer{Symbol: l.Symbol, Name: market.PlainName(l.Name), CIK: cik, MarketCap: l.MarketCap})
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, peersBudget)
+	defer cancel()
+	group, err := a.Accounts.Peers(ctx, snap.CIK, industry, peers, filepath.Join(a.Cfg.DataDir, "frames"), a.now())
+	if err != nil {
+		a.Log.Warn("peers", "ticker", snap.Ticker, "error", err)
+		return
+	}
+	snap.Peers = group
+	if group != nil {
+		a.Log.Info("peers", "ticker", snap.Ticker, "industry", industry, "group", group.Size, "measures", len(group.Lines))
+	}
+}
 
 // addExpectations attaches the analysts' consensus, and the insider, short and
 // fund figures, to a US listing, and returns them, or nil.

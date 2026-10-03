@@ -83,6 +83,14 @@ type Client struct {
 	// verbs as conceptURL: CIK, taxonomy, tag.
 	BaseURL string
 
+	// FramesURL overrides the frames endpoint in tests. It takes a tag and a
+	// calendar year.
+	FramesURL string
+
+	// framesMu keeps one frame from being read twice at once when the
+	// closer look judges several companies side by side.
+	framesMu sync.Mutex
+
 	mu   sync.Mutex
 	tags map[int][]TagInfo
 

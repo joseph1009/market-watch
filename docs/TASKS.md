@@ -119,12 +119,6 @@ is, what it needs from you, and why it is worth doing.
   carry more of it in less space, for example the price against its averages,
   or free cash flow against capital spending. Telegram takes images, but
   drawing one needs a Go plotting library.
-- **Peers beside the company.** In one request, the SEC's frames API returns
-  one figure for every filer for one period, such as every company's revenue
-  for the second quarter. Set against the companies in the same industry
-  code, this would let the analysis and the verdicts say whether a margin or
-  a growth rate is high for the industry. Today they are told not to judge
-  that.
 - **Companies with no US listing.** The analysis reads SEC filings, so it
   can't cover Tencent, Keyence or anything else without a US listing. Japan's
   EDINET is a free XBRL service and would cover Tokyo. Hong Kong and mainland
@@ -180,6 +174,11 @@ is, what it needs from you, and why it is worth doing.
   - The sorting remembers its verdict on each article for eight days, so an
     article an earlier brief sorted isn't sent to Opus again. On 1 October
     about half the articles sorted were over a day old.
+  - `/analyse` and the verdicts set the company beside its industry group:
+    growth, margins, research spending and multiples, against the other
+    companies in its Nasdaq industry worth US$500m or more, from the SEC's
+    figures for the last calendar year. The analysis page shows it as a
+    table.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.

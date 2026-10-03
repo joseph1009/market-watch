@@ -618,6 +618,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 		}
 		a.addExpectations(ctx, &snapshot)
 		a.addRelease(ctx, &snapshot, analysisReleaseRunes)
+		a.addPeers(ctx, &snapshot)
 		snapshot.Backdrop = a.backdrop(ctx)
 		cached.Save("snapshot", snapshot)
 	}

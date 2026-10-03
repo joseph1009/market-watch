@@ -166,3 +166,16 @@ func TestTheIndustryPageDrawsTheChain(t *testing.T) {
 		t.Error("the parts are out of the explanation's order")
 	}
 }
+
+// An analysis set beside its industry gets a table of where it stands.
+func TestTheAnalysisPageSetsTheCompanyBesideItsIndustry(t *testing.T) {
+	acc := Accounts{Peers: &Peers{About: "<i>Nasdaq's Semiconductors group.</i>", Rows: []PeerRow{
+		{Label: "Operating margin", Company: "26.1%", Median: "2.4%", Range: "-10.2% to 16.1%", Above: "56 of 65"},
+	}}}
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{"Beside its industry", "Operating margin", "<b>26.1%</b>", "-10.2% to 16.1%", "56 of 65", "Nasdaq's Semiconductors group."} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}

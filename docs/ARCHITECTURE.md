@@ -457,7 +457,7 @@ Then it does the following.
    business description and recent filings, what analysts expect, the results
    release at the same length, and the last fortnight's news. The news is the
    feed's stories plus one news search
-   ([`addIdeaNews`](../internal/app/ideas.go#L377)). For anything else, it is
+   ([`addIdeaNews`](../internal/app/ideas.go#L378)). For anything else, it is
    the price and trading history and the same news, with a note that the
    accounts are missing.
 4. **The verdicts.** [`ideas.Judge.Judge`](../internal/ideas/judge.go) uses
@@ -547,8 +547,8 @@ sender is allowed and then routes on the command:
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L587) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
-| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L468) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L762) | What recent runs found and did |
+| `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L763) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L328) | Follow a company or stop following it; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L411) | Turn a feed on or off |
@@ -590,17 +590,17 @@ the question again. `/analyse NVDA` still works in one line.
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L222)
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L226)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
-   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L153) and builds a
+   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L161) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
    currency the filer reports in. It prefers later filings over earlier ones
-   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L439)).
+   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L443)).
    It builds the current year so far beside the full years
-   ([`buildYTD`](../internal/fundamentals/metrics.go#L547)), using only
+   ([`buildYTD`](../internal/fundamentals/metrics.go#L551)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L772) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L773) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -612,20 +612,30 @@ following.
      the analysis can say whether the share led the market or lagged it.
    - [`addNews`](../internal/app/prices.go#L232) adds what has been written in
      the last month. That is the news feed's company headlines and two Tavily
-     searches ([`searchCompany`](../internal/app/research.go#L106)), which cost
+     searches ([`searchCompany`](../internal/app/research.go#L164)), which cost
      two credits. [`Relevant`](../internal/fundamentals/news.go#L92) keeps only
      the pieces that actually name the company. Of the twelve places, the
      searches get first call on eight and the feed gets four
      ([`SetNews`](../internal/fundamentals/news.go#L74)). Sorted by date, the
      feed's daily share-price items used to take all twelve.
 4. Three more optional reads.
-   [`addExpectations`](../internal/app/research.go#L43) adds what analysts
+   [`addExpectations`](../internal/app/research.go#L101) adds what analysts
    expect, and what insiders, short sellers and funds have done
    ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L132)).
-   [`addRelease`](../internal/app/research.go#L70) adds the company's latest
+   [`addRelease`](../internal/app/research.go#L128) adds the company's latest
    results release ([`sec.Client.EarningsRelease`](../internal/sec/release.go#L40)).
-   [`backdrop`](../internal/app/research.go#L85) adds commodities, the dollar
+   [`backdrop`](../internal/app/research.go#L143) adds commodities, the dollar
    and the cost of money, from FRED.
+   [`addPeers`](../internal/app/research.go#L50) sets the company beside the
+   others in its industry group of Nasdaq's list, worth US$500m or more
+   ([`Client.Peers`](../internal/fundamentals/peers.go#L90)). The SEC's frames
+   API gives one figure for every filer for one calendar year in a single
+   request. Each frame is kept a week under `frames/` on the data volume. The
+   comparison covers growth, margins, research spending, and market value
+   against sales and profit. Each line gives the company's figure, the group's
+   middle value and middle half, and how many it beats. Only US-GAAP figures in
+   dollars are compared. The verdicts get the same comparison, and the
+   analysis page shows it as a table.
 5. [`Snapshot.Table`](../internal/fundamentals/table.go#L46) lays the figures
    out as a table with fixed-width columns.
    [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L50) sends it to
@@ -806,7 +816,8 @@ type it.
 
 **[research.go](../internal/app/research.go)** holds what `/analyse` and the
 closer look read beside the accounts: `addExpectations`, `addRelease`,
-`backdrop`, and `searchCompany`, which is `/analyse`'s two searches.
+`addPeers`, `backdrop`, and `searchCompany`, which is `/analyse`'s two
+searches.
 
 **[jobs.go](../internal/app/jobs.go)** runs `/analyse` and `/industry` in the
 background. `background` puts a job in line and starts it. `admit` waits for
@@ -1178,6 +1189,10 @@ and spreads them across days. `SetNews` gives the searches first call on
 **[related.go](../internal/fundamentals/related.go)** has `SplitRelated`,
 `VerifyRelated` and `RelatedFor`.
 
+**[peers.go](../internal/fundamentals/peers.go)** has `Client.Peers`, which
+reads the SEC's frames and places a company in its industry group, and
+`PeerGroup.Facts`, which writes that out for the analysis and the verdicts.
+
 **[compute.go](../internal/fundamentals/compute.go)** has a small calculator
 for expressions, and `Number`, which formats a figure for a reader.
 
@@ -1394,6 +1409,7 @@ is `./data`.
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, plus the prices it is measured from once its next session has opened |
 | `themes.json` | [ideas/themelog.go](../internal/ideas/themelog.go) | The last half-year of weekly themes, with what each one's research said and what was picked |
 | `market/` | [market/store.go](../internal/market/store.go) | Two years of the US market's daily prices, one file for each session, forty megabytes in all; the splits since; and Nasdaq's list, at most a day old |
+| `frames/` | [fundamentals/peers.go](../internal/fundamentals/peers.go) | The SEC's figures for every filer for a calendar year, one file a figure, read again after a week |
 | `pages/` | [pages/pages.go](../internal/pages/pages.go) | The web pages the summaries link to, one file each, deleted after 30 days |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, and a ledger for each run |
 

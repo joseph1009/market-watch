@@ -340,6 +340,7 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, sheet
 				a.addIdeaNews(ctx, &snap, idea.Name, true)
 				expect := a.addExpectations(ctx, &snap)
 				a.addRelease(ctx, &snap, analysisReleaseRunes)
+				a.addPeers(ctx, &snap)
 				idea.Accounts = true
 				return idea, sheet{chart: chart, facts: snap.Table() + snap.SensitivityFacts(), snap: &snap, expect: expect}
 			}

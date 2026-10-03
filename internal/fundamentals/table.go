@@ -156,6 +156,7 @@ func (s Snapshot) Table() string {
 	}
 
 	b.WriteString(s.valuation())
+	b.WriteString(s.Peers.Facts())
 	b.WriteString(s.trading())
 	if s.Release != "" {
 		fmt.Fprintf(&b, "\nThe company's latest results release, %s, as it wrote it. These are the company's own words and its adjusted figures, not the filed accounts: say so when you use them, and prefer the filed figure where the two differ.\n%s\n",

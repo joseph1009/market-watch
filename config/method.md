@@ -126,9 +126,10 @@ Never compute a multiple across currencies. A price in one currency over
 earnings filed in another is arithmetic without meaning, and a depositary share
 may represent several ordinary shares at a ratio not given in the filings.
 
-A multiple with no peer group and no history of its own cannot be called cheap
-or expensive. State it, explain what it represents, and say what would be needed
-to judge it.
+A multiple cannot be called cheap or expensive on its own. Where the facts set
+it beside the industry group's, say where it sits, and ask whether faster
+growth or wider margins explain the gap. Without a group, state it, explain
+what it represents, and say what would be needed to judge it.
 
 ## A growth investor's checklist: CAN SLIM
 

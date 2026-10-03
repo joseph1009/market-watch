@@ -202,6 +202,10 @@ type Snapshot struct {
 	Release     string
 	ReleaseFrom string
 
+	// Peers is where the company stands in its industry group, on the last
+	// calendar year's figures (peers.go). Nil where no group could be read.
+	Peers *PeerGroup
+
 	// Backdrop is the commodities, the dollar and the cost of money on the
 	// day, written out already (prices.Reading.Line), for the company whose
 	// fortunes follow one of them.

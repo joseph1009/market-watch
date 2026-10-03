@@ -534,6 +534,19 @@ type Accounts struct {
 	AsOf     time.Time
 	Price    *model.Quote
 	Trading  *model.Trading
+	Peers    *Peers
+}
+
+// Peers is the company beside its industry group, written out already.
+type Peers struct {
+	About string // Telegram HTML: which group, which year
+	Rows  []PeerRow
+}
+
+// PeerRow is one measure: the company's figure, the group's middle value and
+// middle half, and how many of the group the company is above.
+type PeerRow struct {
+	Label, Company, Median, Range, Above string
 }
 
 // AnalysisDoc is an analysis as a page: the share's price on its year, the
@@ -548,6 +561,14 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	}
 	if figures := accountsParts(acc); len(figures) > 0 {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "figures", Title: "The figures", Parts: figures})
+	}
+	if p := acc.Peers; p != nil && len(p.Rows) > 0 {
+		t := pages.Table{Head: []string{"", "This company", "Group middle", "Middle half", "Higher than"}, Align: "lrrrr", Labels: true}
+		for _, r := range p.Rows {
+			t.Rows = append(t.Rows, []string{escape(r.Label), "<b>" + escape(r.Company) + "</b>", escape(r.Median), escape(r.Range), escape(r.Above)})
+		}
+		t.Note = p.About
+		doc.Parts = append(doc.Parts, pages.Section{ID: "peers", Title: "Beside its industry", Parts: []pages.Part{t}})
 	}
 	if prose != "" {
 		var blocks []string
