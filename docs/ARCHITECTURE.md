@@ -140,12 +140,12 @@ plus the outlet's domain, such as `web:reuters.com`. It is ranked with that
 outlet's weight. Search is an extra, like the filings. Without a key, or on a
 day Tavily is down, the brief comes from the feeds alone.
 
-When the prices are in, [`movers`](../internal/app/movers.go#L34) picks the
+When the prices are in, [`movers`](../internal/app/movers.go#L35) picks the
 watchlist shares that moved at least three percentage points more than the
 S&P 500 fund, up or down. It picks at most five, the biggest moves first, and
 none from a session the previous brief already reported. Because the moves are
 measured against the market, a sell-off doesn't set off a search for every
-share that fell with it. [`searchMovers`](../internal/app/movers.go#L72) then
+share that fell with it. [`searchMovers`](../internal/app/movers.go#L73) then
 asks why each one moved, for example "Why did McDonald's (MCD) shares fall
 today?". The question comes from
 [`search.MoverQuery`](../internal/search/queries.go#L135). It uses the company's
@@ -154,7 +154,7 @@ SEC files it where that file has none.
 [`search.Merge`](../internal/search/search.go#L273) adds the results to the
 other searches'.
 
-Alongside the prices, [`marketMoves`](../internal/app/movers.go#L131) looks
+Alongside the prices, [`marketMoves`](../internal/app/movers.go#L132) looks
 past the watchlist. It reads the whole market's history and picks the last
 session's five biggest moves against each share's usual, among companies worth
 US$2bn or more, followed or not. These are the moves the closer look's
@@ -257,7 +257,7 @@ the consumer price index and its core, asked for as the change from a year
 earlier.
 
 The prices read at the start go to the brief whole. For the movers,
-[`trendsFor`](../internal/app/movers.go#L177) also reads each one's price
+[`trendsFor`](../internal/app/movers.go#L173) also reads each one's price
 history from the chart source. That gives its 50- and 200-day averages, its
 range over the year, and the day's volume against its usual. With these, the
 brief can say what kind of move it was.
@@ -601,7 +601,7 @@ following.
 
 1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L226)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
-   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L161) and builds a
+   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L135) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
    currency the filer reports in. It prefers later filings over earlier ones
@@ -830,6 +830,8 @@ of month-end prices, and `earlierPicks`.
 
 **[reactions.go](../internal/app/reactions.go)** has `runReactions`, the day's
 outsized moves that the news explains. `resultsWords` puts results first.
+`recentMoves` reads the market's last 120 days and finds the latest session's
+outsized moves. The brief's line under the overview uses it too.
 
 **[marketdata.go](../internal/app/marketdata.go)** keeps the market data.
 `RunMarket` keeps the market's history full in the background. `topUpMarket`
@@ -1194,8 +1196,7 @@ restated. `reportingCurrency` picks the currency the filer reports in.
 `Instant` filter the readings by period. `Tags` and `Search` list what a filer
 reports. `pace` holds every request to seven a second across all the
 goroutines that use the client, since the closer look reads four companies at
-once. `SharesOutstanding` is the share count from the filing's cover page,
-which a market value is worked out from.
+once.
 
 **[table.go](../internal/fundamentals/table.go)** has `Snapshot.Table`. It
 lays the figures out in fixed-width columns. Then come the expectations, the

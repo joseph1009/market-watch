@@ -32,7 +32,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Pick.** A company that a theme's research proposed and that was then judged. Only BUYs and SELLs are shown, up to 10 a week.
 
-**Reaction.** A share that moved at least 3 times its *usual daily move*, on at least twice its usual trading, where the brief's articles explain why. Its verdict asks whether the market over- or under-reacted. There are up to 3 a day. [`runReactions`](../internal/app/reactions.go#L45) finds them.
+**Reaction.** A share that moved at least 3 times its *usual daily move*, on at least twice its usual trading, where the brief's articles explain why. Its verdict asks whether the market over- or under-reacted. There are up to 3 a day. [`runReactions`](../internal/app/reactions.go#L68) finds them.
 
 **Earlier picks.** The theme picks from the last 8 weeks. They are listed under the week's themes, with how each has done since.
 
@@ -70,7 +70,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Breadth.** The share of an industry's companies that are above their 200-day average. The test for early industries uses breadth at the 50-day average instead. It compares how many are above their 50-day average now with a month ago.
 
-**Usual daily move.** The average size of a share's daily move, up or down, over the last 60 sessions ([`Series.Usual`](../internal/market/panel.go#L194)). "7.1 times usual" means today's move was 7.1 times that size.
+**Usual daily move.** The average size of a share's daily move, up or down, over the last 60 sessions ([`Series.Usual`](../internal/market/panel.go#L183)). "7.1 times usual" means today's move was 7.1 times that size.
 
 **Value traded, trading.** The number of shares traded times the price, in dollars. "2.3 times the trading" means 2.3 times the value it trades on a usual day.
 

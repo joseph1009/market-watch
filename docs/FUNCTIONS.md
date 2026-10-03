@@ -34,7 +34,7 @@ Companion documents:
 | 2 | [The daily brief](#2-the-daily-brief) | The scheduler: 07:30 New York, weekdays | [`RunScheduler`](../internal/app/app.go#L804) → [`publishScheduled`](../internal/app/app.go#L401) |
 | 3 | [Worth a closer look](#3-worth-a-closer-look) | Straight after the brief: the daily run, `/now`, `--once` | [`brief`](../internal/app/app.go#L411) → [`sendIdeas`](../internal/app/ideas.go#L88) |
 | 3a | [Weekly themes](#3a-weekly-themes) | The first scheduled closer look of the week | [`runThemes`](../internal/app/themes.go#L72) |
-| 3b | [Daily reactions](#3b-daily-reactions) | Every closer look | [`runReactions`](../internal/app/reactions.go#L45) |
+| 3b | [Daily reactions](#3b-daily-reactions) | Every closer look | [`runReactions`](../internal/app/reactions.go#L68) |
 | 3c | [Facts and verdicts](#3c-facts-and-verdicts) | Called by 3a and 3b | [`factsFor`](../internal/app/ideas.go#L281) → [`judge`](../internal/app/ideas.go#L231) |
 | 4 | [Market history](#4-market-history) | A background loop, and before each closer look | [`RunMarket`](../internal/app/marketdata.go#L54), [`topUpMarket`](../internal/app/marketdata.go#L89) |
 | 5 | [Scorecard](#5-scorecard) | Verdicts shown, `/analyse`, `/scorecard` | [`recordVerdicts`](../internal/app/ideas.go#L419), [`recordAnalysis`](../internal/app/commands.go#L728), [`handleScorecard`](../internal/app/ideas.go#L469) |
@@ -127,7 +127,7 @@ What passes between the functions:
 
 ## 2. The daily brief
 
-**Starts from:** [`RunScheduler`](../internal/app/app.go#L804) at `REPORT_AT` (07:30) in `SCHEDULE_TZ` (America/New_York), weekdays only. [`config.NextRun`](../config/config.go#L397) works out the next time afresh each round, so daylight saving never shifts it. In Singapore that is 19:30 until 1 November.
+**Starts from:** [`RunScheduler`](../internal/app/app.go#L804) at `REPORT_AT` (07:30) in `SCHEDULE_TZ` (America/New_York), weekdays only. [`config.NextRun`](../config/config.go#L394) works out the next time afresh each round, so daylight saving never shifts it. In Singapore that is 19:30 until 1 November.
 
 **Entry point:** [`publishScheduled`](../internal/app/app.go#L401) → [`brief`](../internal/app/app.go#L411)`(share=true, scheduled=true)` → [`sendReport`](../internal/app/app.go#L498)
 
@@ -146,13 +146,13 @@ What passes between the functions:
 | 2 | [`collectPrices`](../internal/app/prices.go#L46), in the background | Prices the 12 benchmark funds and every followed share from Finnhub ([`prices.Client.Fetch`](../internal/prices/prices.go#L71)), at about one a second. Whatever Finnhub misses comes from the charts ([`fromCharts`](../internal/app/prices.go#L71) → [`History.Fetch`](../internal/prices/history.go#L88)). |
 | 3 | [`collectFilings`](../internal/app/filings.go#L25) → [`sec.Client.Collect`](../internal/sec/sec.go#L107) | Each followed company's recent important 8-Ks, as articles. |
 | 4 | [`collectSearch`](../internal/app/search.go#L26) → [`search.Queries`](../internal/search/queries.go#L56) → [`search.Client.Collect`](../internal/search/search.go#L93) | Tavily news searches, the general ones plus one for each sector, reaching back to the previous brief ([`searchSince`](../internal/app/search.go#L56)). |
-| 5 | [`movers`](../internal/app/movers.go#L34) → [`searchMovers`](../internal/app/movers.go#L72) → [`search.Merge`](../internal/search/search.go#L273) | Once the prices are in, up to 5 followed shares that moved at least 3 points more than the S&P 500 fund each get a "why did it move" search. |
+| 5 | [`movers`](../internal/app/movers.go#L35) → [`searchMovers`](../internal/app/movers.go#L73) → [`search.Merge`](../internal/search/search.go#L273) | Once the prices are in, up to 5 followed shares that moved at least 3 points more than the S&P 500 fund each get a "why did it move" search. |
 | 6 | [`feed.Collect`](../internal/feed/collect.go#L115) | The gathering pipeline:<br>• [`Fetcher.Fetch`](../internal/feed/fetch.go#L62) reads every enabled feed at once;<br>• the filings and search results are added;<br>• [`DropStale`](../internal/feed/collect.go#L228) drops anything more than a week old;<br>• [`Dedupe`](../internal/feed/collect.go#L251) removes duplicates by URL and then by title;<br>• [`Match`](../internal/feed/collect.go#L404) tags articles by the company names in `companies.yaml`;<br>• [`Result.triage`](../internal/feed/collect.go#L170) → [`Triager.Triage`](../internal/triage/triage.go#L107) has **Opus** rate every article 1–5 and place it in up to 2 sectors, in batches of 60. An article sorted in the last eight days under the same sectors keeps its verdict from `sorted.json` ([`Memory`](../internal/triage/memory.go)) and isn't sent;<br>• [`Limit`](../internal/feed/collect.go#L597) ranks by [`score`](../internal/feed/collect.go#L548) and cuts to `MAX_ARTICLES`. |
 | 7 | [`history.Store.Mark`](../internal/history/history.go#L63) | Marks stories that earlier briefs carried (`covered.json`), so the writer treats them as updates rather than news. |
 | 8 | [`triage.TopUp`](../internal/triage/topup.go#L27) → [`Reviewer.Review`](../internal/triage/review.go#L62) | Sections with fewer than 10 articles are offered the ones rated 3. **Opus with the web** then checks every placement again. It keeps a top-up only if it names that section. |
 | 2b | [`collectCalendar`](../internal/app/calendar.go#L38), in the background | What is due from now to the end of the week. [`ForexFactory.Week`](../internal/calendar/calendar.go#L41) → [`calendar.Key`](../internal/calendar/calendar.go#L109) keeps the US releases rated high or medium and the high ones from other large economies, with their forecast and previous figure. [`consensus.Client.Earnings`](../internal/consensus/earnings.go#L18) gives the results due over five weekdays, followed companies first, with what analysts expect each to earn a share. |
-| 2c | [`marketMoves`](../internal/app/movers.go#L131), in the background | Tops up the market's history ([`topUpMarket`](../internal/app/marketdata.go#L89)) and picks the last session's 5 biggest moves across the market against each share's usual ([`market.Moves`](../internal/market/screen.go#L416)), among companies worth US$2bn or more, followed or not. They are shown in a line under the overview. |
-| 9 | [`collectLevels`](../internal/app/filings.go#L88) → [`FRED.Fetch`](../internal/prices/fred.go#L147); [`trendsFor`](../internal/app/movers.go#L177) | Bond yields, the Fed's rate, the S&P 500, the VIX and inflation. Also each mover's averages and range. |
+| 2c | [`marketMoves`](../internal/app/movers.go#L132), in the background | Tops up the market's history ([`topUpMarket`](../internal/app/marketdata.go#L89)) and picks the last session's 5 biggest moves across the market against each share's usual ([`market.Moves`](../internal/market/screen.go#L416)), among companies worth US$2bn or more, followed or not. They are shown in a line under the overview. |
+| 9 | [`collectLevels`](../internal/app/filings.go#L88) → [`FRED.Fetch`](../internal/prices/fred.go#L147); [`trendsFor`](../internal/app/movers.go#L173) | Bond yields, the Fed's rate, the S&P 500, the VIX and inflation. Also each mover's averages and range. |
 | 10 | [`report.Generator.Generate`](../internal/report/generate.go#L73) | [`buildPrompt`](../internal/report/prompt.go#L118) builds the prompt, with the calendar as a "Coming up" block ([`report.renderCalendar`](../internal/report/calendar.go#L15)). **Opus** writes the brief through the relay (stage `brief`). It writes in plain English, with an emoji on each sub-heading and the key figure in each bullet in bold, and ends the overview with "What to watch". [`parseResponse`](../internal/report/parse.go#L21) splits the reply into the overview and the sections. If there are no articles, a "no news" message goes out instead and the run stops. |
 | 11 | [`discover.Finder.Find`](../internal/discover/discover.go#L64) → [`FIGI.Verify`](../internal/discover/verify.go#L60) → [`Store.Note`](../internal/discover/store.go#L54) → [`priceCandidates`](../internal/app/prices.go#L277) | **Opus** names the companies in the news that no sector follows. Each ticker is checked against OpenFIGI, counted in `candidates.json` and priced. |
 | 12 | [`telegram.RenderWith`](../internal/telegram/render.go#L91) | The report becomes Telegram HTML messages, each under 4,096 characters. Each sector's heading gets its emoji ([sectors.yaml](../config/sectors.yaml)), the writer's `**marks**` become bold ([`highlight`](../internal/telegram/render.go#L394)), the first mention of each glossary term in a section links to its explanation ([`linkTerms`](../internal/telegram/terms.go#L19)), and the "📅 Coming up" block goes after the overview ([`telegram.renderCalendar`](../internal/telegram/calendar.go#L25)). |
@@ -197,7 +197,7 @@ What passes between the functions:
 | 4 | [`backdrop`](../internal/app/research.go#L143) | FRED's oil, gas, copper, dollar, 10-year yield, credit spread and breakeven inflation, shown above every verdict. |
 | 5 | [`newFollowing`](../internal/app/ideas.go#L207) | What the watchlists follow. The closer look leaves those companies to the brief. |
 | 6 | [`runThemes`](../internal/app/themes.go#L72), weekly only | See **3a**. |
-| 7 | [`runReactions`](../internal/app/reactions.go#L45) | See **3b**. |
+| 7 | [`runReactions`](../internal/app/reactions.go#L68) | See **3b**. |
 | 8 | [`ThemeLog.Add`](../internal/ideas/themelog.go#L61) | Writes the week to `themes.json` however it went, so it runs once a week. |
 | 9 | [`telegram.RenderPicks`](../internal/telegram/ideas.go#L94) → [`send`](../internal/app/pages.go#L39) | Lays out and sends to the owner the themes with their picks, then the reactions, then the earlier picks. With pages on, it sends one line for each pick ([`PicksSummary`](../internal/telegram/summary.go#L98)) and a button to the cases (see 8b). The message ids are added to `LastBrief`, so they are cleared along with the brief. |
 | 10 | [`sendIdeas`](../internal/app/ideas.go#L88) | Returns a copy laid out with `ForChannel`, headed by [`channelNote`](../internal/telegram/ideas.go#L35), the warning that must stay. The daily run posts it with the brief ([`shareBrief`](../internal/app/channel.go#L127), see 8). |
@@ -238,7 +238,7 @@ What passes between the functions:
 
 ### 3b. Daily reactions
 
-**Entry point:** [`runReactions`](../internal/app/reactions.go#L45)
+**Entry point:** [`runReactions`](../internal/app/reactions.go#L68)
 
 **What it does:** finds shares that moved at least 3 times their usual daily move, on at least twice their usual trading, where the brief's articles explain the move. It judges up to 6, putting results stories first, and shows up to 3 BUYs or SELLs.
 
@@ -246,7 +246,7 @@ What passes between the functions:
 
 | Step | Code | What it does |
 |---|---|---|
-| 1 | [`market.Store.Load`](../internal/market/store.go#L210) | The last 120 days. It needs at least 62 sessions. |
+| 1 | [`recentMoves`](../internal/app/reactions.go#L52) → [`market.Store.Load`](../internal/market/store.go#L210) | The last 120 days. It needs at least 62 sessions. |
 | 2 | [`market.Moves`](../internal/market/screen.go#L416) | The latest session's outsized moves, among eligible companies. |
 | 3 | [`fundamentals.Relevant`](../internal/fundamentals/news.go#L92) | For the 40 largest moves, finds the brief's articles (`lk.Cited`) that name the company. A move that no article explains is skipped. |
 | 4 | `resultsWords` sort | Results or outlook stories first, then the largest move against its usual. Takes the top 6 (`ReactionsJudged`). |

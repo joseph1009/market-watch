@@ -207,10 +207,6 @@ type Link struct {
 	Source string
 }
 
-// Group is parts written one after another, for a builder that returns
-// several.
-type Group []Part
-
 func (d Doc) write(w *writer) {
 	w.WriteString("<header>\n")
 	if d.Kicker != "" {
@@ -254,12 +250,6 @@ func (p Para) write(w *writer) {
 func (s Small) write(w *writer) {
 	if s != "" {
 		w.WriteString("<p class=\"small\">" + lines(string(s)) + "</p>\n")
-	}
-}
-
-func (g Group) write(w *writer) {
-	for _, p := range g {
-		p.write(w)
 	}
 }
 

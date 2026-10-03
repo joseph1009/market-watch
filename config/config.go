@@ -383,9 +383,6 @@ func SecretsFromEnv() []string {
 // PrefsPath is where the user-editable preferences file lives on the volume.
 func (c *Config) PrefsPath() string { return filepath.Join(c.DataDir, "prefs.yaml") }
 
-// DatabasePath is where the dedupe history database lives on the volume.
-func (c *Config) DatabasePath() string { return filepath.Join(c.DataDir, "market-watch.db") }
-
 // NextRun returns the next scheduled report time after from, skipping the days
 // the brief would have nothing to report on.
 //

@@ -131,36 +131,6 @@ func (c *Client) pace(ctx context.Context) error {
 	}
 }
 
-// SharesOutstanding is the latest count of common shares the company gave on
-// a filing's cover, summed across its classes where it gave several on the
-// same date. It is what a market value is reckoned from.
-func (c *Client) SharesOutstanding(ctx context.Context, cik int) (float64, error) {
-	obs, err := c.Concept(ctx, cik, "dei", "EntityCommonStockSharesOutstanding")
-	if err != nil {
-		return 0, err
-	}
-	var latest time.Time
-	for _, o := range obs {
-		if o.End.After(latest) {
-			latest = o.End
-		}
-	}
-	// One figure per class and filing: the same date can arrive from a 10-Q
-	// and an amendment, so each distinct value is counted once.
-	seen := map[float64]bool{}
-	total := 0.0
-	for _, o := range obs {
-		if o.End.Equal(latest) && !seen[o.Value] {
-			seen[o.Value] = true
-			total += o.Value
-		}
-	}
-	if total <= 0 {
-		return 0, ErrNotReported
-	}
-	return total, nil
-}
-
 // Concept fetches every observation a company has reported for one tag.
 func (c *Client) Concept(ctx context.Context, cik int, taxonomy, tag string) ([]Observation, error) {
 	var body struct {

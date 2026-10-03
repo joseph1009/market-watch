@@ -43,7 +43,7 @@ func (s *Store) Sync(ctx context.Context, src Source, now time.Time, limit int) 
 	s.syncing.Lock()
 	defer s.syncing.Unlock()
 
-	ny := now.In(newYork())
+	ny := now.In(NewYork())
 	today := time.Date(ny.Year(), ny.Month(), ny.Day(), 0, 0, 0, 0, time.UTC)
 	oldest := today.Add(-Reach)
 
@@ -144,7 +144,7 @@ func (s *Store) syncSplits(ctx context.Context, src Source, today time.Time) err
 // Missing counts the weekdays within Reach the store does not yet hold,
 // which is how far the first fill has to go.
 func (s *Store) Missing(now time.Time) int {
-	ny := now.In(newYork())
+	ny := now.In(NewYork())
 	today := time.Date(ny.Year(), ny.Month(), ny.Day(), 0, 0, 0, 0, time.UTC)
 	n := 0
 	for day := today.AddDate(0, 0, -1); !day.Before(today.Add(-Reach)); day = day.AddDate(0, 0, -1) {
@@ -155,10 +155,10 @@ func (s *Store) Missing(now time.Time) int {
 	return n
 }
 
-// newYork is where a session's date is decided: at the brief's hour in
+// NewYork is where a session's date is decided: at the brief's hour in
 // Singapore, UTC and New York agree on the day, but a /now in the New York
 // evening is already the next day in UTC.
-func newYork() *time.Location {
+func NewYork() *time.Location {
 	if loc, err := time.LoadLocation("America/New_York"); err == nil {
 		return loc
 	}

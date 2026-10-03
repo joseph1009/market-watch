@@ -185,10 +185,7 @@ func panelPath(p *market.Panel, symbol string) ideas.Path {
 	if ser == nil {
 		return nil
 	}
-	ny, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		ny = time.FixedZone("EST", -5*60*60)
-	}
+	ny := market.NewYork()
 	path := make(ideas.Path, 0, len(p.Dates))
 	for i, day := range p.Dates {
 		if ser.Close[i] <= 0 {

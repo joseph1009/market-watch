@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -35,7 +36,29 @@ const (
 	// read: the sixty sessions a share's usual move is measured over, and
 	// room for holidays.
 	reactionHistory = 120 * 24 * time.Hour
+
+	// historyNeeded is how many sessions the history must hold before a
+	// share's usual move can be measured: the sixty, and two to spare.
+	historyNeeded = 62
 )
+
+// errHistoryFilling is the market's history still filling, or never filled
+// for want of a Massive key.
+var errHistoryFilling = errors.New("the market's recent history is not there yet")
+
+// recentMoves reads the market's recent history and finds the outsized moves
+// in its latest session (market.Moves), largest against their usual first.
+// It returns the history too, for the session's date.
+func (a *App) recentMoves(listings []market.Listing) (*market.Panel, []market.Move, error) {
+	panel, err := a.MarketStore.Load(a.now().Add(-reactionHistory), nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the market's recent history could not be read: %w", err)
+	}
+	if len(panel.Dates) < historyNeeded {
+		return nil, nil, fmt.Errorf("%w: %d sessions", errHistoryFilling, len(panel.Dates))
+	}
+	return panel, market.Moves(panel, listings, market.DefaultRules, moveTimes, moveBusy), nil
+}
 
 // resultsWords mark an article about a company's results or its outlook.
 var resultsWords = regexp.MustCompile(`(?i)\b(results?|earnings|quarter(ly)?|q[1-4]|guidance|outlook|forecast|revenue|profit|sales|beats?|miss(es)?)\b`)
@@ -44,16 +67,11 @@ var resultsWords = regexp.MustCompile(`(?i)\b(results?|earnings|quarter(ly)?|q[1
 // those shown with the chart each is priced from.
 func (a *App) runReactions(ctx context.Context, lk look, listings []market.Listing, f following, backdrop []string) ([]model.Idea, map[string]string) {
 	cached := runcache.From(ctx)
-	panel, err := a.MarketStore.Load(a.now().Add(-reactionHistory), nil)
+	_, moves, err := a.recentMoves(listings)
 	if err != nil {
-		a.Log.Warn("no reactions: the market's recent history could not be read", "error", err)
+		a.Log.Warn("no reactions", "error", err)
 		return nil, nil
 	}
-	if len(panel.Dates) < 62 {
-		a.Log.Warn("no reactions: the market's recent history is not there yet", "sessions", len(panel.Dates))
-		return nil, nil
-	}
-	moves := market.Moves(panel, listings, market.DefaultRules, moveTimes, moveBusy)
 
 	type found struct {
 		idea    model.Idea

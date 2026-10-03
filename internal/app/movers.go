@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"strings"
@@ -138,19 +139,18 @@ func (a *App) marketMoves(ctx context.Context, since time.Time) []model.MarketMo
 		a.Log.Warn("no moves across the market: Nasdaq's listings could not be read", "error", err)
 		return nil
 	}
-	panel, err := a.MarketStore.Load(a.now().Add(-reactionHistory), nil)
-	if err != nil {
-		a.Log.Warn("no moves across the market: the market's recent history could not be read", "error", err)
-		return nil
+	panel, moves, err := a.recentMoves(listings)
+	if errors.Is(err, errHistoryFilling) {
+		return nil // the closer look says so
 	}
-	if len(panel.Dates) < 62 {
-		return nil // still filling, or no Massive key; the closer look says so
+	if err != nil {
+		a.Log.Warn("no moves across the market", "error", err)
+		return nil
 	}
 	closed := sessionClose(panel.Last())
 	if !since.IsZero() && !closed.After(since) {
 		return nil
 	}
-	moves := market.Moves(panel, listings, market.DefaultRules, moveTimes, moveBusy)
 	out := make([]model.MarketMove, 0, marketMovesShown)
 	for _, m := range moves[:min(marketMovesShown, len(moves))] {
 		out = append(out, model.MarketMove{
@@ -164,11 +164,7 @@ func (a *App) marketMoves(ctx context.Context, since time.Time) []model.MarketMo
 // sessionClose is when a session, dated as the market's history dates it,
 // closed: four in the afternoon in New York.
 func sessionClose(day time.Time) time.Time {
-	ny, err := time.LoadLocation("America/New_York")
-	if err != nil {
-		ny = time.FixedZone("EST", -5*60*60)
-	}
-	return time.Date(day.Year(), day.Month(), day.Day(), 16, 0, 0, 0, ny)
+	return time.Date(day.Year(), day.Month(), day.Day(), 16, 0, 0, 0, market.NewYork())
 }
 
 // trendsFor reads the price history of the shares that moved furthest, so the

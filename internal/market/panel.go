@@ -2,7 +2,6 @@ package market
 
 import (
 	"math"
-	"sort"
 	"time"
 )
 
@@ -44,16 +43,6 @@ func (p *Panel) Get(symbol string) *Series {
 		return nil
 	}
 	return p.series[symbol]
-}
-
-// Symbols lists what the panel holds, in order.
-func (p *Panel) Symbols() []string {
-	out := make([]string, 0, len(p.series))
-	for sym := range p.series {
-		out = append(out, sym)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // Last is the panel's latest session, or the zero time.
