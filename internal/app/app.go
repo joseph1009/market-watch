@@ -286,12 +286,18 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		Now:       a.now,
 	}
 	if cfg.Triage {
+		memory, err := triage.LoadMemory(filepath.Join(cfg.DataDir, "sorted.json"))
+		if err != nil {
+			return nil, err
+		}
 		a.Triage = &triage.Triager{
 			Completer:   rel.Plain(relay.Triage),
 			Concurrency: cfg.RelayConcurrency,
 			// The pass as a whole gets as long as one call may take. A batch
 			// that hangs costs its articles their ratings, never the brief.
 			Timeout: cfg.CallTimeout,
+			Memory:  memory,
+			Now:     a.now,
 		}
 		if cfg.RelayAnswer == config.AnswerSession {
 			// Each batch is a file someone has to answer, so fewer and larger
@@ -584,6 +590,7 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 		// cap is discarding news that matters and should rise.
 		a.Log.Info("triaged",
 			"rated", collected.Rated,
+			"from_memory", a.Triage.Memory.Recalled(),
 			"newly_matched", collected.NewlyMatched,
 			"placements_added", collected.Placements,
 			"trivial_removed", collected.Trivial,

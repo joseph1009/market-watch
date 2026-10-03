@@ -89,11 +89,11 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L797) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L804) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
-[`Publish`](../internal/app/app.go#L389) → [`brief(ctx, share: true)`](../internal/app/app.go#L405).
+[`Publish`](../internal/app/app.go#L395) → [`brief(ctx, share: true)`](../internal/app/app.go#L411).
 
 `brief` does three things before any work starts:
 
@@ -102,7 +102,7 @@ or from daylight saving. When the timer fires, it calls
 - It calls [`Relay.Begin`](../internal/relay/relay.go#L96). That creates a
   folder for this run and puts it on the context. Every model call the run
   makes lands in that folder, numbered in order.
-- It calls [`sendReport`](../internal/app/app.go#L492), which is the pipeline.
+- It calls [`sendReport`](../internal/app/app.go#L498), which is the pipeline.
 
 ### 2. Gathering
 
@@ -185,12 +185,20 @@ gathering, runs these steps:
    keywords. A story that names no followed company is placed by judgment, or
    not at all.
 6. [`Result.triage`](../internal/feed/collect.go#L170) hands everything to
-   [`triage.Triager.Triage`](../internal/triage/triage.go#L100). That sends the
+   [`triage.Triager.Triage`](../internal/triage/triage.go#L107). That sends the
    articles to Opus in batches of 60, two batches at a time. For each article
    it gets back a rating from 1 to 5 and up to two sectors, judged against the
    descriptions in [config/sectors.yaml](../config/sectors.yaml). Articles rated
    1 that no sector claims are dropped here. If the sorting fails, the failure
    is logged and the run carries on with name matches alone.
+
+   An article stays in the feeds for days, so most of a day's articles were
+   sorted the evening before. The sorting remembers each verdict for eight
+   days ([memory.go](../internal/triage/memory.go), `sorted.json`) and gives
+   it again, so only articles it hasn't seen go to Opus. A verdict counts only
+   under the prompt it was given under. That prompt holds the sectors'
+   descriptions and companies, so changing either sorts everything again. The
+   log line `triaged` says how many came from memory (`from_memory`).
 7. [`Limit`](../internal/feed/collect.go#L597) ranks the articles by
    [`score`](../internal/feed/collect.go#L548) (rating, sector match, source
    weight and how recent it is) and cuts the list to `MAX_ARTICLES`.
@@ -391,7 +399,7 @@ may use.
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L405) starts the closer look as soon as the
+[`brief`](../internal/app/app.go#L411) starts the closer look as soon as the
 owner has the brief. When it is done, it posts both to the channel. Until
 2026-10-01 the closer look waited twenty minutes after the brief, queued on the
 data volume. In those days the channel got the brief at once and the closer
@@ -1046,6 +1054,10 @@ the review uses the same text. `parse` reads the `number|rating|watchlist ids`
 replies. `apply` writes the ratings and sectors onto the articles. It keeps the
 sectors chosen for articles rated 3 in `Article.Reserve`.
 
+**[memory.go](../internal/triage/memory.go)** has `Memory`, the sorting's
+earlier verdicts by article id, kept in `sorted.json` for eight days. A verdict
+is given again only under the same sorting prompt.
+
 **[review.go](../internal/triage/review.go)** has `Reviewer.Review`. It shows
 the articles that could reach the brief, with where each sits, and applies the
 moves that come back (`parseReview`, `applyReview`). `Move` is one of those
@@ -1376,6 +1388,7 @@ is `./data`.
 |---|---|---|
 | `prefs.yaml` | [config/prefs.go](../config/prefs.go) | The owner's chat id, the last brief's message ids, and the watchlist and feed changes made from Telegram |
 | `covered.json` | [history/history.go](../internal/history/history.go) | Which stories earlier briefs carried, going back three weeks |
+| `sorted.json` | [triage/memory.go](../internal/triage/memory.go) | The sorting's verdict on each article it has read in the last eight days, so it isn't asked again |
 | `runs.json` | [history/runs.go](../internal/history/runs.go) | The last thirty runs, for `/stats` |
 | `candidates.json` | [discover/store.go](../internal/discover/store.go) | New names, and how many days each has been in the news |
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, plus the prices it is measured from once its next session has opened |

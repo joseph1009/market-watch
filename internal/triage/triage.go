@@ -91,6 +91,13 @@ type Triager struct {
 	BatchSize   int
 	Concurrency int
 	Timeout     time.Duration
+
+	// Memory gives an article the verdict it had before, rather than asking
+	// again. Nil asks about every article.
+	Memory *Memory
+
+	// Now is injected for tests.
+	Now func() time.Time
 }
 
 // Triage returns a copy of articles, in the same order, with Rating set and
@@ -116,10 +123,26 @@ func (t *Triager) Triage(ctx context.Context, articles []model.Article, groups [
 		return out, model.Usage{}, err
 	}
 
+	// What an earlier pass judged under this same prompt is judged again
+	// from memory, and only the rest go to the model, in a copy of their own.
+	key := promptKey(system)
+	var pending []int
+	for i := range out {
+		if v, ok := t.Memory.recallFor(out[i].ID, key); ok {
+			apply(out[i:i+1], map[int]verdict{1: v}, known)
+			continue
+		}
+		pending = append(pending, i)
+	}
+	ask := make([]model.Article, len(pending))
+	for j, i := range pending {
+		ask[j] = out[i]
+	}
+
 	size := t.batchSize()
 	var bounds [][2]int
-	for start := 0; start < len(out); start += size {
-		bounds = append(bounds, [2]int{start, min(start+size, len(out))})
+	for start := 0; start < len(ask); start += size {
+		bounds = append(bounds, [2]int{start, min(start+size, len(ask))})
 	}
 
 	type outcome struct {
@@ -132,7 +155,7 @@ func (t *Triager) Triage(ctx context.Context, articles []model.Article, groups [
 
 	for i, b := range bounds {
 		wg.Add(1)
-		// Each batch is a disjoint window onto out, so the goroutines write to
+		// Each batch is a disjoint window onto ask, so the goroutines write to
 		// separate elements and need no lock.
 		go func(i int, batch []model.Article) {
 			defer wg.Done()
@@ -144,6 +167,9 @@ func (t *Triager) Triage(ctx context.Context, articles []model.Article, groups [
 			// items it reached, so they are applied even alongside an error.
 			verdicts := parse(text, len(batch))
 			apply(batch, verdicts, known)
+			for n, v := range verdicts {
+				t.Memory.rememberAt(batch[n-1].ID, key, v, t.now())
+			}
 			// Fewer verdicts than items is a failure even without an error: a
 			// model that drifts from the format would otherwise leave
 			// articles unrated with nothing in the log to say so.
@@ -151,9 +177,15 @@ func (t *Triager) Triage(ctx context.Context, articles []model.Article, groups [
 				err = fmt.Errorf("reply rated %d of %d articles", len(verdicts), len(batch))
 			}
 			outcomes[i] = outcome{usage: usage, err: err}
-		}(i, out[b[0]:b[1]])
+		}(i, ask[b[0]:b[1]])
 	}
 	wg.Wait()
+	for j, i := range pending {
+		out[i] = ask[j]
+	}
+	// A memory that cannot be written costs the next brief its saving, never
+	// this one its ratings.
+	_ = t.Memory.saveAt(t.now(), len(out)-len(pending))
 
 	var usage model.Usage
 	failed := 0
@@ -320,6 +352,13 @@ func (t *Triager) concurrency() int {
 		return t.Concurrency
 	}
 	return DefaultConcurrency
+}
+
+func (t *Triager) now() time.Time {
+	if t.Now != nil {
+		return t.Now()
+	}
+	return time.Now()
 }
 
 func (t *Triager) timeout() time.Duration {

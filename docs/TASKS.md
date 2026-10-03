@@ -132,12 +132,11 @@ is, what it needs from you, and why it is worth doing.
 
 ## Relay runs
 
-- **Smaller requests.** The general block and the section limits have been
-  dealt with. Two cuts are left. First, the sorting pass re-rates stories that
-  earlier briefs already carried, when yesterday's rating would do. Second, a
-  brief is still four sorting batches of 40KB each, which is most of the
-  reading. Batching by source would put near-identical items together, which
-  would make each batch quicker to answer.
+- **Smaller requests.** The general block, the section limits and the
+  re-sorting of articles seen before have been dealt with. One cut is left.
+  The sorting batches are still most of a brief's reading. Batching by source
+  would put near-identical items together, which would make each batch
+  quicker to answer.
 - **Run each background request in a Fly Sprite.** Each `/analyse` or
   `/industry` would get a sprite of its own, a small throwaway machine Fly
   starts in about a second. Its Claude calls would run there, and the sprite
@@ -178,6 +177,9 @@ is, what it needs from you, and why it is worth doing.
   - A line under the brief's overview, "Across the market", shows the day's
     five biggest moves among US companies worth US$2bn or more, followed or
     not. They are the moves the closer look's reactions start from.
+  - The sorting remembers its verdict on each article for eight days, so an
+    article an earlier brief sorted isn't sent to Opus again. On 1 October
+    about half the articles sorted were over a day old.
 - 2 October 2026, at the owner's request:
   - Plain writing. Every report the models write follows one shared set of
     writing rules, and the rules that made sentences dense are gone.
