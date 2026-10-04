@@ -21,32 +21,18 @@ type Glance struct {
 	// the earnings a share analysts expect for ForwardFor.
 	Price, Shares, EPS, Sales, ExpectedEPS Value
 
-	// Cash is cash and short-term investments, and Debt long-term debt, at
-	// the balance sheet's date, or each at its own where it is older.
-	Cash, Debt     Value
-	CashAt, DebtAt time.Time
+	// Cash is cash, with short-term investments where WithInvestments, and
+	// Debt long-term debt, each at its own date.
+	Cash, Debt      Value
+	CashAt, DebtAt  time.Time
+	WithInvestments bool
 }
 
 // Glance works out the figures a reader looks for first. The multiples need
 // a price in the currency the accounts are in.
 func (s Snapshot) Glance() Glance {
-	g := Glance{
-		Cash:   Add(s.Balance.Figure("cash"), s.Balance.Figure("marketableSecurities")),
-		Debt:   s.Balance.Figure("longTermDebt"),
-		CashAt: s.Balance.AsOf,
-		DebtAt: s.Balance.AsOf,
-	}
-	if !s.Balance.Figure("marketableSecurities").Known {
-		g.Cash = s.Balance.Figure("cash")
-	}
-	for _, key := range []string{"cash", "marketableSecurities"} {
-		if at, ok := s.Balance.Older[key]; ok && at.Before(g.CashAt) {
-			g.CashAt = at
-		}
-	}
-	if at, ok := s.Balance.Older["longTermDebt"]; ok {
-		g.DebtAt = at
-	}
+	g := Glance{Debt: s.Balance.Figure("longTermDebt"), DebtAt: s.Balance.At("longTermDebt")}
+	g.Cash, g.CashAt, g.WithInvestments = s.Balance.CashPot()
 
 	if s.Price == nil || s.currency() != "USD" {
 		return g

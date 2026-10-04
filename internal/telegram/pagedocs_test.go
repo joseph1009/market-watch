@@ -140,7 +140,7 @@ func TestTheAnalysisPageGivesTheFiguresAReaderLooksForFirst(t *testing.T) {
 	acc := Accounts{Currency: "USD",
 		Glance: &Glance{MarketCap: 1.21e12, PE: 14.5, PS: 9.1, On: "Sep 2025–Aug 2026", ForwardPE: 6.7, ForwardFor: "Sep 2026–Aug 2027",
 			Price: 1074.89, Shares: 1.13e9, EPS: 74.21, Sales: 133.19e9, ExpectedEPS: 160.39,
-			Cash: 43.4e9, Debt: 8.84e9, HasCash: true, HasDebt: true, CashAt: asOf, DebtAt: older},
+			Cash: 43.4e9, Debt: 8.84e9, WithInvestments: true, HasCash: true, HasDebt: true, CashAt: asOf, DebtAt: older},
 		Balance: &BalanceSheet{AsOf: asOf, Release: true, Figures: map[string]float64{"cash": 38.4e9, "longTermDebt": 8.84e9},
 			Older: map[string]time.Time{"longTermDebt": older}},
 		Quarters: []Period{

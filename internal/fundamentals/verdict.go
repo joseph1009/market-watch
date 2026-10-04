@@ -109,6 +109,23 @@ func SplitTerms(prose string) (string, []model.ListedTerm) {
 	return strings.TrimSpace(strings.Join(rest, "\n")), terms
 }
 
+// PlainHeadings takes the bold marks off section headings written as
+// "**THE BUSINESS**". NVIDIA's analysis of 4 October 2026 headed every section
+// that way: the page showed the stars, and did not know the business section
+// to put it first.
+func PlainHeadings(prose string) string {
+	lines := strings.Split(prose, "\n")
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
+		if len(t) > 4 && strings.HasPrefix(t, "**") && strings.HasSuffix(t, "**") {
+			if inner := strings.TrimSpace(t[2 : len(t)-2]); heading(inner) {
+				lines[i] = inner
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // TrimPreamble drops what the reply says before its first section: the
 // model's account of its own work ("Searches are done. I checked the
 // results..."), which the owner found in a report on 2026-10-03. A reply with

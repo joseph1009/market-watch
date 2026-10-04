@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // stub answers each endpoint with the Micron reply saved in testdata, as
@@ -159,5 +160,24 @@ func TestFiguresAreReadHoweverTheSiteWritesThem(t *testing.T) {
 		if err := json.Unmarshal([]byte(in), &n); err != nil || n.ok {
 			t.Errorf("%s read as known (%v)", in, n.v)
 		}
+	}
+}
+
+// The forward P/E is on the first year with six months or more to run: in
+// October 2026, NVIDIA's year to January 2028, not the one ending in four
+// months; Micron's year to August 2027, which has just begun.
+func TestTheForwardYearHasMostOfItAhead(t *testing.T) {
+	now := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	nvda := Report{Years: []Estimate{{Period: "Jan 2027", EPS: 9.25}, {Period: "Jan 2028", EPS: 15.53}}}
+	if e, ok := nvda.Forward(now); !ok || e.Period != "Jan 2028" {
+		t.Errorf("NVIDIA's forward year = %+v, want Jan 2028", e)
+	}
+	mu := Report{Years: []Estimate{{Period: "Aug 2027", EPS: 160.39}, {Period: "Aug 2028", EPS: 170}}}
+	if e, ok := mu.Forward(now); !ok || e.Period != "Aug 2027" {
+		t.Errorf("Micron's forward year = %+v, want Aug 2027", e)
+	}
+	one := Report{Years: []Estimate{{Period: "Jan 2027", EPS: 9.25}}}
+	if e, ok := one.Forward(now); !ok || e.Period != "Jan 2027" {
+		t.Errorf("with one year given, forward = %+v, want that one", e)
 	}
 }

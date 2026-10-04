@@ -66,6 +66,30 @@ type Estimate struct {
 	Up, Down  int
 }
 
+// Forward is the fiscal year a forward P/E is on: the first with at least six
+// months still to run, or the last given where none has. On 4 October 2026
+// the page's box put NVIDIA at 25.3 times the year to January 2027, then four
+// months from its end, while the analysis wrote 15.1 times the year to
+// January 2028. A year mostly gone is mostly reported, so the next one is
+// what the price looks forward to.
+func (r Report) Forward(now time.Time) (Estimate, bool) {
+	var last Estimate
+	for _, e := range r.Years {
+		if e.EPS <= 0 {
+			continue
+		}
+		last = e
+		end, err := time.Parse("Jan 2006", e.Period)
+		if err != nil {
+			continue
+		}
+		if end.AddDate(0, 1, -1).Sub(now) >= 182*24*time.Hour {
+			return e, true
+		}
+	}
+	return last, last.EPS > 0
+}
+
 // Surprise is one reported quarter against what was expected of it.
 type Surprise struct {
 	Period   string

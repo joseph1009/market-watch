@@ -713,7 +713,7 @@ func splitAnalysis(prose string, related []fundamentals.Related) analysisParts {
 	w := analysisParts{related: related}
 	// The terms go first: one written in capitals on its own line, "HBM",
 	// would read as a heading to the sections before it.
-	prose, w.terms = fundamentals.SplitTerms(fundamentals.TrimPreamble(prose))
+	prose, w.terms = fundamentals.SplitTerms(fundamentals.TrimPreamble(fundamentals.PlainHeadings(prose)))
 	prose, w.verdict = fundamentals.SplitVerdict(prose)
 	prose, w.short = fundamentals.SplitShort(prose)
 	w.prose, w.sources = fundamentals.SplitSources(prose)

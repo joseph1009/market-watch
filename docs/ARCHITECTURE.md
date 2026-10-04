@@ -599,15 +599,15 @@ the question again. `/analyse NVDA` still works in one line.
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L253)
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L256)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
    [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L135) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
    currency the filer reports in. It prefers later filings over earlier ones
-   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L487)).
+   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L520)).
    It builds the current year so far beside the full years
-   ([`buildYTD`](../internal/fundamentals/metrics.go#L595)), using only
+   ([`buildYTD`](../internal/fundamentals/metrics.go#L628)), using only
    interim periods that end after the latest annual report.
 2. [`quoteFor`](../internal/app/commands.go#L855) adds the share price, so the
    filed figures can become multiples.
@@ -630,7 +630,7 @@ following.
 4. Three more optional reads.
    [`addExpectations`](../internal/app/research.go#L115) adds what analysts
    expect, and what insiders, short sellers and funds have done
-   ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L132)).
+   ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L156)).
    [`addRelease`](../internal/app/research.go#L143) adds the company's latest
    results release ([`sec.Client.EarningsRelease`](../internal/sec/release.go#L40)).
    [`addReleaseFigures`](../internal/app/research.go#L162) adds the release's
@@ -697,6 +697,8 @@ following.
    anyway. They are shown as numbered footnotes at the end, in the chat and
    on the page. The text cites them by number, [3], as the brief does. The
    numbers are redone to follow the footnotes, and each links to its page.
+   [`PlainHeadings`](../internal/fundamentals/verdict.go) first takes the bold
+   marks off a section heading written as "**THE BUSINESS**".
    [`SplitTerms`](../internal/fundamentals/verdict.go) takes out TERMS, the
    words the analysis used that a reader might not know. The analysis does
    not define them. [`terms.Filter`](../internal/terms/terms.go) drops the
@@ -1238,6 +1240,16 @@ reach: five points a year, scaled to the time passed.
 US GAAP and IFRS tag names. It also has `buildYears`, `buildBalance` and
 `buildYTD`. `supersedes` prefers a later filing to an earlier one that was
 restated. `reportingCurrency` picks the currency the filer reports in.
+`Balance.CashPot` adds cash to short-term investments only where both are of
+one date, so no figure mixes two balance sheets.
+
+**[splits.go](../internal/fundamentals/splits.go)** puts figures a share, and
+counts of shares, filed before a stock split on the split's basis. A later
+filing restates the periods it shows, but an older year no later filing
+shows keeps its old basis: NVIDIA's year to January 2022 read US$3.85 a share
+beside US$0.17 a year later. The splits are the ones the company tags, taken
+only where the share count filed just after the tag's date is about the
+ratio times the one filed just before, since the tags' dates are untidy.
 
 **[xbrl.go](../internal/fundamentals/xbrl.go)** is the EDGAR XBRL client.
 `Client.Concept` reads one figure's history. `Annual`, `Quarterly` and

@@ -154,7 +154,18 @@ func (s Snapshot) Table() string {
 		cur := Ratio(s.Balance.Figure("currentAssets"), s.Balance.Figure("currentLiabilities"))
 		fmt.Fprintf(&b, "%s%s\n", pad("Current ratio", 32), times(cur))
 		fmt.Fprintf(&b, "%s%s\n", pad("Debt to equity", 32), times(Ratio(s.Balance.Figure("longTermDebt"), s.Balance.Figure("equity"))))
-		fmt.Fprintf(&b, "%s%s\n", pad("Cash and investments less debt", 32), amount(Less(Add(s.Balance.Figure("cash"), s.Balance.Figure("marketableSecurities")), s.Balance.Figure("longTermDebt"))))
+		// Netted only on one date: lines of different dates make a figure
+		// that was never true on any day.
+		pot, at, withInvestments := s.Balance.CashPot()
+		label := "Cash and investments less debt"
+		if !withInvestments {
+			label = "Cash less debt"
+		}
+		if debt := s.Balance.Figure("longTermDebt"); pot.Known && debt.Known && !s.Balance.At("longTermDebt").Equal(at) {
+			fmt.Fprintf(&b, "%snot worked out: the cash is at %s and the debt at %s\n", pad(label, 32), at.Format("2 January 2006"), s.Balance.At("longTermDebt").Format("2 January 2006"))
+		} else {
+			fmt.Fprintf(&b, "%s%s\n", pad(label, 32), amount(Less(pot, debt)))
+		}
 		fmt.Fprintf(&b, "%s%s\n", pad("Equity per share ("+s.currency()+")", 32),
 			plain(Ratio(s.Balance.Figure("equity"), s.Balance.Figure("sharesOutstanding"))))
 		if len(s.Years) > 0 {
@@ -392,8 +403,13 @@ func (s Snapshot) valuation() string {
 		earnings, freeCash, basis := s.trailing()
 		fmt.Fprintf(&b, "%s%s  (on the earnings of %s)\n", pad("Price to earnings", 32),
 			times(Ratio(price, earnings)), basis)
-		if g := s.Glance(); g.PS.Known {
+		g := s.Glance()
+		if g.PS.Known {
 			fmt.Fprintf(&b, "%s%s  (market value over the revenue of %s)\n", pad("Price to sales", 32), times(g.PS), g.On)
+		}
+		if g.ForwardPE.Known {
+			fmt.Fprintf(&b, "%s%s  (on the US$%.2f a share analysts expect for %s: the forward P/E the page's box shows, so use this one)\n",
+				pad("Forward P/E", 32), times(g.ForwardPE), g.ExpectedEPS.Amount, g.ForwardFor)
 		}
 
 		if value := multiply(price, shares); value.Known {
@@ -403,7 +419,7 @@ func (s Snapshot) valuation() string {
 	}
 	fmt.Fprintf(&b, "%s%s\n", pad("Price to book value", 32),
 		times(Ratio(price, Ratio(s.Balance.Figure("equity"), shares))))
-	b.WriteString("These multiples compare today's price with figures already filed, so they are historical. There is no peer group here and no history of the multiple itself, which is what would be needed to call one high or low.\n")
+	b.WriteString("These multiples compare today's price with figures already filed, so they are historical, all but the forward P/E. The industry's, where given, are set out further down.\n")
 	return b.String()
 }
 

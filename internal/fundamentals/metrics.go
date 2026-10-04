@@ -102,7 +102,10 @@ var balanceConcepts = []concept{
 		usGAAP("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"),
 		ifrs("EquityAttributableToOwnersOfParent", "Equity")),
 	both("marketableSecurities",
-		usGAAP("MarketableSecuritiesCurrent", "ShortTermInvestments"),
+		// NVIDIA moved its short-term investments to DebtSecuritiesCurrent
+		// after October 2025, once it split out the shares it holds; last,
+		// so the broader line wins where a filing gives both.
+		usGAAP("MarketableSecuritiesCurrent", "ShortTermInvestments", "DebtSecuritiesCurrent"),
 		ifrs("OtherCurrentFinancialAssets")),
 	both("cash",
 		usGAAP("CashAndCashEquivalentsAtCarryingValue",
@@ -293,6 +296,13 @@ func (c *Client) Fetch(ctx context.Context, ticker string, years int) (Snapshot,
 	}
 	sort.Strings(snap.Missing)
 
+	// Older figures a share put on today's basis (splits.go). Best-effort: a
+	// company that tags no split, or whose tag cannot be read, is left as
+	// filed.
+	if tagged, err := c.Concept(ctx, cik, "us-gaap", splitTag); err == nil {
+		adjustForSplits(byKey, splits(tagged, byKey["dilutedShares"]))
+	}
+
 	snap.Currency = reportingCurrency(byKey)
 	snap.obs, snap.years = byKey, years
 	snap.build()
@@ -388,6 +398,29 @@ func buildBalance(byKey map[string][]Observation, currency string) Balance {
 
 // Figure reads a line, reporting whether the company disclosed it.
 func (y Year) Figure(key string) Value { return y.Figures[key] }
+
+// At is the date of a balance-sheet line: the balance sheet's own, or the
+// earlier one it was taken from.
+func (b Balance) At(key string) time.Time {
+	if at, ok := b.Older[key]; ok {
+		return at
+	}
+	return b.AsOf
+}
+
+// CashPot is cash with short-term investments where both are of one date,
+// and cash alone otherwise, with its date and whether the investments are in
+// it. Until 4 October 2026 NVIDIA's cash at 26 July 2026 was added to its
+// investments at 26 October 2025, the last its filings gave under the tag
+// then read, and the sum was dated October.
+func (b Balance) CashPot() (Value, time.Time, bool) {
+	cash, investments := b.Figure("cash"), b.Figure("marketableSecurities")
+	at := b.At("cash")
+	if cash.Known && investments.Known && b.At("marketableSecurities").Equal(at) {
+		return Add(cash, investments), at, true
+	}
+	return cash, at, false
+}
 
 // Figure reads a balance-sheet line.
 func (b Balance) Figure(key string) Value { return b.Figures[key] }

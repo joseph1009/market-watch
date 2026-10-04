@@ -219,7 +219,7 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 	acc.Glance = &telegram.Glance{MarketCap: g.MarketCap.Amount, PE: g.PE.Amount, PS: g.PS.Amount, On: g.On,
 		ForwardPE: g.ForwardPE.Amount, ForwardFor: g.ForwardFor,
 		Price: g.Price.Amount, Shares: g.Shares.Amount, EPS: g.EPS.Amount, Sales: g.Sales.Amount, ExpectedEPS: g.ExpectedEPS.Amount,
-		Cash: g.Cash.Amount, Debt: g.Debt.Amount, HasCash: g.Cash.Known, HasDebt: g.Debt.Known, CashAt: g.CashAt, DebtAt: g.DebtAt}
+		Cash: g.Cash.Amount, Debt: g.Debt.Amount, HasCash: g.Cash.Known, WithInvestments: g.WithInvestments, HasDebt: g.Debt.Known, CashAt: g.CashAt, DebtAt: g.DebtAt}
 	if len(s.Balance.Figures) > 0 {
 		acc.Balance = &telegram.BalanceSheet{AsOf: s.Balance.AsOf, Release: s.Balance.FromRelease, Figures: map[string]float64{}, Older: s.Balance.Older}
 		for k, v := range s.Balance.Figures {

@@ -597,11 +597,12 @@ type Glance struct {
 	// a share expected for ForwardFor.
 	Price, Shares, EPS, Sales, ExpectedEPS float64
 
-	Cash, Debt float64
-	HasCash    bool
-	HasDebt    bool
-	CashAt     time.Time
-	DebtAt     time.Time
+	Cash, Debt      float64
+	WithInvestments bool // the cash includes short-term investments
+	HasCash         bool
+	HasDebt         bool
+	CashAt          time.Time
+	DebtAt          time.Time
 }
 
 // BalanceSheet is the latest balance sheet, each line at AsOf unless Older
@@ -751,11 +752,19 @@ func glanceTiles(acc Accounts) pages.Tiles {
 	// from its cash at 3 September 2026 made a figure the analysis itself
 	// had to disown (4 October 2026).
 	case g.HasCash && g.HasDebt && g.DebtAt.Equal(g.CashAt):
-		add("Cash less debt", money(g.Cash-g.Debt, acc.Currency), fmt.Sprintf("%s of cash less %s of debt, at %s",
-			money(g.Cash, acc.Currency), money(g.Debt, acc.Currency), g.CashAt.Format("2 Jan 2006")))
+		cash := "cash"
+		if g.WithInvestments {
+			cash = "cash and investments"
+		}
+		add("Cash less debt", money(g.Cash-g.Debt, acc.Currency), fmt.Sprintf("%s of %s less %s of debt, at %s",
+			money(g.Cash, acc.Currency), cash, money(g.Debt, acc.Currency), g.CashAt.Format("2 Jan 2006")))
 	default:
 		if g.HasCash {
-			add("Cash", money(g.Cash, acc.Currency), "With short-term investments, at "+g.CashAt.Format("2 Jan 2006"))
+			note := "At " + g.CashAt.Format("2 Jan 2006")
+			if g.WithInvestments {
+				note = "With short-term investments, at " + g.CashAt.Format("2 Jan 2006")
+			}
+			add("Cash", money(g.Cash, acc.Currency), note)
 		}
 		if g.HasDebt {
 			note := "At " + g.DebtAt.Format("2 Jan 2006")
