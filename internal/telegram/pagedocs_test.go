@@ -63,13 +63,15 @@ func TestTheCloserLooksPageIsACardACompany(t *testing.T) {
 		Checked: "Checked in [MarketBeat](https://www.marketbeat.com/x).", Accounts: true,
 		Quote: &model.Quote{Symbol: "NESR", Price: 25.47, Percent: -3.85},
 		Trading: &model.Trading{Last: 25.47, Low52: 9.8, High52: 34.9, MA50: 30, MA200: 22,
-			Returns: []model.Return{{Over: "1 week", Percent: -22.4}, {Over: "12 months", Percent: 148}}},
+			Returns: []model.Return{{Over: "1 week", Percent: -22.4}, {Over: "12 months", Percent: 148}},
+			Market:  []model.Return{{Over: "12 months", Percent: 17.2}}},
 	}
 	page := render(PicksDoc(Picks{Reactions: []model.Idea{idea}}, nil, IdeasOptions{ForChannel: true}, time.Now(), time.UTC))
 	for _, want := range []string{
 		"<h1>Reacting to the news</h1>", disclosure,
 		`<article class="card" id="nesr">`, `<span class="badge buy">BUY</span>`, "low confidence · overreacted",
-		"<dt>Last price</dt><dd>25.47 USD</dd>", `class="chart range"`, "50-day", `class="chart bars"`,
+		`<figure class="chart price">`, `<span class="price-now">$25.47</span>`, `<span class="chip down">-3.9% on the last session</span>`,
+		`<span class="chip down">1 week -22.4%</span>`, `<span class="chip up">12 months +148.0% (S&amp;P 500 +17.2%)</span>`,
 		"<h4>What changed</h4>", "<h4>Numbers</h4><p>• revenue $520m<br>", `<a href="https://www.marketbeat.com/x" target="_blank"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -92,7 +94,7 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 	page := render(AnalysisDoc("GRAB", "Grab Holdings", v, "THE BUSINESS\n\n### What it sells\n- Rides.", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
 		"<h1>Grab Holdings</h1>", `<span class="badge hold">HOLD</span>`, "Thin margin.",
-		"<th class=\"num\">FY Dec 2024</th><th class=\"num\">FY Dec 2025</th>",
+		"<th class=\"num\">2024</th><th class=\"num\">2025</th>",
 		"<td class=\"num\">$3.37bn</td>", "<td class=\"num\">-3.8%</td>", "<td class=\"num\">1.9%</td>",
 		`class="chart columns"`, "<h2>THE BUSINESS</h2>", "<h3>What it sells</h3>",
 	} {
@@ -115,7 +117,7 @@ func TestTheAnalysisPageGivesTheBusinessBeforeTheNumbers(t *testing.T) {
 	prose := "THE BUSINESS\n\n### What it sells\n- Rides.\n\nWHERE IT IS HEADING\n\n### Plans\n- Banking.\n\nKEY NUMBERS\n\n### Sales\n- Revenue grew."
 	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, prose, acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	business, plans, table, numbers := strings.Index(page, "<h2>THE BUSINESS</h2>"), strings.Index(page, "Banking."),
-		strings.Index(page, "FY Dec 2025"), strings.Index(page, "<h2>KEY NUMBERS</h2>")
+		strings.Index(page, "Year by year"), strings.Index(page, "<h2>KEY NUMBERS</h2>")
 	if business < 0 || plans < 0 || table < 0 || numbers < 0 {
 		t.Fatalf("a part is missing:\n%s", page)
 	}
@@ -125,17 +127,19 @@ func TestTheAnalysisPageGivesTheBusinessBeforeTheNumbers(t *testing.T) {
 
 	// With nothing to split at, the analysis follows the tables whole.
 	page = render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "THE BUSINESS\n\n- Rides.", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
-	if strings.Index(page, "<h2>THE BUSINESS</h2>") < strings.Index(page, "FY Dec 2025") {
+	if strings.Index(page, "<h2>THE BUSINESS</h2>") < strings.Index(page, "Year by year") {
 		t.Error("an analysis with no figures heading came before the tables")
 	}
 }
 
 // The box of first figures, the cash and debt, and each period's growth on a
-// year earlier, as the owner listed them on 4 October 2026.
+// year earlier, as the owner listed them on 4 October 2026. Each tile says
+// what its figure is worked out on, in a few words.
 func TestTheAnalysisPageGivesTheFiguresAReaderLooksForFirst(t *testing.T) {
 	asOf, older := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), time.Date(2025, 11, 27, 0, 0, 0, 0, time.UTC)
 	acc := Accounts{Currency: "USD",
-		Glance: &Glance{MarketCap: 1.21e12, PE: 14.5, PS: 9.1, On: "the year to 3 Sep 2026", ForwardPE: 6.7, ForwardFor: "Aug 2027",
+		Glance: &Glance{MarketCap: 1.21e12, PE: 14.5, PS: 9.1, On: "Sep 2025–Aug 2026", ForwardPE: 6.7, ForwardFor: "Sep 2026–Aug 2027",
+			Price: 1074.89, Shares: 1.13e9, EPS: 74.21, Sales: 133.19e9, ExpectedEPS: 160.39,
 			Cash: 43.4e9, Debt: 8.84e9, HasCash: true, HasDebt: true, CashAt: asOf, DebtAt: older},
 		Balance: &BalanceSheet{AsOf: asOf, Release: true, Figures: map[string]float64{"cash": 38.4e9, "longTermDebt": 8.84e9},
 			Older: map[string]time.Time{"longTermDebt": older}},
@@ -146,14 +150,25 @@ func TestTheAnalysisPageGivesTheFiguresAReaderLooksForFirst(t *testing.T) {
 		}}
 	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
-		"<h2>At a glance</h2>", "MU", "$1.21tn", "14.5 times, on the year to 3 Sep 2026",
-		"6.7 times, on the earnings expected for the year to Aug 2027", "9.1 times",
-		"$43.40bn, at 3 Sep 2026", "$8.84bn, at 27 Nov 2025",
+		"<h2>At a glance</h2>",
+		`<dt>Market value</dt><dd class="tile-value">$1.21tn</dd><dd class="tile-note">1.13bn shares at $1,074.89</dd>`,
+		`<dd class="tile-value">14.5×</dd><dd class="tile-note">On $74.21 a share earned in Sep 2025–Aug 2026</dd>`,
+		"On $160.39 a share expected in Sep 2026–Aug 2027",
+		"On $133.19bn of sales in Sep 2025–Aug 2026",
+		`<dt>Cash</dt><dd class="tile-value">$43.40bn</dd><dd class="tile-note">With short-term investments, at 3 Sep 2026</dd>`,
+		"At 27 Nov 2025, the latest filed",
 		"Cash and debt", "<th class=\"num\">3 Sep 2026*</th>", "(at 27 Nov 2025)",
-		"Revenue, change on a year earlier", "+379.6%",
+		"<td>Revenue growth</td>", "+379.6%<i>from $11.30bn</i><i>in Jun–Aug 2025</i>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page is missing %q", want)
+		}
+	}
+	// The industry has its own section, and the change in expected earnings
+	// is left out: it read without its base.
+	for _, unwanted := range []string{"middle company", "116%", "up 116"} {
+		if strings.Contains(page, unwanted) {
+			t.Errorf("the glance still has %q", unwanted)
 		}
 	}
 	if strings.Contains(page, "Cash less debt") {
@@ -189,12 +204,13 @@ func TestTheReleaseColumnsAreMarked(t *testing.T) {
 func TestEveryQuarterGrowsAgainstAYearEarlier(t *testing.T) {
 	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
 	acc := Accounts{Currency: "USD", Quarters: []Period{
-		{Label: "3 months to 3 Sep 2026", End: day(9, 3), Figures: map[string]float64{"revenue": 54e9, "grossProfit": 47e9}, YearAgo: 12e9},
+		{Label: "3 months to 3 Sep 2026", End: day(9, 3), Figures: map[string]float64{"revenue": 54e9, "grossProfit": 47e9}, YearAgo: 12e9, YearAgoLabel: "Jun–Aug 2025"},
 		{Label: "3 months to 28 May 2026", End: day(5, 28), Figures: map[string]float64{"revenue": 40e9}, YearAgo: 10e9},
 	}, TTM: &Period{Label: "12 months to 3 Sep 2026", End: day(9, 3), Figures: map[string]float64{"revenue": 120e9}, YearAgo: 40e9}}
 	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
-		"<td>Revenue, change on a year earlier</td><td class=\"num\">+300.0%</td><td class=\"num\">+350.0%</td><td class=\"num\">+200.0%</td>",
+		"<td>Revenue growth</td><td class=\"num\">+300.0%<i>from $10.00bn</i></td><td class=\"num\">+350.0%<i>from $12.00bn</i><i>in Jun–Aug 2025</i></td><td class=\"num\">+200.0%<i>from $40.00bn</i></td>",
+		"<th class=\"num\">Sep 2025–Aug 2026</th>",
 		"<td>Gross profit</td><td class=\"num\">–</td><td class=\"num\">$47.00bn</td>",
 	} {
 		if !strings.Contains(page, want) {
@@ -233,7 +249,7 @@ func TestTheAnalysisPageNamesQuartersByTheirMonths(t *testing.T) {
 	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
 	for _, want := range []string{
 		`<table class="labelled">`,
-		"<th class=\"num\">Aug–Oct 2025</th><th class=\"num\">Nov–Jan 2026</th><th class=\"num\">Last 12 months</th>",
+		"<th class=\"num\">Aug–Oct 2025</th><th class=\"num\">Nov 2025–Jan 2026</th><th class=\"num\">Feb 2025–Jan 2026</th>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page is missing %q", want)
@@ -250,9 +266,11 @@ func TestAPeriodEndingInAMonthsFirstWeekIsNamedForTheMonthBefore(t *testing.T) {
 	for label, want := range map[string]string{
 		"3 months to 3 Sep 2026":  "Jun–Aug 2026",
 		"3 months to 28 May 2026": "Mar–May 2026",
-		"FY to 1 Sep 2022":        "FY Aug 2022",
-		"FY to 28 Aug 2025":       "FY Aug 2025",
-		"FY to 31 Dec 2025":       "FY Dec 2025",
+		"FY to 1 Sep 2022":        "Sep 2021–Aug 2022",
+		"FY to 28 Aug 2025":       "Sep 2024–Aug 2025",
+		"FY to 31 Dec 2025":       "2025",
+		"12 months to 3 Sep 2026": "Sep 2025–Aug 2026",
+		"Sep 2025–Aug 2026":       "Sep 2025–Aug 2026",
 		"3 months to 4 Jan 2026":  "Oct–Dec 2025",
 		"Last 12 months":          "Last 12 months",
 	} {

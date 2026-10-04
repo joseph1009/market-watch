@@ -390,14 +390,14 @@ func (s Snapshot) valuation() string {
 	}
 	if len(s.Years) > 0 {
 		earnings, freeCash, basis := s.trailing()
-		fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Price to earnings", 32),
+		fmt.Fprintf(&b, "%s%s  (on the earnings of %s)\n", pad("Price to earnings", 32),
 			times(Ratio(price, earnings)), basis)
 		if g := s.Glance(); g.PS.Known {
-			fmt.Fprintf(&b, "%s%s  (market value over revenue, on %s)\n", pad("Price to sales", 32), times(g.PS), g.On)
+			fmt.Fprintf(&b, "%s%s  (market value over the revenue of %s)\n", pad("Price to sales", 32), times(g.PS), g.On)
 		}
 
 		if value := multiply(price, shares); value.Known {
-			fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Free cash flow yield", 32),
+			fmt.Fprintf(&b, "%s%s  (on the free cash flow of %s)\n", pad("Free cash flow yield", 32),
 				percent(Ratio(freeCash, value)), basis)
 		}
 	}
@@ -427,7 +427,7 @@ func multiply(a, b Value) Value {
 func (s Snapshot) trailing() (earnings, freeCash Value, basis string) {
 	year := s.Years[0]
 	annualEPS, annualFCF := year.Figure("epsDiluted"), year.FreeCashFlow()
-	annual := year.Label + " earnings"
+	annual := year.Label
 
 	if s.YTD == nil || s.PriorYTD == nil {
 		return annualEPS, annualFCF, annual
@@ -446,7 +446,7 @@ func (s Snapshot) trailing() (earnings, freeCash Value, basis string) {
 	if !cash.Known {
 		cash = annualFCF
 	}
-	return eps, cash, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
+	return eps, cash, MonthSpan(s.YTD.End, 12)
 }
 
 // trailingIncome is net income on the same footing as the multiples.
@@ -461,8 +461,8 @@ func (s Snapshot) trailingIncome() (Value, string) {
 	if s.YTD != nil && s.PriorYTD != nil {
 		rolled := Add(Less(annual, s.PriorYTD.Figure("netIncome")), s.YTD.Figure("netIncome"))
 		if rolled.Known {
-			return rolled, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
+			return rolled, MonthSpan(s.YTD.End, 12)
 		}
 	}
-	return annual, "the " + strings.Replace(year.Label, "FY to", "year to", 1)
+	return annual, year.Label
 }

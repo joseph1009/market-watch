@@ -101,7 +101,7 @@ func TestAReleaseAddsTheQuarterTheFilingsLack(t *testing.T) {
 	if !strings.Contains(s.Table(), "(at 28 May 2026, from an earlier balance sheet)") {
 		t.Error("the older line is not dated in the table")
 	}
-	if !strings.Contains(s.quarterTable(), "3 months to 3 Sep 2026*") {
+	if !strings.Contains(s.quarterTable(), "Jun–Aug 2026*") {
 		t.Errorf("the release's quarter is not marked:\n%s", s.quarterTable())
 	}
 }

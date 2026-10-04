@@ -53,7 +53,7 @@ func TestSensitivityWorksFromTheLastTwelveMonths(t *testing.T) {
 	if !ok {
 		t.Fatal("no sensitivity")
 	}
-	if sens.Basis != "the twelve months to 30 Jun 2026" {
+	if sens.Basis != "Jul 2025–Jun 2026" {
 		t.Errorf("basis %q", sens.Basis)
 	}
 	if !near(sens.GrossMargin, 0.6) || !near(sens.OperatingMargin, 0.225) || !near(sens.Leverage, 720.0/270) {
@@ -73,10 +73,10 @@ func TestSensitivityWorksFromTheLastTwelveMonths(t *testing.T) {
 		"Gross margin 60.0%, operating margin 22.5%.",
 		"Operating leverage 2.67x",
 		"moves operating income about 2.7%",
-		"100 basis points of gross margin: ±US$0.09 a diluted share after tax, 5.8% of the US$1.50 analysts expect for the year to Dec 2026",
+		"100 basis points of gross margin: ±US$0.09 a diluted share after tax, 5.8% of the US$1.50 analysts expect for 2026",
 		"1% of revenue: ±US$0.05 a share with operating costs fixed, ±US$0.02 if every cost moves with revenue.",
 		"effective rate over the same period, 20.0%",
-		"110.0m shares, the weighted average diluted count for the half year to 30 Jun 2026",
+		"110.0m shares, the weighted average diluted count for Half year to 30 Jun 2026",
 	} {
 		if !strings.Contains(facts, want) {
 			t.Errorf("facts lack %q:\n%s", want, facts)
@@ -90,7 +90,7 @@ func TestSensitivityFallsBackToTheYearAsAWhole(t *testing.T) {
 	snap := sensitive()
 	delete(snap.YTD.Figures, "operatingIncome")
 	sens, _ := snap.Sensitivity()
-	if sens.Basis != "the year to 31 Dec 2025" || !near(sens.OperatingMargin, 0.2) || !near(sens.GrossMargin, 0.6) {
+	if sens.Basis != "FY to 31 Dec 2025" || !near(sens.OperatingMargin, 0.2) || !near(sens.GrossMargin, 0.6) {
 		t.Errorf("basis %q, margins %v %v", sens.Basis, sens.GrossMargin, sens.OperatingMargin)
 	}
 }

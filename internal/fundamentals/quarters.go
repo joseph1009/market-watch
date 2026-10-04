@@ -61,7 +61,7 @@ func buildQuarters(byKey map[string][]Observation, currency string) (quarters []
 	sort.Slice(ends, func(i, j int) bool { return ends[i].After(ends[j]) })
 
 	for _, end := range ends {
-		q := Year{End: end, Label: "3 months to " + end.Format("2 Jan 2006"), Figures: map[string]Value{}}
+		q := Year{End: end, Label: MonthSpan(end, 3), Figures: map[string]Value{}}
 		for _, key := range quarterKeys {
 			v := quarterValue(keepCurrency(byKey[key], currency), end, key == "epsDiluted")
 			if key == "epsDiluted" && !v.Known {
@@ -97,7 +97,7 @@ func buildQuarters(byKey map[string][]Observation, currency string) (quarters []
 			return quarters, nil // a gap: four quarters that are not a year
 		}
 	}
-	ttm = &Year{End: quarters[0].End, Label: "12 months to " + quarters[0].End.Format("2 Jan 2006"), Figures: map[string]Value{}}
+	ttm = &Year{End: quarters[0].End, Label: MonthSpan(quarters[0].End, 12), Figures: map[string]Value{}}
 	for _, key := range quarterKeys {
 		sum := quarters[0].Figure(key)
 		for _, q := range quarters[1:4] {

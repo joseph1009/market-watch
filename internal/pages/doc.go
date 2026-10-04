@@ -111,7 +111,41 @@ type Lines struct {
 	HighText string // and the highest
 	From, To string // plain text: the first and last dates
 	Note     string // Telegram HTML
+	Points   []Point
 }
+
+// Point is a labelled point on a line chart, such as the year's high.
+type Point struct {
+	At    int // the value's place along the line
+	Value float64
+	Text  string // plain text
+	Below bool   // the label goes under the point
+}
+
+// PriceChart is the whole of a share's trading in one figure: its last price
+// and move at the head, its moves over longer spans under it, and the year's
+// line with its averages, high and low. On 4 October 2026 the owner found the
+// price told four times over, as a grid, a range, a line and bars.
+type PriceChart struct {
+	Title string // plain text
+	Price string // plain text: "$1,074.89"
+	Move  Chip   // the last session's move
+	Aside string // plain text after the move
+	Moves []Chip // over longer spans
+	Chart Lines  // its title and note are not shown
+	Note  string // Telegram HTML
+}
+
+// Tile is one figure set apart: what it is, the figure large, and a line on
+// what it is worked out from or set against.
+type Tile struct {
+	Label string // plain text
+	Value string // plain text
+	Note  string // Telegram HTML
+}
+
+// Tiles are a few figures a reader looks for first, as cards.
+type Tiles []Tile
 
 // Pair is one period of a paired column chart: two figures side by side.
 type Pair struct {
@@ -357,8 +391,28 @@ func (b Bars) write(w *writer) {
 const chartWidth, chartHeight = 1000.0, 300.0
 
 func (l Lines) write(w *writer) {
-	low, high := math.Inf(1), math.Inf(-1)
-	points := 0
+	if !l.drawable() {
+		return
+	}
+	w.WriteString("<figure class=\"chart lines\">\n")
+	if l.Title != "" {
+		w.WriteString("<figcaption>" + text(l.Title) + "</figcaption>\n")
+	}
+	l.plot(w)
+	if l.Note != "" {
+		w.WriteString("<p class=\"small\">" + safe(l.Note, false) + "</p>\n")
+	}
+	w.WriteString("</figure>\n")
+}
+
+// drawable reports whether there are two points and a span to draw.
+func (l Lines) drawable() bool {
+	low, high, points := l.bounds()
+	return points >= 2 && high > low
+}
+
+func (l Lines) bounds() (low, high float64, points int) {
+	low, high = math.Inf(1), math.Inf(-1)
 	for _, line := range l.Lines {
 		points = max(points, len(line.Values))
 		for _, v := range line.Values {
@@ -367,17 +421,58 @@ func (l Lines) write(w *writer) {
 			}
 		}
 	}
+	return low, high, points
+}
+
+// plot draws the lines, their dates and their key, without a frame.
+func (l Lines) plot(w *writer) {
+	low, high, points := l.bounds()
 	if points < 2 || !(high > low) {
 		return
 	}
+	// Room above and below for the points' labels.
 	pad := (high - low) * 0.05
-	low, high = low-pad, high+pad
-	w.WriteString("<figure class=\"chart lines\">\n")
-	if l.Title != "" {
-		w.WriteString("<figcaption>" + text(l.Title) + "</figcaption>\n")
+	if len(l.Points) > 0 {
+		pad = (high - low) * 0.16
 	}
-	w.WriteString("<div class=\"line-plot\"><span class=\"line-high\">" + text(l.HighText) + "</span><span class=\"line-low\">" + text(l.LowText) + "</span>")
+	low, high = low-pad, high+pad
+	class := "line-plot"
+	if l.LowText == "" && l.HighText == "" {
+		class += " bare"
+	}
+	w.WriteString("<div class=\"" + class + "\">")
+	if !strings.Contains(class, "bare") {
+		w.WriteString("<span class=\"line-high\">" + text(l.HighText) + "</span><span class=\"line-low\">" + text(l.LowText) + "</span>")
+	}
+	w.WriteString("<div class=\"plot-area\">")
 	w.WriteString(fmt.Sprintf("<svg viewBox=\"0 0 %.0f %.0f\" preserveAspectRatio=\"none\" role=\"img\" aria-label=\"%s\">", chartWidth, chartHeight, text(l.Title)))
+	l.paths(w, low, high, points)
+	w.WriteString("</svg>")
+	for _, p := range l.Points {
+		x := 100 * float64(p.At) / float64(points-1)
+		y := 100 * (high - p.Value) / (high - low)
+		label := "pt-text"
+		if p.Below {
+			label += " below"
+		}
+		switch {
+		case x > 70:
+			label += " left"
+		case x < 30:
+			label += " right"
+		}
+		w.WriteString(fmt.Sprintf("<span class=\"pt\" style=\"left:%.2f%%;top:%.2f%%\"><i></i><b class=\"%s\">%s</b></span>", x, y, label, text(p.Text)))
+	}
+	w.WriteString("</div></div>\n")
+	w.WriteString("<div class=\"line-ends\"><span>" + text(l.From) + "</span><span>" + text(l.To) + "</span></div>\n")
+	w.WriteString("<div class=\"key\">")
+	for _, line := range l.Lines {
+		w.WriteString(fmt.Sprintf("<span><i class=\"swatch tone%d\"></i>%s</span>", line.Tone, text(line.Label)))
+	}
+	w.WriteString("</div>\n")
+}
+
+func (l Lines) paths(w *writer, low, high float64, points int) {
 	// The main line last, so it is drawn over the others.
 	for i := len(l.Lines) - 1; i >= 0; i-- {
 		line := l.Lines[i]
@@ -401,17 +496,50 @@ func (l Lines) write(w *writer) {
 			w.WriteString(fmt.Sprintf("<path class=\"line tone%d\" d=\"%s\" vector-effect=\"non-scaling-stroke\"/>", line.Tone, d.String()))
 		}
 	}
-	w.WriteString("</svg></div>\n")
-	w.WriteString("<div class=\"line-ends\"><span>" + text(l.From) + "</span><span>" + text(l.To) + "</span></div>\n")
-	w.WriteString("<div class=\"key\">")
-	for _, line := range l.Lines {
-		w.WriteString(fmt.Sprintf("<span><i class=\"swatch tone%d\"></i>%s</span>", line.Tone, text(line.Label)))
+}
+
+func (c PriceChart) write(w *writer) {
+	if c.Price == "" && !c.Chart.drawable() {
+		return
+	}
+	w.WriteString("<figure class=\"chart price\">\n")
+	if c.Title != "" {
+		w.WriteString("<figcaption>" + text(c.Title) + "</figcaption>\n")
+	}
+	w.WriteString("<div class=\"price-head\">")
+	if c.Price != "" {
+		w.WriteString("<span class=\"price-now\">" + text(c.Price) + "</span>")
+	}
+	if c.Move.Text != "" {
+		w.WriteString("<span class=\"chip " + tone(c.Move.Tone) + "\">" + text(c.Move.Text) + "</span>")
+	}
+	if c.Aside != "" {
+		w.WriteString("<span class=\"price-aside\">" + text(c.Aside) + "</span>")
 	}
 	w.WriteString("</div>\n")
-	if l.Note != "" {
-		w.WriteString("<p class=\"small\">" + safe(l.Note, false) + "</p>\n")
+	Chips{Items: c.Moves}.write(w)
+	if c.Chart.drawable() {
+		c.Chart.plot(w)
+	}
+	if c.Note != "" {
+		w.WriteString("<p class=\"small\">" + safe(c.Note, false) + "</p>\n")
 	}
 	w.WriteString("</figure>\n")
+}
+
+func (t Tiles) write(w *writer) {
+	if len(t) == 0 {
+		return
+	}
+	w.WriteString("<dl class=\"tiles\">\n")
+	for _, tile := range t {
+		w.WriteString("<div class=\"tile\"><dt>" + text(tile.Label) + "</dt><dd class=\"tile-value\">" + text(tile.Value) + "</dd>")
+		if tile.Note != "" {
+			w.WriteString("<dd class=\"tile-note\">" + safe(tile.Note, false) + "</dd>")
+		}
+		w.WriteString("</div>\n")
+	}
+	w.WriteString("</dl>\n")
 }
 
 func (p Pairs) write(w *writer) {

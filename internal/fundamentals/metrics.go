@@ -327,7 +327,7 @@ func buildYears(byKey map[string][]Observation, want int, currency string) []Yea
 			if !ok {
 				y = &Year{
 					End:     o.End,
-					Label:   fmt.Sprintf("FY to %s", o.End.Format("2 Jan 2006")),
+					Label:   MonthSpan(o.End, 12),
 					Figures: map[string]Value{},
 				}
 				years[key] = y
@@ -617,12 +617,12 @@ func buildYTD(byKey map[string][]Observation, currency string, lastYear time.Tim
 
 	current = &Year{
 		End:     end,
-		Label:   fmt.Sprintf("%s to %s", spanName(days), end.Format("2 Jan 2006")),
+		Label:   spanOfDays(end, days),
 		Figures: map[string]Value{},
 	}
 	prior = &Year{
 		End:     end.AddDate(-1, 0, 0),
-		Label:   fmt.Sprintf("%s to %s", spanName(days), end.AddDate(-1, 0, 0).Format("2 Jan 2006")),
+		Label:   spanOfDays(end.AddDate(-1, 0, 0), days),
 		Figures: map[string]Value{},
 	}
 
@@ -657,20 +657,6 @@ func matchingPeriod(end time.Time, days int) func(Observation) bool {
 			return false
 		}
 		return abs(daysBetween(o.End, end)) <= periodSlack
-	}
-}
-
-// spanName describes a period the way a reader thinks of it.
-func spanName(days int) string {
-	switch {
-	case days <= 100:
-		return "Quarter"
-	case days <= 195:
-		return "Half year"
-	case days <= 285:
-		return "Nine months"
-	default:
-		return "Year so far"
 	}
 }
 

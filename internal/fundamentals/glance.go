@@ -1,9 +1,6 @@
 package fundamentals
 
-import (
-	"strings"
-	"time"
-)
+import "time"
 
 // Glance is the handful of figures a reader looks for first: what the
 // company is worth, what its share costs against its earnings, sales and the
@@ -14,10 +11,15 @@ type Glance struct {
 	MarketCap Value
 
 	PE, PS Value
-	On     string // the period PE and PS are on: "the year to 3 Sep 2026"
+	On     string // the months PE and PS are on: "Sep 2025–Aug 2026"
 
 	ForwardPE  Value
-	ForwardFor string // the year its expected earnings are for: "Aug 2027"
+	ForwardFor string // the months its expected earnings are for: "Sep 2026–Aug 2027"
+
+	// What the figures are worked out from, so the page can show the sum:
+	// the price, the shares, the earnings a share and the sales on On, and
+	// the earnings a share analysts expect for ForwardFor.
+	Price, Shares, EPS, Sales, ExpectedEPS Value
 
 	// Cash is cash and short-term investments, and Debt long-term debt, at
 	// the balance sheet's date, or each at its own where it is older.
@@ -50,19 +52,21 @@ func (s Snapshot) Glance() Glance {
 		return g
 	}
 	price := known(s.Price.Price)
-	g.MarketCap = multiply(price, s.Balance.Figure("sharesOutstanding"))
+	g.Price, g.Shares = price, s.Balance.Figure("sharesOutstanding")
+	g.MarketCap = multiply(price, g.Shares)
 	if len(s.Years) > 0 {
 		earnings, _, basis := s.trailing()
 		if earnings.Known && earnings.Amount > 0 {
-			g.PE = Ratio(price, earnings)
+			g.PE, g.EPS = Ratio(price, earnings), earnings
 		}
 		if sales := s.Trailing("revenue"); sales.Known && sales.Amount > 0 {
-			g.PS = Ratio(g.MarketCap, sales)
+			g.PS, g.Sales = Ratio(g.MarketCap, sales), sales
 		}
-		g.On = strings.TrimSuffix(strings.Replace(basis, "FY to", "the year to", 1), " earnings")
+		g.On = basis
 	}
 	if s.ExpectedEPS > 0 {
-		g.ForwardPE, g.ForwardFor = known(s.Price.Price/s.ExpectedEPS), s.ExpectedFor
+		g.ForwardPE, g.ForwardFor = known(s.Price.Price/s.ExpectedEPS), YearEnding(s.ExpectedFor)
+		g.ExpectedEPS = known(s.ExpectedEPS)
 	}
 	return g
 }

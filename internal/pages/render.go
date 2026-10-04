@@ -377,11 +377,30 @@ table.labelled tr.marked td:first-child { background: var(--box); }
 .col-labels b { display: block; color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 
 .line-plot { position: relative; height: 180px; padding-left: 56px; }
-.line-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.line-plot.bare { height: 200px; padding-left: 0; }
+.plot-area { position: relative; height: 100%; }
+.plot-area svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.pt { position: absolute; width: 0; height: 0; }
+.pt i { position: absolute; width: 8px; height: 8px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--link); border: 2px solid var(--card); }
+.pt-text { position: absolute; bottom: 9px; left: 0; transform: translateX(-50%); font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pt-text.below { bottom: auto; top: 9px; }
+.pt-text.left { transform: translateX(calc(-100% + 6px)); } .pt-text.right { transform: translateX(-6px); }
+.price-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.price-now { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.price-aside { font-size: 13px; color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 10px; margin: 14px 0; }
+.tile { margin: 0; padding: 12px 14px; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; display: flex; flex-direction: column; gap: 2px; }
+.tile dt { font-size: 12px; color: var(--muted); letter-spacing: 0.02em; }
+.tile dd { margin: 0; }
+.tile-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile-note { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.tile-note b { color: var(--ink); }
+td.num i { display: block; font-size: 12px; font-style: normal; }
 .line-high, .line-low { position: absolute; left: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .line-high { top: 0; } .line-low { bottom: 0; }
 .line { fill: none; stroke-width: 1.5px; stroke-linejoin: round; }
 .line.tone0 { stroke: var(--link); stroke-width: 2.25px; } .line.tone1 { stroke: var(--medium); } .line.tone2 { stroke: var(--mark); }
+.line-plot.bare + .line-ends { margin-left: 0; }
 .line-ends { display: flex; justify-content: space-between; margin: 6px 0 0 56px; font-size: 12px; color: var(--muted); }
 .key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
 .swatch { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }

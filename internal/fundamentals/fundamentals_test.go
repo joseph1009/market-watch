@@ -469,7 +469,7 @@ func TestMultiplesUseTheLastTwelveMonths(t *testing.T) {
 	}
 
 	table := snap.Table()
-	if !strings.Contains(table, "the twelve months to 28 May 2026") {
+	if !strings.Contains(table, "(on the earnings of Jun 2025–May 2026)") {
 		t.Errorf("multiples are not on a trailing basis:\n%s", table)
 	}
 	// 927.60 / (7.59 - 4.75 + 41.40) = 20.97
@@ -505,7 +505,7 @@ func TestReturnOnEquityUsesTheLastTwelveMonths(t *testing.T) {
 
 	table := snap.Table()
 	// (8.54 - 5.34 + 47.27) / 100.72 = 50.1%
-	if !strings.Contains(table, "50.1%  (profit for the twelve months to 28 May 2026") {
+	if !strings.Contains(table, "50.1%  (profit for Jun 2025–May 2026") {
 		t.Errorf("return on equity is not on the last twelve months:\n%s", table)
 	}
 	if strings.Contains(table, "8.5%") {
@@ -513,7 +513,7 @@ func TestReturnOnEquityUsesTheLastTwelveMonths(t *testing.T) {
 	}
 
 	snap.YTD, snap.PriorYTD = nil, nil
-	if table := snap.Table(); !strings.Contains(table, "(profit for the year to 28 Aug 2025") {
+	if table := snap.Table(); !strings.Contains(table, "(profit for FY to 28 Aug 2025") {
 		t.Errorf("without an interim the full year should be used and named:\n%s", table)
 	}
 }
@@ -603,7 +603,7 @@ func TestMultiplesFallBackToTheFullYear(t *testing.T) {
 	}
 
 	table := snap.Table()
-	if !strings.Contains(table, "FY to Dec 2025 earnings") {
+	if !strings.Contains(table, "on the earnings of FY to Dec 2025") {
 		t.Errorf("the basis is not named:\n%s", table)
 	}
 	if !strings.Contains(table, "20.00x") {

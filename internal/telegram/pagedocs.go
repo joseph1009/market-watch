@@ -425,58 +425,56 @@ func numberItems(numbers string) []string {
 // last session, its moves over the stretches a reader thinks in, and where
 // it sits between its low and its high with its averages marked.
 func priceParts(q *model.Quote, tr *model.Trading) []pages.Part {
-	var facts pages.Facts
 	unit := "USD"
+	var chart pages.PriceChart
+	last := 0.0
 	if q != nil {
-		unit = q.Unit()
-		facts = append(facts, [2]string{"Last price", fmt.Sprintf("%s %s", formatPrice(q.Price), escape(unit))},
-			[2]string{"Last session", escape(q.Move())})
+		unit, last = q.Unit(), q.Price
+		chart.Move = pages.Chip{Text: q.Move() + " on the last session", Tone: direction(q.Percent)}
 	}
-	if tr == nil {
-		if len(facts) == 0 {
-			return nil
+	if tr != nil {
+		if tr.Currency != "" {
+			unit = tr.Currency
 		}
-		return []pages.Part{facts}
-	}
-	if tr.Currency != "" {
-		unit = tr.Currency
-	}
-	if q == nil && tr.Last > 0 {
-		facts = append(facts, [2]string{"Last price", fmt.Sprintf("%s %s", formatPrice(tr.Last), escape(unit))})
-	}
-	var moves []pages.Bar
-	for _, r := range tr.Returns {
-		facts = append(facts, [2]string{capitalise(r.Over), fmt.Sprintf("%+.1f%%", r.Percent)})
-		moves = append(moves, pages.Bar{Label: r.Over, Value: r.Percent, Text: fmt.Sprintf("%+.1f%%", r.Percent)})
-	}
-	if tr.Volatility > 0 {
-		facts = append(facts, [2]string{"Usual swing, a year", fmt.Sprintf("%.0f%%", tr.Volatility)})
-	}
-	parts := []pages.Part{facts}
-	if tr.High52 > tr.Low52 && tr.Last > 0 {
-		r := pages.Range{Title: "Where the price sits in its year", Low: tr.Low52, High: tr.High52, Last: tr.Last,
-			LowText: formatPrice(tr.Low52), HighText: formatPrice(tr.High52), LastText: formatPrice(tr.Last)}
-		if tr.MA50 > 0 {
-			r.Marks = append(r.Marks, pages.Mark{Label: "50-day", Value: tr.MA50})
+		if last == 0 {
+			last = tr.Last
 		}
-		if tr.MA200 > 0 {
-			r.Marks = append(r.Marks, pages.Mark{Label: "200-day", Value: tr.MA200})
+		for _, r := range tr.Returns {
+			text := fmt.Sprintf("%s %+.1f%%", r.Over, r.Percent)
+			if m, ok := tr.MarketOver(r.Over); ok {
+				text += fmt.Sprintf(" (S&P 500 %+.1f%%)", m.Percent)
+			}
+			chart.Moves = append(chart.Moves, pages.Chip{Text: text, Tone: direction(r.Percent)})
 		}
-		r.Note = fmt.Sprintf("<i>In %s. The marks are the average closing price over the last 50 and 200 sessions.</i>", escape(unit))
-		parts = append(parts, r)
+		if tr.Volatility > 0 {
+			chart.Aside = fmt.Sprintf("Its usual swing over a year: about %.0f%% either way", tr.Volatility)
+		}
+		if line, ok := priceLine(tr, unit); ok {
+			chart.Chart = line
+			chart.Note = line.Note
+		}
 	}
-	if line, ok := priceLine(tr, unit); ok {
-		parts = append(parts, line)
+	if last == 0 && len(chart.Moves) == 0 {
+		return nil
 	}
-	if len(moves) > 1 {
-		parts = append(parts, pages.Bars{Title: "Its moves", Items: moves})
+	if last > 0 {
+		chart.Price = priceIn(last, unit)
 	}
-	return parts
+	return []pages.Part{chart}
+}
+
+// priceIn writes a price with its currency: "$1,074.89", "312.40 HKD".
+func priceIn(v float64, unit string) string {
+	if unit == "USD" {
+		return "$" + formatPrice(v)
+	}
+	return formatPrice(v) + " " + unit
 }
 
 // priceLine is the share's closing price over its last year, against its 50-
-// and 200-day averages as they stood each day. Whether the price is above or
-// below them, and since when, is most of what a chart reader looks for.
+// and 200-day averages as they stood each day, with the year's highest and
+// lowest close marked on it. Whether the price is above or below the
+// averages, and since when, is most of what a chart reader looks for.
 func priceLine(tr *model.Trading, unit string) (pages.Lines, bool) {
 	if len(tr.Path) < 20 {
 		return pages.Lines{}, false
@@ -484,22 +482,38 @@ func priceLine(tr *model.Trading, unit string) (pages.Lines, bool) {
 	price := pages.Line{Label: "Closing price", Tone: 0}
 	ma50 := pages.Line{Label: "50-day average", Tone: 1}
 	ma200 := pages.Line{Label: "200-day average", Tone: 2}
-	low, high := tr.Path[0].Close, tr.Path[0].Close
-	for _, p := range tr.Path {
+	if tr.MA50 > 0 {
+		ma50.Label += ", now " + formatPrice(tr.MA50)
+	}
+	if tr.MA200 > 0 {
+		ma200.Label += ", now " + formatPrice(tr.MA200)
+	}
+	low, high := 0, 0
+	for i, p := range tr.Path {
 		price.Values = append(price.Values, p.Close)
 		ma50.Values = append(ma50.Values, p.MA50)
 		ma200.Values = append(ma200.Values, p.MA200)
-		low, high = min(low, p.Close), max(high, p.Close)
+		if p.Close < tr.Path[low].Close {
+			low = i
+		}
+		if p.Close > tr.Path[high].Close {
+			high = i
+		}
 	}
 	first, last := tr.Path[0].Date, tr.Path[len(tr.Path)-1].Date
+	mark := func(word string, i int, below bool) pages.Point {
+		p := tr.Path[i]
+		return pages.Point{At: i, Value: p.Close, Below: below,
+			Text: fmt.Sprintf("%s %s, %s", word, formatPrice(p.Close), p.Date.Format("2 Jan 2006"))}
+	}
 	return pages.Lines{
-		Title:    "The price over the year",
-		Lines:    []pages.Line{price, ma50, ma200},
-		LowText:  formatPrice(low),
-		HighText: formatPrice(high),
-		From:     first.Format("Jan 2006"),
-		To:       last.Format("2 Jan 2006"),
-		Note:     fmt.Sprintf("<i>Daily closes in %s, with the year's highest and lowest close at the side. The averages are of the last 50 and 200 closes, as they stood each day.</i>", escape(unit)),
+		Title:  "The price over the year",
+		Lines:  []pages.Line{price, ma50, ma200},
+		From:   first.Format("2 Jan 2006"),
+		To:     last.Format("2 Jan 2006"),
+		Points: []pages.Point{mark("High", high, false), mark("Low", low, true)},
+		Note: fmt.Sprintf("<i>Daily closes in %s, %s to %s, with the year's highest and lowest close marked. The averages are of the last 50 and 200 closes, as they stood each day. Each move is from the last close on or before the start of its span.</i>",
+			escape(unit), first.Format("2 Jan 2006"), last.Format("2 Jan 2006")),
 	}, true
 }
 
@@ -557,8 +571,16 @@ type Period struct {
 	Release bool // from the results release, not yet filed
 
 	// YearAgo is the revenue of the same period a year earlier, where the
-	// list it sits in does not reach back that far. Zero is not known.
-	YearAgo float64
+	// list it sits in does not reach back that far, and YearAgoLabel that
+	// period's months. Zero is not known.
+	YearAgo      float64
+	YearAgoLabel string
+}
+
+// yearAgo is the revenue a column's growth is worked out from, and when.
+type yearAgo struct {
+	revenue float64
+	label   string
 }
 
 // Glance is the box of figures a reader looks for first. A multiple or a
@@ -566,9 +588,15 @@ type Period struct {
 type Glance struct {
 	MarketCap  float64 // in US dollars
 	PE, PS     float64
-	On         string // the period PE and PS are on: "the year to 3 Sep 2026"
+	On         string // the months PE and PS are on: "Sep 2025–Aug 2026"
 	ForwardPE  float64
-	ForwardFor string // the year of the expected earnings: "Aug 2027"
+	ForwardFor string // the months of the expected earnings: "Sep 2026–Aug 2027"
+
+	// What the multiples are worked out from, shown as the sum: the price,
+	// the shares, the earnings a share and the sales on On, and the earnings
+	// a share expected for ForwardFor.
+	Price, Shares, EPS, Sales, ExpectedEPS float64
+
 	Cash, Debt float64
 	HasCash    bool
 	HasDebt    bool
@@ -630,7 +658,7 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	if split > 0 {
 		doc.Parts = append(doc.Parts, pages.Prose(blocks[:split]))
 	}
-	if g := glanceFacts(ticker, acc); len(g) > 0 {
+	if g := glanceTiles(acc); len(g) > 0 {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "glance", Title: "At a glance", Parts: []pages.Part{g}})
 	}
 	if price := priceParts(acc.Price, acc.Trading); len(price) > 0 {
@@ -685,46 +713,59 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	return doc
 }
 
-// glanceFacts are the figures a reader looks for first, as the owner listed
-// them on 4 October 2026: the ticker, what the company is worth, its share
-// against its earnings, next year's expected earnings and its sales, and its
-// cash against its debt.
-func glanceFacts(ticker string, acc Accounts) pages.Facts {
+// glanceTiles are the figures a reader looks for first, as the owner listed
+// them on 4 October 2026: what the company is worth, its share against its
+// earnings, next year's expected earnings and its sales, and its cash against
+// its debt. Each tile's note is only what its figure is worked out on, in a
+// few words. The owner found longer notes, the industry's figures and the
+// change in expected earnings crowded the box and read without context: the
+// industry is set out in its own section, and the two earnings figures sit
+// side by side in the P/E and forward P/E tiles.
+func glanceTiles(acc Accounts) pages.Tiles {
 	g := acc.Glance
 	if g == nil {
 		return nil
 	}
-	facts := pages.Facts{{"Ticker", escape(ticker)}}
-	multiple := func(label string, v float64, on string) {
-		if v > 0 {
-			facts = append(facts, [2]string{label, escape(fmt.Sprintf("%.1f times, on %s", v, on))})
-		}
+	var tiles pages.Tiles
+	add := func(label, value, note string) {
+		tiles = append(tiles, pages.Tile{Label: label, Value: value, Note: escape(note)})
 	}
 	if g.MarketCap > 0 {
-		facts = append(facts, [2]string{"Market value", escape(money(g.MarketCap, "USD"))})
+		note := ""
+		if g.Price > 0 && g.Shares > 0 {
+			note = fmt.Sprintf("%s shares at $%s", strings.TrimPrefix(money(g.Shares, "USD"), "$"), formatPrice(g.Price))
+		}
+		add("Market value", money(g.MarketCap, "USD"), note)
 	}
-	multiple("P/E", g.PE, g.On)
-	multiple("Forward P/E", g.ForwardPE, "the earnings expected for the year to "+g.ForwardFor)
-	multiple("Price to sales", g.PS, g.On)
+	if g.PE > 0 {
+		add("P/E", fmt.Sprintf("%.1f×", g.PE), fmt.Sprintf("On $%.2f a share earned in %s", g.EPS, g.On))
+	}
+	if g.ForwardPE > 0 {
+		add("Forward P/E", fmt.Sprintf("%.1f×", g.ForwardPE), fmt.Sprintf("On $%.2f a share expected in %s", g.ExpectedEPS, g.ForwardFor))
+	}
+	if g.PS > 0 {
+		add("Price to sales", fmt.Sprintf("%.1f×", g.PS), fmt.Sprintf("On %s of sales in %s", money(g.Sales, acc.Currency), g.On))
+	}
 	switch {
 	// Netted only on one date: Micron's debt line at 27 November 2025 taken
 	// from its cash at 3 September 2026 made a figure the analysis itself
 	// had to disown (4 October 2026).
 	case g.HasCash && g.HasDebt && g.DebtAt.Equal(g.CashAt):
-		facts = append(facts, [2]string{"Cash less debt", escape(fmt.Sprintf("%s: cash and short-term investments of %s, long-term debt of %s, at %s",
-			money(g.Cash-g.Debt, acc.Currency), money(g.Cash, acc.Currency), money(g.Debt, acc.Currency), g.CashAt.Format("2 Jan 2006")))})
+		add("Cash less debt", money(g.Cash-g.Debt, acc.Currency), fmt.Sprintf("%s of cash less %s of debt, at %s",
+			money(g.Cash, acc.Currency), money(g.Debt, acc.Currency), g.CashAt.Format("2 Jan 2006")))
 	default:
 		if g.HasCash {
-			facts = append(facts, [2]string{"Cash and short-term investments", escape(money(g.Cash, acc.Currency) + ", at " + g.CashAt.Format("2 Jan 2006"))})
+			add("Cash", money(g.Cash, acc.Currency), "With short-term investments, at "+g.CashAt.Format("2 Jan 2006"))
 		}
 		if g.HasDebt {
-			facts = append(facts, [2]string{"Long-term debt", escape(money(g.Debt, acc.Currency) + ", at " + g.DebtAt.Format("2 Jan 2006"))})
+			note := "At " + g.DebtAt.Format("2 Jan 2006")
+			if g.HasCash && g.DebtAt.Before(g.CashAt) {
+				note += ", the latest filed"
+			}
+			add("Long-term debt", money(g.Debt, acc.Currency), note)
 		}
 	}
-	if len(facts) == 1 {
-		return nil
-	}
-	return facts
+	return tiles
 }
 
 // balanceLines are the balance sheet's lines on the page.
@@ -759,25 +800,25 @@ func balanceTable(b *BalanceSheet, currency string) (pages.Table, bool) {
 	return t, len(t.Rows) > 0
 }
 
-// yearOnYear is each period's revenue against the period a year before it in
-// the same list, by column.
-func yearOnYear(periods []Period) map[int]float64 {
-	out := map[int]float64{}
+// yearOnYear is the revenue a year before each period, by column: the
+// period a year before it in the same list, or the period's own YearAgo.
+func yearOnYear(periods []Period) map[int]yearAgo {
+	out := map[int]yearAgo{}
 	for i, p := range periods {
 		now, ok := p.Figures["revenue"]
 		if !ok || p.End.IsZero() {
 			continue
 		}
-		then := p.YearAgo
+		then := yearAgo{p.YearAgo, p.YearAgoLabel}
 		for _, q := range periods {
 			days := p.End.Sub(q.End).Hours() / 24
 			if v, ok := q.Figures["revenue"]; ok && days >= 353 && days <= 377 {
-				then = v
+				then = yearAgo{v, shortPeriod(q.Label)}
 				break
 			}
 		}
-		if then > 0 {
-			out[i] = 100 * (now/then - 1)
+		if then.revenue > 0 && now != 0 {
+			out[i] = then
 		}
 	}
 	return out
@@ -864,10 +905,10 @@ func accountsParts(acc Accounts) []pages.Part {
 		growth := yearOnYear(periods)
 		if acc.TTM != nil {
 			// Set apart from the quarters, which end on the same days.
-			if now, then := acc.TTM.Figures["revenue"], acc.TTM.YearAgo; now > 0 && then > 0 {
-				growth[len(periods)] = 100 * (now/then - 1)
+			if acc.TTM.YearAgo > 0 {
+				growth[len(periods)] = yearAgo{acc.TTM.YearAgo, acc.TTM.YearAgoLabel}
 			}
-			periods = append(periods, Period{Label: "Last 12 months", Figures: acc.TTM.Figures, Release: acc.TTM.Release})
+			periods = append(periods, Period{Label: acc.TTM.Label, Figures: acc.TTM.Figures, Release: acc.TTM.Release})
 		}
 		parts = append(parts, accountsTable("Quarter by quarter", periods, acc.Currency, growth))
 	}
@@ -931,7 +972,10 @@ func columnHead(p Period) string {
 	return shortPeriod(p.Label)
 }
 
-func accountsTable(caption string, periods []Period, currency string, growth map[int]float64) pages.Table {
+// accountsTable is the accounts a period a column. growth is the revenue a
+// year before each column, shown under the change with its months, so the
+// change is read against a figure and a date rather than "a year earlier".
+func accountsTable(caption string, periods []Period, currency string, growth map[int]yearAgo) pages.Table {
 	t := pages.Table{Caption: caption, Head: []string{""}, Align: "l", Labels: true}
 	for _, p := range periods {
 		t.Head = append(t.Head, columnHead(p))
@@ -960,10 +1004,14 @@ func accountsTable(caption string, periods []Period, currency string, growth map
 			t.Rows = append(t.Rows, row)
 		}
 		if line.label == "Revenue" && len(growth) > 0 {
-			row := []string{"Revenue, change on a year earlier"}
-			for i := range periods {
-				if g, ok := growth[i]; ok {
-					row = append(row, fmt.Sprintf("%+.1f%%", g))
+			row := []string{"Revenue growth"}
+			for i, p := range periods {
+				if then, ok := growth[i]; ok {
+					cell := fmt.Sprintf("%+.1f%%<i>from %s</i>", 100*(p.Figures["revenue"]/then.revenue-1), escape(money(then.revenue, currency)))
+					if then.label != "" {
+						cell += "<i>in " + escape(then.label) + "</i>"
+					}
+					row = append(row, cell)
 				} else {
 					row = append(row, "–")
 				}
@@ -977,10 +1025,13 @@ func accountsTable(caption string, periods []Period, currency string, growth map
 // periodEnd finds the end in "FY to 31 Dec 2025" or "3 months to Jun 2026".
 var periodEnd = regexp.MustCompile(`to (\d{1,2} )?(\w{3} \d{4})$`)
 
-// shortPeriod is a period's label as a column head: "FY to 31 Dec 2025" is
-// "FY Dec 2025", and a quarter, "3 months to 30 Jun 2026", is its months,
-// "Apr–Jun 2026". The owner read "3m to Jun 2026" on 1 October 2026 and
-// asked what it meant.
+// shortPeriod is a period's label as a column head, named by its months:
+// "FY to 31 Dec 2025" is "2025", "FY to 31 Aug 2026" is "Sep 2025–Aug 2026"
+// and a quarter, "3 months to 30 Jun 2026", is "Apr–Jun 2026". The owner read
+// "3m to Jun 2026" on 1 October 2026 and asked what it meant, and found "the
+// year to 3 September 2026" vague on 4 October. The snapshot names its
+// periods this way itself now (fundamentals.MonthSpan), and a label already
+// so named is kept as it is.
 //
 // A company whose year is weeks rather than months ends it on a weekday:
 // Micron's quarter of June, July and August ended on 3 September 2026. A
@@ -998,13 +1049,23 @@ func shortPeriod(label string) string {
 	if day, _ := strconv.Atoi(strings.TrimSpace(m[1])); day > 0 && day <= 7 {
 		end = end.AddDate(0, -1, 0)
 	}
+	months := 0
 	switch {
-	case strings.HasPrefix(label, "FY"):
-		return "FY " + end.Format("Jan 2006")
+	case strings.HasPrefix(label, "FY"), strings.HasPrefix(label, "12 months to"):
+		months = 12
 	case strings.HasPrefix(label, "3m to") || strings.HasPrefix(label, "3 months to"):
-		return end.AddDate(0, -2, 0).Format("Jan") + "–" + end.Format("Jan 2006")
+		months = 3
+	default:
+		return label
 	}
-	return label
+	first := end.AddDate(0, 1-months, 0)
+	switch {
+	case months == 12 && first.Month() == time.January:
+		return end.Format("2006")
+	case months < 12 && first.Year() == end.Year():
+		return first.Format("Jan") + "–" + end.Format("Jan 2006")
+	}
+	return first.Format("Jan 2006") + "–" + end.Format("Jan 2006")
 }
 
 // money writes an amount as a reader says it: "$3.37bn", "$97m".

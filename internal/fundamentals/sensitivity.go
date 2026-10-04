@@ -102,7 +102,7 @@ func (s Snapshot) Sensitivity() (Sensitivity, bool) {
 func (s Snapshot) lastTwelveMonths(needed ...string) (func(string) Value, string) {
 	year := s.Years[0]
 	annual := func(key string) Value { return year.Figure(key) }
-	annualBasis := "the " + strings.Replace(year.Label, "FY to", "year to", 1)
+	annualBasis := year.Label
 	if s.YTD == nil || s.PriorYTD == nil {
 		return annual, annualBasis
 	}
@@ -114,7 +114,7 @@ func (s Snapshot) lastTwelveMonths(needed ...string) (func(string) Value, string
 			return annual, annualBasis
 		}
 	}
-	return rolled, "the twelve months to " + s.YTD.End.Format("2 Jan 2006")
+	return rolled, MonthSpan(s.YTD.End, 12)
 }
 
 // dilutedShares is the latest period's weighted diluted share count, which is
@@ -123,11 +123,11 @@ func (s Snapshot) lastTwelveMonths(needed ...string) (func(string) Value, string
 func (s Snapshot) dilutedShares() (Value, string) {
 	if s.YTD != nil {
 		if v := s.YTD.Figure("dilutedShares"); v.Known {
-			return v, "the weighted average diluted count for the " + strings.ToLower(s.YTD.Label[:1]) + s.YTD.Label[1:]
+			return v, "the weighted average diluted count for " + s.YTD.Label
 		}
 	}
 	if v := s.Years[0].Figure("dilutedShares"); v.Known {
-		return v, "the weighted average diluted count for the " + strings.Replace(s.Years[0].Label, "FY to", "year to", 1)
+		return v, "the weighted average diluted count for " + s.Years[0].Label
 	}
 	if v := s.Balance.Figure("sharesOutstanding"); v.Known {
 		return v, "shares outstanding on the latest filing's cover, as no diluted count is filed"
@@ -205,8 +205,8 @@ func (s Snapshot) ofExpected(v Value) string {
 	if s.ExpectedEPS <= 0 || !v.Known {
 		return ""
 	}
-	return fmt.Sprintf(", %.1f%% of the US$%.2f analysts expect for the year to %s (their figure is usually on the company's adjusted basis)",
-		v.Amount/s.ExpectedEPS*100, s.ExpectedEPS, s.ExpectedFor)
+	return fmt.Sprintf(", %.1f%% of the US$%.2f analysts expect for %s (their figure is usually on the company's adjusted basis)",
+		v.Amount/s.ExpectedEPS*100, s.ExpectedEPS, YearEnding(s.ExpectedFor))
 }
 
 func capitalise(s string) string {

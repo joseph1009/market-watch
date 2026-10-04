@@ -198,10 +198,11 @@ func humanize(v float64) string {
 // pageAccounts is what an analysis's page shows of the accounts: each
 // period's reported figures, and the share's price.
 func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
-	period := func(y fundamentals.Year) telegram.Period {
+	// months is the period's length, to name the one a year before it.
+	period := func(y fundamentals.Year, months int) telegram.Period {
 		p := telegram.Period{Label: y.Label, End: y.End, Figures: map[string]float64{}, Release: y.FromRelease}
 		if y.YearAgoRevenue.Known {
-			p.YearAgo = y.YearAgoRevenue.Amount
+			p.YearAgo, p.YearAgoLabel = y.YearAgoRevenue.Amount, fundamentals.MonthSpan(y.End.AddDate(-1, 0, 0), months)
 		}
 		for k, v := range y.Figures {
 			if v.Known {
@@ -217,6 +218,7 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 	g := s.Glance()
 	acc.Glance = &telegram.Glance{MarketCap: g.MarketCap.Amount, PE: g.PE.Amount, PS: g.PS.Amount, On: g.On,
 		ForwardPE: g.ForwardPE.Amount, ForwardFor: g.ForwardFor,
+		Price: g.Price.Amount, Shares: g.Shares.Amount, EPS: g.EPS.Amount, Sales: g.Sales.Amount, ExpectedEPS: g.ExpectedEPS.Amount,
 		Cash: g.Cash.Amount, Debt: g.Debt.Amount, HasCash: g.Cash.Known, HasDebt: g.Debt.Known, CashAt: g.CashAt, DebtAt: g.DebtAt}
 	if len(s.Balance.Figures) > 0 {
 		acc.Balance = &telegram.BalanceSheet{AsOf: s.Balance.AsOf, Release: s.Balance.FromRelease, Figures: map[string]float64{}, Older: s.Balance.Older}
@@ -227,13 +229,13 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 		}
 	}
 	for _, y := range s.Years {
-		acc.Years = append(acc.Years, period(y))
+		acc.Years = append(acc.Years, period(y, 12))
 	}
 	for _, q := range s.Quarters {
-		acc.Quarters = append(acc.Quarters, period(q))
+		acc.Quarters = append(acc.Quarters, period(q, 3))
 	}
 	if s.TTM != nil {
-		ttm := period(*s.TTM)
+		ttm := period(*s.TTM, 12)
 		acc.TTM = &ttm
 	}
 	if g := s.Peers; g != nil {
