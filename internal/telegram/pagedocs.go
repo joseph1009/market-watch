@@ -638,8 +638,8 @@ type Peers struct {
 	Rows  []PeerRow
 }
 
-// PeerRow is one measure: the company's figure, the group's middle value and
-// middle half, and how many of the group the company is above.
+// PeerRow is one measure: the company's figure, the group's median and
+// 25th to 75th percentile, and how many of the group the company is above.
 type PeerRow struct {
 	Label, Company, Median, Range, Above string
 }
@@ -668,7 +668,7 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		doc.Parts = append(doc.Parts, pages.Section{ID: "figures", Title: "The figures", Parts: figures})
 	}
 	if p := acc.Peers; p != nil && len(p.Rows) > 0 {
-		t := pages.Table{Head: []string{"", "This company", "Group middle", "Middle half", "Higher than"}, Align: "lrrrr", Labels: true}
+		t := pages.Table{Head: []string{"Latest 12 months", "This company", "Median", "25th–75th percentile", "Higher than"}, Align: "lrrrr", Labels: true}
 		for _, r := range p.Rows {
 			t.Rows = append(t.Rows, []string{escape(r.Label), "<b>" + escape(r.Company) + "</b>", escape(r.Median), escape(r.Range), escape(r.Above)})
 		}

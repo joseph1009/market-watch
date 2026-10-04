@@ -654,14 +654,23 @@ following.
    and the cost of money, from FRED.
    [`addPeers`](../internal/app/research.go#L64) sets the company beside the
    others in its industry group of Nasdaq's list, worth US$500m or more
-   ([`Client.Peers`](../internal/fundamentals/peers.go#L90)). The SEC's frames
-   API gives one figure for every filer for one calendar year in a single
-   request. Each frame is kept a week under `frames/` on the data volume. The
-   comparison covers growth, margins, research spending, and market value
-   against sales and profit. Each line gives the company's figure, the group's
-   middle value and middle half, and how many it beats. Only US-GAAP figures in
-   dollars are compared. The verdicts get the same comparison, and the
-   analysis page shows it as a table.
+   ([`Client.Peers`](../internal/fundamentals/peers.go#L177)). The SEC's frames
+   API gives one figure for every filer for one calendar year or quarter in a
+   single request. Each company is put on its latest twelve months filed: its
+   last full year, plus the quarters filed since, less the same quarters a
+   year before. A fourth quarter is rarely filed on its own, so four quarters
+   are summed only where the year cannot be bridged. The company itself is on
+   the twelve months the page's box uses, with the box's P/E and price to
+   sales, so the two agree
+   ([`Snapshot.PeerFigures`](../internal/fundamentals/peers.go#L121)). Cash
+   flows are filed year to date, so the free cash flow margin stays on the
+   calendar year. Each frame is kept under `frames/` on the data volume, a
+   week, or 90 days once its period ended over a year ago. The comparison
+   covers growth, margins, research spending, the P/E and price to sales.
+   Each line gives the company's figure, the group's median and 25th to 75th
+   percentile, and how many it beats. Only US-GAAP figures in dollars are compared.
+   The verdicts get the same comparison, and the analysis page shows it as a
+   table.
 5. [`Snapshot.Table`](../internal/fundamentals/table.go#L46) lays the figures
    out as a table with fixed-width columns.
    [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L65) sends it to
@@ -1499,7 +1508,7 @@ is `./data`.
 | `scorecard.json` | [ideas/scorecard.go](../internal/ideas/scorecard.go) | Every verdict, plus the prices it is measured from once its next session has opened |
 | `themes.json` | [ideas/themelog.go](../internal/ideas/themelog.go) | The last half-year of weekly themes, with what each one's research said and what was picked |
 | `market/` | [market/store.go](../internal/market/store.go) | Two years of the US market's daily prices, one file for each session, forty megabytes in all; the splits since; and Nasdaq's list, at most a day old |
-| `frames/` | [fundamentals/peers.go](../internal/fundamentals/peers.go) | The SEC's figures for every filer for a calendar year, one file a figure, read again after a week |
+| `frames/` | [fundamentals/peers.go](../internal/fundamentals/peers.go) | The SEC's figures for every filer for a calendar year or quarter, one file a figure and period, read again after a week (90 days for a period over a year old) |
 | `pages/` | [pages/pages.go](../internal/pages/pages.go) | The web pages the summaries link to, one file each, deleted after 30 days |
 | `relay/` | [relay/relay.go](../internal/relay/relay.go) | The last forty runs: every request, every reply, and a ledger for each run |
 

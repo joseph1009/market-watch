@@ -239,8 +239,12 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 		acc.TTM = &ttm
 	}
 	if g := s.Peers; g != nil {
-		acc.Peers = &telegram.Peers{About: fmt.Sprintf("<i>Nasdaq's %s group: %d other US-listed companies worth US$500m or more, on the SEC's figures for %d. Its largest are %s.</i>",
-			escape(g.Industry), g.Size, g.Year, escape(strings.Join(g.Largest, ", ")))}
+		own := "This company's are its own, as above"
+		if g.Own != "" {
+			own = "This company's are " + g.Own + ", as above"
+		}
+		acc.Peers = &telegram.Peers{About: fmt.Sprintf("<i>Nasdaq's %s group: %d other US-listed companies worth US$500m or more. Its largest are %s. Each is on its latest 12 months filed with the SEC, and its P/E and price to sales on today's market value. %s. The free cash flow margin is on each company's year nearest %d, as cash flows are filed only year to date.</i>",
+			escape(g.Industry), g.Size, escape(strings.Join(g.Largest, ", ")), escape(own), g.Year)}
 		for _, l := range g.Lines {
 			row := telegram.PeerRow{Label: l.Label, Company: "not reported", Median: l.Show(l.Median),
 				Range: l.Show(l.Low) + " to " + l.Show(l.High), Above: "—"}

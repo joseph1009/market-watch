@@ -55,12 +55,12 @@ const (
 	expectationsBudget = 45 * time.Second
 
 	// peersBudget bounds reading the SEC's figures for an industry group:
-	// about sixteen requests the first time in a week, none after.
-	peersBudget = time.Minute
+	// about 120 requests the first time in a week, none after.
+	peersBudget = 3 * time.Minute
 )
 
 // addPeers sets a US listing beside the others in its industry group of
-// Nasdaq's list, on the SEC's figures for the last calendar year.
+// Nasdaq's list, each on its latest twelve months filed with the SEC.
 func (a *App) addPeers(ctx context.Context, snap *fundamentals.Snapshot) {
 	if a.Accounts == nil || a.Filings == nil {
 		return
@@ -99,7 +99,7 @@ func (a *App) addPeers(ctx context.Context, snap *fundamentals.Snapshot) {
 
 	ctx, cancel := context.WithTimeout(ctx, peersBudget)
 	defer cancel()
-	group, err := a.Accounts.Peers(ctx, snap.CIK, industry, peers, filepath.Join(a.Cfg.DataDir, "frames"), a.now())
+	group, err := a.Accounts.Peers(ctx, snap.CIK, industry, peers, snap.PeerFigures(), filepath.Join(a.Cfg.DataDir, "frames"), a.now())
 	if err != nil {
 		a.Log.Warn("peers", "ticker", snap.Ticker, "error", err)
 		return
