@@ -218,3 +218,12 @@ func TestTheAnalysisPageDrawsThePriceAndTheCash(t *testing.T) {
 		}
 	}
 }
+
+// A share price keeps its cents however large it is.
+func TestPricesAreGivenToTheCent(t *testing.T) {
+	for v, want := range map[float64]string{1074.89: "1,074.89", 1255: "1,255.00", 179.614: "179.61", 12345.6: "12,345.60"} {
+		if got := formatPrice(v); got != want {
+			t.Errorf("formatPrice(%v) = %q, want %q", v, got, want)
+		}
+	}
+}

@@ -38,6 +38,7 @@ analysis makes one, and so does `/industry`.
 | `verdicts` | Gives each company BUY, HOLD or SELL from the facts gathered for it, three companies a call. It checks each case in two independent sources, **with web search** | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `CHECKED:`, `RISK:` |
 | `analysis` | Writes up one company for `/analyse`. It searches for the last fortnight's news and the company's plans itself, **with web search** | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with headings in capitals |
 | `industry` | Explains an industry for `/industry`: how it fits together, where it is heading, and companies to look into, **with web search** | `industry.system` | Opus | `MODEL_INDUSTRY` | `### ` sub-headings over bullets, then `COMPANIES BY PART` and `part\|name\|ticker\|exchange\|why` |
+| `terms` | Checks a term the brief or an analysis listed twice before it is linked in every report: a real term, with search words that find the right meaning | `terms.check` | Opus | `MODEL_TERMS` | Lines of `- term \| search words`, only those that pass |
 
 The sorting sends the day's articles in batches of 60, two at a time
 (`RELAY_CONCURRENCY`). When a person is answering, the batches hold 150 each,
@@ -511,7 +512,9 @@ scripts/sync-from-fly.sh
 
 It copies the server's data into `./data`. Then it writes the changes into
 `config/companies.yaml` and `config/sources.yaml`, touching only the lines they
-change. Read them with `git diff config/`, then commit and deploy. When the
+change, and adds the terms the service learned to the end of
+`config/glossary.yaml`, each on its search. A learned term can be pointed at
+a better page there by hand. Read them with `git diff config/`, then commit and deploy. When the
 service next starts, it sees that the files now say what its changes said, and
 drops those changes. So the list kept on the server only ever holds what the
 files don't say yet. You never have to edit the files by hand to catch up with

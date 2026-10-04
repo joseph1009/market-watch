@@ -2,6 +2,8 @@ package fundamentals
 
 import (
 	"strings"
+
+	"github.com/joseph1009/market-watch/internal/model"
 )
 
 // VerdictMarker heads the analysis's last section of prose: its view on the
@@ -82,7 +84,7 @@ const TermsMarker = "TERMS"
 // terms once each, as written. A term in capitals on a line of its own,
 // "HBM", reads like a section heading, so the section runs on to the next
 // heading of more than one word, or to SOURCES.
-func SplitTerms(prose string) (string, []string) {
+func SplitTerms(prose string) (string, []model.ListedTerm) {
 	lines := strings.Split(prose, "\n")
 	start := -1
 	for i, line := range lines {
@@ -102,21 +104,7 @@ func SplitTerms(prose string) (string, []string) {
 			break
 		}
 	}
-	var terms []string
-	seen := map[string]bool{}
-	for _, line := range lines[start+1 : end] {
-		t := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "-•*"))
-		// "HBM | high-bandwidth memory" or "HBM: ..." is the term before it.
-		if i := strings.IndexAny(t, "|:"); i >= 0 {
-			t = strings.TrimSpace(t[:i])
-		}
-		t = strings.Trim(t, `"'*`)
-		if t == "" || len(t) > 40 || seen[strings.ToLower(t)] {
-			continue
-		}
-		seen[strings.ToLower(t)] = true
-		terms = append(terms, t)
-	}
+	terms := model.ParseTerms(lines[start+1 : end])
 	rest := append(append([]string{}, lines[:start]...), lines[end:]...)
 	return strings.TrimSpace(strings.Join(rest, "\n")), terms
 }

@@ -96,6 +96,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 		GeneratedAt:  now,
 		Summary:      got.Summary,
 		Overview:     got.Overview,
+		Terms:        model.ParseTerms(got.Terms),
 		ArticleCount: len(articles),
 		SourceCount:  countSources(articles),
 		Usage:        completion.Usage,

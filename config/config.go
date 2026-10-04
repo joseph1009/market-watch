@@ -348,6 +348,7 @@ var stageModelVars = map[string]string{
 	"verdicts": "MODEL_VERDICTS",
 	"analysis": "MODEL_ANALYSIS",
 	"industry": "MODEL_INDUSTRY",
+	"terms":    "MODEL_TERMS",
 }
 
 // secretVars are the environment variables that hold credentials. Any of them

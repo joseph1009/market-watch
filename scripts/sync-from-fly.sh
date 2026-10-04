@@ -7,11 +7,12 @@
 # Two things, in order:
 #
 #   1. Copies the data volume's files -- prefs.yaml, covered.json, runs.json,
-#      candidates.json, scorecard.json -- into ./data, so a local run starts
+#      candidates.json, scorecard.json, terms.json -- into ./data, so a local run starts
 #      where the server is. What they replace is kept in data/.backup/.
 #   2. Runs `market-watch --fold`, which writes the companies added or removed
 #      with /watchlist into config/companies.yaml and the feeds switched with
-#      /sources into config/sources.yaml. Only the entries changed are touched.
+#      /sources into config/sources.yaml, and the terms the service learned
+#      into config/glossary.yaml. Only the entries changed are touched.
 #
 # Then read the change with `git diff config/`, commit it and deploy. Once the
 # deployed files say what the Telegram edits said, the service drops the edits
@@ -22,7 +23,7 @@
 set -euo pipefail
 
 APP="${FLY_APP:-joseph-market-watch}"
-FILES="prefs.yaml covered.json runs.json candidates.json scorecard.json"
+FILES="prefs.yaml covered.json runs.json candidates.json scorecard.json terms.json"
 
 die() { echo "sync-from-fly: $*" >&2; exit 1; }
 

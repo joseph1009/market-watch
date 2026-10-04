@@ -19,6 +19,7 @@ const (
 	summaryMarker  = "## IN SHORT"
 	overviewMarker = "## OVERVIEW"
 	sectionMarker  = "## SECTION:"
+	termsMarker    = "## TERMS"
 )
 
 // systemPrompt governs the brief. Its text lives in config/prompts.md.

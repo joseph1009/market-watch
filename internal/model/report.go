@@ -13,11 +13,15 @@ type Report struct {
 
 	// Summary is the brief in three to five short bullets, which the chat is
 	// sent when the whole brief is a page.
-	Summary      string    `json:"summary,omitempty"`
-	Sections     []Section `json:"sections"`
-	ArticleCount int       `json:"article_count"`
-	SourceCount  int       `json:"source_count"`
-	Usage        Usage     `json:"usage"`
+	Summary  string    `json:"summary,omitempty"`
+	Sections []Section `json:"sections"`
+
+	// Terms are the terms the brief listed as ones it used, to link each to
+	// what it means: the brief does not define them.
+	Terms        []ListedTerm `json:"terms,omitempty"`
+	ArticleCount int          `json:"article_count"`
+	SourceCount  int          `json:"source_count"`
+	Usage        Usage        `json:"usage"`
 
 	// Triage is what rating and placing the articles took, kept apart from
 	// Usage because it is a different, smaller model.

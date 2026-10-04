@@ -96,6 +96,22 @@ The Fed did the talking.`
 
 // A model that starts writing without the opening marker has still produced a
 // usable brief; losing the report over the missing line would be worse.
+// The terms block is the brief's list of the terms it used, not a section:
+// it stays out of the prose wherever it falls.
+func TestParseResponseKeepsTheTermsApart(t *testing.T) {
+	raw := "## OVERVIEW\nYields rose.\n\n## TERMS\n- yield curve | bonds\nHBM\n\n## SECTION: chips\nMemory is short."
+	got := parseResponse(raw)
+	if strings.Join(got.Terms, ",") != "- yield curve | bonds,HBM" {
+		t.Errorf("terms = %q", got.Terms)
+	}
+	if got.Overview != "Yields rose." || got.Sections["chips"] != "Memory is short." {
+		t.Errorf("overview %q, sections %v", got.Overview, got.Sections)
+	}
+	if terms := model.ParseTerms(got.Terms); len(terms) != 2 || terms[0].Context != "bonds" {
+		t.Errorf("parsed = %+v", terms)
+	}
+}
+
 func TestParseResponseTreatsLeadingTextAsOverview(t *testing.T) {
 	raw := `Markets drifted lower.
 

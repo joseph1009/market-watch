@@ -25,7 +25,9 @@ import (
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/logging"
 	"github.com/joseph1009/market-watch/internal/mcp"
+	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/relay"
+	"github.com/joseph1009/market-watch/internal/terms"
 )
 
 func main() {
@@ -137,7 +139,8 @@ func run(once, share, check, clear bool) error {
 
 // runFold writes the changes made from Telegram -- companies added or removed
 // with /watchlist, feeds switched with /sources -- into the files in config/,
-// so the files say them and nobody has to copy them over by hand.
+// so the files say them and nobody has to copy them over by hand. The terms
+// the service learned go into the glossary the same way.
 //
 // It reads them from the local data directory, which scripts/sync-from-fly.sh
 // has just filled from the server. It needs no credentials and sends nothing,
@@ -164,6 +167,23 @@ func runFold() error {
 	if err != nil {
 		return err
 	}
+	// The terms the service learned join the glossary.
+	learned, err := (&terms.Store{Path: filepath.Join(dataDir, terms.File)}).Approved()
+	if err != nil {
+		return err
+	}
+	var links []model.Term
+	for _, t := range learned {
+		links = append(links, model.Term{URL: terms.SearchURL(t.ListedTerm), Words: []string{t.Term}})
+	}
+	more, err := config.FoldTerms("config", links, time.Now())
+	for _, c := range more {
+		fmt.Println(c)
+	}
+	if err != nil {
+		return err
+	}
+	changes = append(changes, more...)
 	if len(changes) == 0 {
 		fmt.Println("Nothing to write: config/ already says everything changed from Telegram.")
 	}

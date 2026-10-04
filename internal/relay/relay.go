@@ -43,6 +43,7 @@ const (
 	Verdicts = "verdicts" // judging each of them
 	Analysis = "analysis" // writing up one company's accounts
 	Industry = "industry" // explaining how an industry fits together
+	Terms    = "terms"    // checking a term before it is linked in every report
 )
 
 // DefaultKeep is how many run directories are kept. A month of daily briefs

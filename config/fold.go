@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -224,4 +226,41 @@ func foldSwitches(raw []byte, switches map[string]bool) ([]byte, []string, error
 		done = append(done, fmt.Sprintf("switched %s %s", id, state))
 	}
 	return l.bytes(), done, nil
+}
+
+// GlossaryFile is the glossary's file in the config directory.
+const GlossaryFile = "glossary.yaml"
+
+// FoldTerms adds the terms the service learned to the glossary in dir, each
+// on the search it was learned with, under a comment saying where they came
+// from. A term whose word the glossary already has is left out. Reading the
+// diff, a learned term can be pointed at a better page by hand.
+func FoldTerms(dir string, learned []model.Term, now time.Time) ([]string, error) {
+	return foldFile(filepath.Join(dir, GlossaryFile), func(raw []byte) ([]byte, []string, error) {
+		var have []model.Term
+		if err := yaml.Unmarshal(raw, &have); err != nil {
+			return nil, nil, err
+		}
+		known := map[string]bool{}
+		for _, t := range have {
+			for _, w := range t.Words {
+				known[strings.ToLower(w)] = true
+			}
+		}
+		var add, changes []string
+		for _, t := range learned {
+			if len(t.Words) == 0 || known[strings.ToLower(t.Words[0])] {
+				continue
+			}
+			known[strings.ToLower(t.Words[0])] = true
+			add = append(add, "- url: "+strconv.Quote(t.URL), "  words: ["+strconv.Quote(t.Words[0])+"]")
+			changes = append(changes, "glossary: learned "+t.Words[0])
+		}
+		if len(add) == 0 {
+			return raw, nil, nil
+		}
+		text := strings.TrimRight(string(raw), "\n") + "\n\n# Learned from the reports, " + now.Format("2 Jan 2006") +
+			": each links to a search for its meaning.\n" + strings.Join(add, "\n") + "\n"
+		return []byte(text), changes, nil
+	})
 }

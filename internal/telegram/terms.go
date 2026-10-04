@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"net/url"
 	"sort"
 	"strings"
 	"unicode"
@@ -154,31 +153,4 @@ func asciiLower(s string) string {
 		}
 	}
 	return string(b)
-}
-
-// WithSearches adds the terms an analysis listed that the glossary lacks,
-// each linked to a Google search for its meaning. A search always opens,
-// and finds words no checked list would hold, such as a chip maker's own
-// jargon; the glossary's checked pages still come first where they exist.
-func WithSearches(glossary []model.Term, listed []string) []model.Term {
-	known := map[string]bool{}
-	for _, t := range glossary {
-		for _, w := range t.Words {
-			known[strings.ToLower(w)] = true
-		}
-	}
-	out := append([]model.Term{}, glossary...)
-	for _, w := range listed {
-		if known[strings.ToLower(w)] {
-			continue
-		}
-		known[strings.ToLower(w)] = true
-		out = append(out, model.Term{URL: SearchURL(w), Words: []string{w}})
-	}
-	return out
-}
-
-// SearchURL is a Google search for what a term means.
-func SearchURL(term string) string {
-	return "https://www.google.com/search?q=" + url.QueryEscape(term+" meaning")
 }

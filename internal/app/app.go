@@ -33,6 +33,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
+	"github.com/joseph1009/market-watch/internal/terms"
 	"github.com/joseph1009/market-watch/internal/triage"
 )
 
@@ -83,6 +84,12 @@ type App struct {
 	// Terms are config/glossary.yaml's jargon, linked to an explanation in
 	// the brief.
 	Terms []model.Term
+
+	// Learned keeps the terms the writers listed that the glossary lacks, and
+	// TermCheck checks one before it is linked in every report. Nil Learned
+	// links each report's own terms and learns nothing.
+	Learned   *terms.Store
+	TermCheck *terms.Checker
 
 	// Pages keeps the web pages that long messages are sent as, behind a
 	// summary. Nil sends everything in full, as messages.
@@ -250,11 +257,13 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		},
 		prefs: prefs,
 	}
-	terms, err := config.Glossary()
+	glossary, err := config.Glossary()
 	if err != nil {
 		return nil, err
 	}
-	a.Terms = terms
+	a.Terms = glossary
+	a.Learned = &terms.Store{Path: filepath.Join(cfg.DataDir, terms.File)}
+	a.TermCheck = &terms.Checker{Completer: rel.Plain(relay.Terms)}
 	if cfg.PagesURL != "" {
 		a.pageStore = &pages.Store{Dir: filepath.Join(cfg.DataDir, "pages"), BaseURL: cfg.PagesURL}
 		a.Pages = a.pageStore
@@ -708,16 +717,18 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 		"output_tokens", rep.Usage.OutputTokens,
 		"took", time.Since(started).Round(time.Second))
 
+	briefTerms := terms.Filter(rep.Terms, watchedNames(prefs.Groups))
 	layout := telegram.Options{
 		Display: a.Cfg.DisplayLocation,
 		Sources: sourceMode(a.Cfg.SourceLinks),
-		Terms:   a.Terms,
+		Terms:   terms.Linked(a.knownTerms(), briefTerms),
 	}
 	messages := telegram.RenderWith(rep, layout)
 	day := rep.GeneratedAt.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan")
 	doc := telegram.BriefDoc(rep, pageMarket(a.Generator.Levels, quotes), layout)
 	out := outgoing{title: "Market Watch · " + day, messages: messages, summary: telegram.BriefSummary(rep, layout), doc: &doc}
 	cached.Save("report", rep)
+	a.learnTerms(briefTerms, "the brief of "+day)
 	cached.Text("messages.html", joinMessages(messages))
 	cached.Text("summary.html", out.summary.Text)
 

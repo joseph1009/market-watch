@@ -1,6 +1,7 @@
 package fundamentals
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -57,8 +58,9 @@ func TestQuartersAreReadOnTheirOwn(t *testing.T) {
 				q.Figure("revenue"), q.Figure("operatingCashFlow"), w.end, w.rev, w.cash)
 		}
 	}
-	if quarters[0].Figure("epsDiluted").Amount != 1.2 || quarters[2].Figure("epsDiluted").Known {
-		t.Errorf("EPS: latest %v, fourth quarter %v (should not be derived)", quarters[0].Figure("epsDiluted"), quarters[2].Figure("epsDiluted"))
+	// With no share counts, the fourth quarter is the year's less nine months'.
+	if q4 := quarters[2].Figure("epsDiluted"); quarters[0].Figure("epsDiluted").Amount != 1.2 || math.Abs(q4.Amount-1.1) > 1e-9 {
+		t.Errorf("EPS: latest %v, fourth quarter %v, want 1.2 and 1.1", quarters[0].Figure("epsDiluted"), q4)
 	}
 	if ttm == nil || ttm.Figure("revenue").Amount != 440 || ttm.Figure("operatingCashFlow").Amount != 135 || ttm.Figure("epsDiluted").Known {
 		t.Errorf("twelve months = %+v", ttm)
@@ -79,5 +81,35 @@ func TestNoInterimFiguresNoQuarters(t *testing.T) {
 	quarters, ttm := buildQuarters(byKey, "USD")
 	if len(quarters) != 0 || ttm != nil || (Snapshot{Quarters: quarters}).quarterTable() != "" {
 		t.Errorf("quarters = %+v, ttm %+v", quarters, ttm)
+	}
+}
+
+// A fourth quarter's earnings a share are its profit over its own shares: the
+// year's average count less the three quarters before it, by their days.
+func TestTheFourthQuarterEPSIsWorkedOut(t *testing.T) {
+	byKey := map[string][]Observation{
+		"netIncome": {
+			span("2025-01-01", "2025-12-31", 400, "USD"),
+			span("2025-01-01", "2025-09-30", 300, "USD"),
+		},
+		"epsDiluted": {
+			span("2025-01-01", "2025-12-31", 4.0, "USD/shares"),
+			span("2025-01-01", "2025-09-30", 2.9, "USD/shares"),
+		},
+		"dilutedShares": {
+			span("2025-01-01", "2025-12-31", 100, "shares"),
+			span("2025-07-01", "2025-09-30", 101, "shares"),
+			span("2025-04-01", "2025-06-30", 100, "shares"),
+			span("2025-01-01", "2025-03-31", 98, "shares"),
+			span("2025-01-01", "2025-03-31", 98, "shares"), // filed again a year on
+		},
+	}
+	quarters, _ := buildQuarters(byKey, "USD")
+	if len(quarters) == 0 || quarters[0].End.Format(time.DateOnly) != "2025-12-31" {
+		t.Fatalf("quarters = %+v", quarters)
+	}
+	// 9,487 share-days over the quarter's 94 days is 100.93 shares.
+	if got := quarters[0].Figure("epsDiluted"); got.Amount != 0.99 {
+		t.Errorf("fourth quarter EPS = %v, want 0.99", got)
 	}
 }

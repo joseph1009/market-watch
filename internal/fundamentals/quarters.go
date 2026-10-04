@@ -2,6 +2,7 @@ package fundamentals
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -62,10 +63,11 @@ func buildQuarters(byKey map[string][]Observation, currency string) (quarters []
 	for _, end := range ends {
 		q := Year{End: end, Label: "3 months to " + end.Format("2 Jan 2006"), Figures: map[string]Value{}}
 		for _, key := range quarterKeys {
-			// A share count moves through the year, so a fourth quarter's
-			// earnings a share is not the year's less nine months'; it is
-			// taken only where it was filed.
-			if v := quarterValue(keepCurrency(byKey[key], currency), end, key == "epsDiluted"); v.Known {
+			v := quarterValue(keepCurrency(byKey[key], currency), end, key == "epsDiluted")
+			if key == "epsDiluted" && !v.Known {
+				v = fourthQuarterEPS(byKey, currency, end, q.Figure("netIncome"))
+			}
+			if v.Known {
 				q.Figures[key] = v
 			}
 		}
@@ -107,6 +109,45 @@ func isQuarter(o Observation) bool {
 func isFullYear(o Observation) bool {
 	d := o.Days()
 	return d >= 350 && d <= 380
+}
+
+// fourthQuarterEPS is the earnings a share of a quarter filed only inside its
+// year: its profit over its own diluted shares. The quarter's share count is
+// the year's average less the three quarters before it, each weighted by its
+// days. The year's earnings a share less the first nine months' is out
+// wherever the share count moved through the year, so it is only the fallback,
+// for a filer whose share counts are not all there. The owner found the
+// fourth quarters blank on 4 October 2026, and the twelve months with them.
+func fourthQuarterEPS(byKey map[string][]Observation, currency string, end time.Time, profit Value) Value {
+	shares := byKey["dilutedShares"]
+	year, ok := First(shares, func(o Observation) bool {
+		return o.Duration() && isFullYear(o) && abs(daysBetween(o.End, end)) <= periodSlack
+	})
+	if ok && profit.Known && year.Value > 0 {
+		weighted, days := year.Value*float64(year.Days()), year.Days()
+		var ends []time.Time
+	quarters:
+		for _, o := range shares {
+			if !o.Duration() || !isQuarter(o) || daysBetween(o.Start, year.Start) < -periodSlack || daysBetween(end, o.End) < quarterMinDays {
+				continue
+			}
+			for _, e := range ends {
+				if abs(daysBetween(e, o.End)) <= periodSlack {
+					continue quarters // the same quarter, filed again
+				}
+			}
+			ends = append(ends, o.End)
+			weighted -= o.Value * float64(o.Days())
+			days -= o.Days()
+		}
+		if len(ends) == 3 && days >= quarterMinDays && days <= quarterMaxDays {
+			// A count far from the year's means a quarter was misread.
+			if own := weighted / float64(days); own > year.Value/2 && own < year.Value*2 {
+				return known(math.Round(profit.Amount/own*100) / 100)
+			}
+		}
+	}
+	return quarterValue(keepCurrency(byKey["epsDiluted"], currency), end, false)
 }
 
 // quarterValue is a figure for the three months to end: as filed for those
@@ -153,7 +194,7 @@ func (s Snapshot) quarterTable() string {
 	if s.TTM != nil {
 		b.WriteString(", then the last four added together")
 	}
-	b.WriteString(". A fourth quarter is the full year less its first nine months; earnings a share are shown only where they were filed for the quarter. These are the freshest filed figures: lead with them when the last full year is months old.\n")
+	b.WriteString(". A fourth quarter is the full year less its first nine months, and its earnings a share are its profit over its own average diluted shares, worked out the same way. These are the freshest filed figures: lead with them when the last full year is months old.\n")
 
 	b.WriteString(pad("", 32))
 	for _, q := range columns {

@@ -2,9 +2,12 @@
 #
 # The first time one of these words appears in a section of the brief, or
 # anywhere in an analysis, the reader can tap it to read what it means. The
-# brief's writer is still told to say what a term means in plain words. The
-# analysis's is told not to, since the owner found the definitions crowded
-# out the analysis and spelled out words they knew (2026-10-04).
+# writers do not define terms, since the owner found the definitions crowded
+# out the reports and spelled out words they knew (2026-10-04). Each lists
+# the terms it used instead: one this file holds links to its page here, and
+# any other to a Google search for its meaning (internal/terms). A term that
+# keeps coming up is learned on the server and folded in at the end of this
+# file by `market-watch --fold`.
 #
 # Each entry is a page and the words that lead to it. A word written in
 # capitals (EPS, VIX) matches only in capitals, so "eps" inside another word,

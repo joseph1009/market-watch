@@ -20,6 +20,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
+	"github.com/joseph1009/market-watch/internal/terms"
 )
 
 const helpText = `<b>📊 Market Watch</b>
@@ -679,7 +680,18 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 		a.rememberSent("the "+snapshot.Ticker+" analysis", owner, &channel)
 	}
 	a.recordAnalysis(snapshot, w.verdict)
+	a.learnTerms(analysisTerms(snapshot, w), "the analysis of "+snapshot.Ticker)
 	return nil
+}
+
+// analysisTerms is the terms an analysis listed, less the names in it: the
+// company's own, and those of the companies to read beside it.
+func analysisTerms(snapshot fundamentals.Snapshot, w analysisParts) []model.ListedTerm {
+	names := []string{snapshot.Ticker, snapshot.Company, readableName(snapshot.Company)}
+	for _, r := range w.related {
+		names = append(names, r.Name, r.Symbol())
+	}
+	return terms.Filter(w.terms, names)
 }
 
 // analysisParts is an analysis's reply taken apart: the prose the reader reads,
@@ -690,7 +702,7 @@ type analysisParts struct {
 	verdict fundamentals.Verdict
 	related []fundamentals.Related
 	sources []fundamentals.Source // the footnotes
-	terms   []string              // the terms it used, to link to a definition
+	terms   []model.ListedTerm    // the terms it used, to link to a definition
 }
 
 // splitAnalysis takes the verdict, the summary and the links out of the
@@ -710,13 +722,13 @@ func splitAnalysis(prose string, related []fundamentals.Related) analysisParts {
 // summary of them, headed by the company's name.
 func (a *App) analysisOut(snapshot fundamentals.Snapshot, w analysisParts, opts telegram.IdeasOptions) outgoing {
 	v := telegram.AnalysisVerdict{Verdict: w.verdict.Verdict, Confidence: w.verdict.Confidence, Body: w.verdict.Body}
-	terms := telegram.WithSearches(a.Terms, w.terms)
+	linked := terms.Linked(a.knownTerms(), analysisTerms(snapshot, w))
 	doc := telegram.AnalysisDoc(snapshot.Ticker, readableName(snapshot.Company), v, w.prose, pageAccounts(snapshot), relatedList(w.related),
-		sourceLinks(w.sources), opts, terms, a.now(), a.Cfg.DisplayLocation)
+		sourceLinks(w.sources), opts, linked, a.now(), a.Cfg.DisplayLocation)
 	return outgoing{
 		title:    summaryHeading(snapshot),
 		messages: analysisMessages(snapshot, w, opts),
-		summary:  telegram.AnalysisSummary(summaryHeading(snapshot), v, w.short, w.prose, opts, terms),
+		summary:  telegram.AnalysisSummary(summaryHeading(snapshot), v, w.short, w.prose, opts, linked),
 		doc:      &doc,
 	}
 }

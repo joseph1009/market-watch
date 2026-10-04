@@ -60,22 +60,3 @@ func TestHighlightsAndSectorEmoji(t *testing.T) {
 		}
 	}
 }
-
-// A term the analysis listed that the glossary lacks is linked to a search
-// for its meaning; one the glossary has keeps the glossary's page.
-func TestUnlistedTermsAreLinkedToASearch(t *testing.T) {
-	terms := WithSearches(testTerms, []string{"eps", "CoWoS", "forward P/E"})
-	got := linkTerms([]string{"• EPS rose, CoWoS is short and the forward P/E is 6.7."}, terms)[0]
-	for _, want := range []string{
-		`<a href="https://example.com/eps">EPS</a>`,
-		`<a href="https://www.google.com/search?q=CoWoS+meaning">CoWoS</a>`,
-		`<a href="https://www.google.com/search?q=forward+P%2FE+meaning">forward P/E</a>`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %s in %s", want, got)
-		}
-	}
-	if len(terms) != len(testTerms)+2 {
-		t.Errorf("the glossary's own term was added again: %d terms", len(terms))
-	}
-}

@@ -522,11 +522,9 @@ func direction(v float64) string {
 	return ""
 }
 
+// formatPrice writes a share price to the cent, 1074.89 as "1,074.89".
 func formatPrice(v float64) string {
-	if v >= 1000 {
-		return thousandsFloat(v, 0)
-	}
-	return fmt.Sprintf("%.2f", v)
+	return thousandsFloat(v, 2)
 }
 
 // thousandsFloat writes 7651.5 as "7,652" (or with decimals).

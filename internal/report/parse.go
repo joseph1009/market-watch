@@ -11,6 +11,7 @@ type parsed struct {
 	Overview string
 	Sections map[string]string
 	Order    []string
+	Terms    []string // the TERMS block's lines: the terms the brief used
 }
 
 // parseResponse splits the delimited response. It is deliberately forgiving:
@@ -25,11 +26,16 @@ func parseResponse(raw string) parsed {
 		current string // "" means the overview
 		body    []string
 		summary bool // in the IN SHORT block
+		terms   bool // in the TERMS block
 	)
 	flush := func() {
 		text := strings.TrimSpace(strings.Join(body, "\n"))
 		body = body[:0]
 		if text == "" {
+			return
+		}
+		if terms {
+			out.Terms = append(out.Terms, strings.Split(text, "\n")...)
 			return
 		}
 		if summary {
@@ -52,13 +58,16 @@ func parseResponse(raw string) parsed {
 		switch trimmed := strings.TrimSpace(line); {
 		case strings.EqualFold(trimmed, summaryMarker):
 			flush()
-			summary = true
+			summary, terms = true, false
+		case strings.EqualFold(trimmed, termsMarker):
+			flush()
+			summary, terms = false, true
 		case strings.EqualFold(trimmed, overviewMarker):
 			flush()
-			current, summary = "", false
+			current, summary, terms = "", false, false
 		case hasMarkerPrefix(trimmed, sectionMarker):
 			flush()
-			summary = false
+			summary, terms = false, false
 			current = strings.ToLower(strings.TrimSpace(trimmed[len(sectionMarker):]))
 		default:
 			body = append(body, line)

@@ -70,8 +70,12 @@ func TestProseWithoutAVerdictIsLeftWhole(t *testing.T) {
 func TestTheTermsAreCutOut(t *testing.T) {
 	text := "THE BUSINESS\n- HBM chips.\n\nIN SHORT\n### What it does\n- Memory.\n\nTERMS\n- forward P/E\nHBM\n- CoWoS | chip packaging\n- hbm\n\nSOURCES\n1. CNBC|https://www.cnbc.com/a"
 	prose, terms := SplitTerms(text)
-	if want := []string{"forward P/E", "HBM", "CoWoS"}; strings.Join(terms, ",") != strings.Join(want, ",") {
-		t.Errorf("terms = %q", terms)
+	var got []string
+	for _, l := range terms {
+		got = append(got, l.Term+"/"+l.Context)
+	}
+	if want := "forward P/E/,HBM/,CoWoS/chip packaging"; strings.Join(got, ",") != want {
+		t.Errorf("terms = %q", got)
 	}
 	if prose != "THE BUSINESS\n- HBM chips.\n\nIN SHORT\n### What it does\n- Memory.\n\nSOURCES\n1. CNBC|https://www.cnbc.com/a" {
 		t.Errorf("prose = %q", prose)
