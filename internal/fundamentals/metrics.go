@@ -126,6 +126,11 @@ type Year struct {
 	// FromRelease marks a period the filings do not reach yet, read from
 	// the company's results release (release.go).
 	FromRelease bool `json:",omitempty"`
+
+	// YearAgoRevenue is the revenue of the same three or twelve months a
+	// year earlier, for a quarter or a twelve months. Only five quarters are
+	// kept, so the older four would otherwise have nothing to grow against.
+	YearAgoRevenue Value
 }
 
 // Balance is the most recent balance sheet.

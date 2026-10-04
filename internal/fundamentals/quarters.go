@@ -79,6 +79,15 @@ func buildQuarters(byKey map[string][]Observation, currency string) (quarters []
 			break
 		}
 	}
+	revenue := keepCurrency(byKey["revenue"], currency)
+	for i, q := range quarters {
+		for _, e := range ends {
+			if abs(daysBetween(q.End, e)-365) <= periodSlack {
+				quarters[i].YearAgoRevenue = quarterValue(revenue, e, false)
+				break
+			}
+		}
+	}
 
 	if len(quarters) < 4 {
 		return quarters, nil
@@ -97,6 +106,10 @@ func buildQuarters(byKey map[string][]Observation, currency string) (quarters []
 		if sum.Known {
 			ttm.Figures[key] = sum
 		}
+	}
+	ttm.YearAgoRevenue = quarters[0].YearAgoRevenue
+	for _, q := range quarters[1:4] {
+		ttm.YearAgoRevenue = Add(ttm.YearAgoRevenue, q.YearAgoRevenue)
 	}
 	return quarters, ttm
 }
@@ -253,10 +266,8 @@ func (s Snapshot) quarterTable() string {
 		return Year{}, false
 	})
 	growth("Revenue vs a year earlier", func(i int) (Year, bool) {
-		for _, q := range s.Quarters[i+1:] {
-			if abs(daysBetween(s.Quarters[i].End, q.End)-365) <= periodSlack {
-				return q, true
-			}
+		if ago := s.Quarters[i].YearAgoRevenue; ago.Known {
+			return Year{Figures: map[string]Value{"revenue": ago}}, true
 		}
 		return Year{}, false
 	})

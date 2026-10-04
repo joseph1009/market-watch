@@ -185,7 +185,7 @@ func (a *App) addReleaseFigures(ctx context.Context, snap *fundamentals.Snapshot
 		a.Log.Info("release figures not used", "ticker", snap.Ticker, "why", err)
 		return
 	}
-	a.Log.Info("release figures added", "ticker", snap.Ticker, "latest", snap.Quarters[0].Label, "balance sheet", skipped == "", "why not", skipped)
+	a.Log.Info("release figures added", "ticker", snap.Ticker, "latest", snap.Quarters[0].Label, "balance sheet", snap.Balance.FromRelease, "left out", skipped)
 }
 
 // backdrop reads the commodities, the dollar and the cost of money, once for

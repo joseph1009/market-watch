@@ -392,6 +392,9 @@ func (s Snapshot) valuation() string {
 		earnings, freeCash, basis := s.trailing()
 		fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Price to earnings", 32),
 			times(Ratio(price, earnings)), basis)
+		if g := s.Glance(); g.PS.Known {
+			fmt.Fprintf(&b, "%s%s  (market value over revenue, on %s)\n", pad("Price to sales", 32), times(g.PS), g.On)
+		}
 
 		if value := multiply(price, shares); value.Known {
 			fmt.Fprintf(&b, "%s%s  (on %s)\n", pad("Free cash flow yield", 32),

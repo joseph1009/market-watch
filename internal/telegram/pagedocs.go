@@ -552,8 +552,37 @@ func thousandsFloat(v float64, decimals int) string {
 // last twelve months. Figures holds only what was reported.
 type Period struct {
 	Label   string
+	End     time.Time
 	Figures map[string]float64
 	Release bool // from the results release, not yet filed
+
+	// YearAgo is the revenue of the same period a year earlier, where the
+	// list it sits in does not reach back that far. Zero is not known.
+	YearAgo float64
+}
+
+// Glance is the box of figures a reader looks for first. A multiple or a
+// market value of zero could not be worked out.
+type Glance struct {
+	MarketCap  float64 // in US dollars
+	PE, PS     float64
+	On         string // the period PE and PS are on: "the year to 3 Sep 2026"
+	ForwardPE  float64
+	ForwardFor string // the year of the expected earnings: "Aug 2027"
+	Cash, Debt float64
+	HasCash    bool
+	HasDebt    bool
+	CashAt     time.Time
+	DebtAt     time.Time
+}
+
+// BalanceSheet is the latest balance sheet, each line at AsOf unless Older
+// gives it an earlier date.
+type BalanceSheet struct {
+	AsOf    time.Time
+	Release bool // from the results release, not yet filed
+	Figures map[string]float64
+	Older   map[string]time.Time
 }
 
 // Accounts is what an analysis's page shows of the company's figures.
@@ -570,6 +599,9 @@ type Accounts struct {
 	// Release is which results release the periods marked Release are
 	// from, "filed 30 September 2026", where any are.
 	Release string
+
+	Glance  *Glance
+	Balance *BalanceSheet
 }
 
 // Peers is the company beside its industry group, written out already.
@@ -597,6 +629,9 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	blocks = linkTerms(cite(blocks, cited), terms)
 	if split > 0 {
 		doc.Parts = append(doc.Parts, pages.Prose(blocks[:split]))
+	}
+	if g := glanceFacts(ticker, acc); len(g) > 0 {
+		doc.Parts = append(doc.Parts, pages.Section{ID: "glance", Title: "At a glance", Parts: []pages.Part{g}})
 	}
 	if price := priceParts(acc.Price, acc.Trading); len(price) > 0 {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "price", Title: "The share price", Parts: price})
@@ -650,6 +685,104 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 	return doc
 }
 
+// glanceFacts are the figures a reader looks for first, as the owner listed
+// them on 4 October 2026: the ticker, what the company is worth, its share
+// against its earnings, next year's expected earnings and its sales, and its
+// cash against its debt.
+func glanceFacts(ticker string, acc Accounts) pages.Facts {
+	g := acc.Glance
+	if g == nil {
+		return nil
+	}
+	facts := pages.Facts{{"Ticker", escape(ticker)}}
+	multiple := func(label string, v float64, on string) {
+		if v > 0 {
+			facts = append(facts, [2]string{label, escape(fmt.Sprintf("%.1f times, on %s", v, on))})
+		}
+	}
+	if g.MarketCap > 0 {
+		facts = append(facts, [2]string{"Market value", escape(money(g.MarketCap, "USD"))})
+	}
+	multiple("P/E", g.PE, g.On)
+	multiple("Forward P/E", g.ForwardPE, "the earnings expected for the year to "+g.ForwardFor)
+	multiple("Price to sales", g.PS, g.On)
+	switch {
+	// Netted only on one date: Micron's debt line at 27 November 2025 taken
+	// from its cash at 3 September 2026 made a figure the analysis itself
+	// had to disown (4 October 2026).
+	case g.HasCash && g.HasDebt && g.DebtAt.Equal(g.CashAt):
+		facts = append(facts, [2]string{"Cash less debt", escape(fmt.Sprintf("%s: cash and short-term investments of %s, long-term debt of %s, at %s",
+			money(g.Cash-g.Debt, acc.Currency), money(g.Cash, acc.Currency), money(g.Debt, acc.Currency), g.CashAt.Format("2 Jan 2006")))})
+	default:
+		if g.HasCash {
+			facts = append(facts, [2]string{"Cash and short-term investments", escape(money(g.Cash, acc.Currency) + ", at " + g.CashAt.Format("2 Jan 2006"))})
+		}
+		if g.HasDebt {
+			facts = append(facts, [2]string{"Long-term debt", escape(money(g.Debt, acc.Currency) + ", at " + g.DebtAt.Format("2 Jan 2006"))})
+		}
+	}
+	if len(facts) == 1 {
+		return nil
+	}
+	return facts
+}
+
+// balanceLines are the balance sheet's lines on the page.
+var balanceLines = []struct{ key, label string }{
+	{"cash", "Cash and equivalents"},
+	{"marketableSecurities", "Short-term investments"},
+	{"longTermDebt", "Long-term debt"},
+	{"currentAssets", "Current assets"},
+	{"currentLiabilities", "Current liabilities"},
+	{"equity", "Shareholders' equity"},
+}
+
+// balanceTable is the latest balance sheet, a line dated where it is from an
+// earlier one.
+func balanceTable(b *BalanceSheet, currency string) (pages.Table, bool) {
+	head := b.AsOf.Format("2 Jan 2006")
+	if b.Release {
+		head += "*"
+	}
+	t := pages.Table{Caption: "Cash and debt", Head: []string{"", head}, Align: "lr", Labels: true}
+	for _, l := range balanceLines {
+		v, ok := b.Figures[l.key]
+		if !ok {
+			continue
+		}
+		cell := escape(money(v, currency))
+		if at, older := b.Older[l.key]; older {
+			cell += " <i>(at " + escape(at.Format("2 Jan 2006")) + ")</i>"
+		}
+		t.Rows = append(t.Rows, []string{escape(l.label), cell})
+	}
+	return t, len(t.Rows) > 0
+}
+
+// yearOnYear is each period's revenue against the period a year before it in
+// the same list, by column.
+func yearOnYear(periods []Period) map[int]float64 {
+	out := map[int]float64{}
+	for i, p := range periods {
+		now, ok := p.Figures["revenue"]
+		if !ok || p.End.IsZero() {
+			continue
+		}
+		then := p.YearAgo
+		for _, q := range periods {
+			days := p.End.Sub(q.End).Hours() / 24
+			if v, ok := q.Figures["revenue"]; ok && days >= 353 && days <= 377 {
+				then = v
+				break
+			}
+		}
+		if then > 0 {
+			out[i] = 100 * (now/then - 1)
+		}
+	}
+	return out
+}
+
 // numbersBegin are the headings the analysis's figures may open with, the
 // first of them where the model left out the one before.
 var numbersBegin = map[string]bool{"KEY NUMBERS": true, "WHAT IT HAS ANNOUNCED": true, "WHAT THE COMPANY EARNS": true}
@@ -682,6 +815,7 @@ var accountLines = []struct {
 	kind  string // "money", "percent", "eps"
 }{
 	{"Revenue", figure("revenue"), "money"},
+	{"Gross profit", figure("grossProfit"), "money"},
 	{"Gross margin", ratio("grossProfit", "revenue"), "percent"},
 	{"Operating profit", figure("operatingIncome"), "money"},
 	{"Operating margin", ratio("operatingIncome", "revenue"), "percent"},
@@ -727,15 +861,20 @@ func accountsParts(acc Accounts) []pages.Part {
 	if len(acc.Quarters) > 0 {
 		periods := append([]Period(nil), acc.Quarters...)
 		reverse(periods)
+		growth := yearOnYear(periods)
 		if acc.TTM != nil {
+			// Set apart from the quarters, which end on the same days.
+			if now, then := acc.TTM.Figures["revenue"], acc.TTM.YearAgo; now > 0 && then > 0 {
+				growth[len(periods)] = 100 * (now/then - 1)
+			}
 			periods = append(periods, Period{Label: "Last 12 months", Figures: acc.TTM.Figures, Release: acc.TTM.Release})
 		}
-		parts = append(parts, accountsTable("Quarter by quarter", periods, acc.Currency))
+		parts = append(parts, accountsTable("Quarter by quarter", periods, acc.Currency, growth))
 	}
 	if len(acc.Years) > 0 {
 		years := append([]Period(nil), acc.Years...)
 		reverse(years)
-		parts = append(parts, accountsTable("Year by year", years, acc.Currency))
+		parts = append(parts, accountsTable("Year by year", years, acc.Currency, yearOnYear(years)))
 
 		revenue := pages.Columns{Title: "Revenue, year by year"}
 		margin := pages.Columns{Title: "Operating margin, year by year"}
@@ -767,6 +906,11 @@ func accountsParts(acc Accounts) []pages.Part {
 			parts = append(parts, cash)
 		}
 	}
+	if acc.Balance != nil {
+		if t, ok := balanceTable(acc.Balance, acc.Currency); ok {
+			parts = append(parts, t)
+		}
+	}
 	if len(parts) > 0 {
 		from := "From the company's filings with the SEC."
 		if acc.Release != "" {
@@ -787,7 +931,7 @@ func columnHead(p Period) string {
 	return shortPeriod(p.Label)
 }
 
-func accountsTable(caption string, periods []Period, currency string) pages.Table {
+func accountsTable(caption string, periods []Period, currency string, growth map[int]float64) pages.Table {
 	t := pages.Table{Caption: caption, Head: []string{""}, Align: "l", Labels: true}
 	for _, p := range periods {
 		t.Head = append(t.Head, columnHead(p))
@@ -813,6 +957,17 @@ func accountsTable(caption string, periods []Period, currency string) pages.Tabl
 			}
 		}
 		if known {
+			t.Rows = append(t.Rows, row)
+		}
+		if line.label == "Revenue" && len(growth) > 0 {
+			row := []string{"Revenue, change on a year earlier"}
+			for i := range periods {
+				if g, ok := growth[i]; ok {
+					row = append(row, fmt.Sprintf("%+.1f%%", g))
+				} else {
+					row = append(row, "–")
+				}
+			}
 			t.Rows = append(t.Rows, row)
 		}
 	}
@@ -864,6 +1019,8 @@ func money(v float64, currency string) string {
 		unit = currency + " "
 	}
 	switch {
+	case v >= 1e12:
+		return fmt.Sprintf("%s%s%.2ftn", sign, unit, v/1e12)
 	case v >= 1e9:
 		return fmt.Sprintf("%s%s%.2fbn", sign, unit, v/1e9)
 	case v >= 1e6:

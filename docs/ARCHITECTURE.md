@@ -599,15 +599,15 @@ the question again. `/analyse NVDA` still works in one line.
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L248)
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L253)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
    [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L135) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
    currency the filer reports in. It prefers later filings over earlier ones
-   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L482)).
+   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L487)).
    It builds the current year so far beside the full years
-   ([`buildYTD`](../internal/fundamentals/metrics.go#L590)), using only
+   ([`buildYTD`](../internal/fundamentals/metrics.go#L595)), using only
    interim periods that end after the latest annual report.
 2. [`quoteFor`](../internal/app/commands.go#L855) adds the share price, so the
    filed figures can become multiples.
@@ -680,7 +680,8 @@ following.
    confidence and a short reason. It is kept short and shown last.
    [`SplitShort`](../internal/fundamentals/verdict.go) takes out IN SHORT,
    the analysis's own summary in plain words. It says what the company does,
-   who buys it, what is coming, and one point for and one against. It is the
+   who buys it, what is coming, the figures that matter most, and one point
+   for and one against, in the analysis's own order. It is the
    chat's summary, and the full analysis leaves it out.
    [`SplitSources`](../internal/fundamentals/sources.go) takes out SOURCES,
    the web pages the analysis drew on, and any address written into the text
@@ -715,7 +716,7 @@ totals. A fourth quarter is the year minus its first nine months. Its
 earnings a share are its profit over its own diluted shares, which are the
 year's average less the first three quarters'. The table
 shows the quarters in a block of their own
-([`quarterTable`](../internal/fundamentals/quarters.go#L183)), and the analysis
+([`quarterTable`](../internal/fundamentals/quarters.go#L196)), and the analysis
 starts with them. The analysis may search the web, for the last fortnight's
 news and for a foreign filer's own latest results.
 

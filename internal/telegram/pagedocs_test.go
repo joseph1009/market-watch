@@ -130,6 +130,40 @@ func TestTheAnalysisPageGivesTheBusinessBeforeTheNumbers(t *testing.T) {
 	}
 }
 
+// The box of first figures, the cash and debt, and each period's growth on a
+// year earlier, as the owner listed them on 4 October 2026.
+func TestTheAnalysisPageGivesTheFiguresAReaderLooksForFirst(t *testing.T) {
+	asOf, older := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), time.Date(2025, 11, 27, 0, 0, 0, 0, time.UTC)
+	acc := Accounts{Currency: "USD",
+		Glance: &Glance{MarketCap: 1.21e12, PE: 14.5, PS: 9.1, On: "the year to 3 Sep 2026", ForwardPE: 6.7, ForwardFor: "Aug 2027",
+			Cash: 43.4e9, Debt: 8.84e9, HasCash: true, HasDebt: true, CashAt: asOf, DebtAt: older},
+		Balance: &BalanceSheet{AsOf: asOf, Release: true, Figures: map[string]float64{"cash": 38.4e9, "longTermDebt": 8.84e9},
+			Older: map[string]time.Time{"longTermDebt": older}},
+		Quarters: []Period{
+			{Label: "3 months to 3 Sep 2026", End: asOf, Figures: map[string]float64{"revenue": 54.2e9}},
+			{Label: "3 months to 28 May 2026", End: time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC), Figures: map[string]float64{"revenue": 41.5e9}},
+			{Label: "3 months to 28 Aug 2025", End: time.Date(2025, 8, 28, 0, 0, 0, 0, time.UTC), Figures: map[string]float64{"revenue": 11.3e9}},
+		}}
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{
+		"<h2>At a glance</h2>", "MU", "$1.21tn", "14.5 times, on the year to 3 Sep 2026",
+		"6.7 times, on the earnings expected for the year to Aug 2027", "9.1 times",
+		"$43.40bn, at 3 Sep 2026", "$8.84bn, at 27 Nov 2025",
+		"Cash and debt", "<th class=\"num\">3 Sep 2026*</th>", "(at 27 Nov 2025)",
+		"Revenue, change on a year earlier", "+379.6%",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+	if strings.Contains(page, "Cash less debt") {
+		t.Error("cash and debt at different dates were netted")
+	}
+	if g, f := strings.Index(page, "At a glance"), strings.Index(page, "Quarter by quarter"); g > f {
+		t.Error("the box comes after the tables")
+	}
+}
+
 // The periods read from a results release are marked, and the page says where
 // they came from.
 func TestTheReleaseColumnsAreMarked(t *testing.T) {
@@ -142,6 +176,26 @@ func TestTheReleaseColumnsAreMarked(t *testing.T) {
 		`<th class="num">Mar–May 2026</th><th class="num">Jun–Aug 2026*</th>`,
 		"where marked *, from its results release, filed 30 September 2026",
 		"Micron, from its filings and its results release, filed 30 September 2026",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+}
+
+// Every quarter's growth is shown, though the year-ago quarter of all but
+// the newest is not a column: the owner found the row blank on 4 October
+// 2026 but for one figure. Gross profit is given beside its margin.
+func TestEveryQuarterGrowsAgainstAYearEarlier(t *testing.T) {
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	acc := Accounts{Currency: "USD", Quarters: []Period{
+		{Label: "3 months to 3 Sep 2026", End: day(9, 3), Figures: map[string]float64{"revenue": 54e9, "grossProfit": 47e9}, YearAgo: 12e9},
+		{Label: "3 months to 28 May 2026", End: day(5, 28), Figures: map[string]float64{"revenue": 40e9}, YearAgo: 10e9},
+	}, TTM: &Period{Label: "12 months to 3 Sep 2026", End: day(9, 3), Figures: map[string]float64{"revenue": 120e9}, YearAgo: 40e9}}
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{
+		"<td>Revenue, change on a year earlier</td><td class=\"num\">+300.0%</td><td class=\"num\">+350.0%</td><td class=\"num\">+200.0%</td>",
+		"<td>Gross profit</td><td class=\"num\">–</td><td class=\"num\">$47.00bn</td>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page is missing %q", want)

@@ -199,7 +199,10 @@ func humanize(v float64) string {
 // period's reported figures, and the share's price.
 func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 	period := func(y fundamentals.Year) telegram.Period {
-		p := telegram.Period{Label: y.Label, Figures: map[string]float64{}, Release: y.FromRelease}
+		p := telegram.Period{Label: y.Label, End: y.End, Figures: map[string]float64{}, Release: y.FromRelease}
+		if y.YearAgoRevenue.Known {
+			p.YearAgo = y.YearAgoRevenue.Amount
+		}
 		for k, v := range y.Figures {
 			if v.Known {
 				p.Figures[k] = v.Amount
@@ -210,6 +213,18 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 	acc := telegram.Accounts{Currency: s.Currency, AsOf: s.Balance.AsOf, Price: s.Price, Trading: s.Trading}
 	if s.ReleaseAdded {
 		acc.Release = s.ReleaseFrom
+	}
+	g := s.Glance()
+	acc.Glance = &telegram.Glance{MarketCap: g.MarketCap.Amount, PE: g.PE.Amount, PS: g.PS.Amount, On: g.On,
+		ForwardPE: g.ForwardPE.Amount, ForwardFor: g.ForwardFor,
+		Cash: g.Cash.Amount, Debt: g.Debt.Amount, HasCash: g.Cash.Known, HasDebt: g.Debt.Known, CashAt: g.CashAt, DebtAt: g.DebtAt}
+	if len(s.Balance.Figures) > 0 {
+		acc.Balance = &telegram.BalanceSheet{AsOf: s.Balance.AsOf, Release: s.Balance.FromRelease, Figures: map[string]float64{}, Older: s.Balance.Older}
+		for k, v := range s.Balance.Figures {
+			if v.Known {
+				acc.Balance.Figures[k] = v.Amount
+			}
+		}
 	}
 	for _, y := range s.Years {
 		acc.Years = append(acc.Years, period(y))
