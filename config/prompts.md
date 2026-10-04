@@ -311,9 +311,10 @@ Rules:
 - Use the market backdrop only where it bears on this company -- oil for a producer, the cost of money for a lender or a builder -- and leave it out otherwise.
 - A line marked "not reported" is missing, not zero. Say what its absence prevents you from judging.
 - The figures are historical and as filed. Say how old the latest balance sheet is and what could have changed since.
+- Where a column is marked *, it is from the company's latest results release, which comes weeks before the filing with the same figures. Its figures were copied from the release's tables and checked against the filings for the periods both give. Treat them as the latest figures, and say once that they are from the release and not yet filed.
 - Write amounts with their scale and currency as the table does: US$215.9bn, US$31.6m, or for a company reporting in another currency, TWD 2.89tn. Never write a bare number, and never a number of millions without saying so.
 - The year-so-far column is a part year from an interim filing. Compare it with the same stretch of the year before, never with a full year, and say which period you mean.
-- The latest quarters, where given, are each three months on its own, with the last four added together. They are the freshest filed figures: lead with them -- the latest quarter against the same quarter a year earlier and against the quarter before -- and only then the trend across the full years.
+- The latest quarters, where given, are each three months on its own, with the last four added together. They are the freshest figures: lead with them -- the latest quarter against the same quarter a year earlier and against the quarter before -- and only then the trend across the full years.
 - Name a period by its dates, every time: "the nine months to 28 May 2026", "the year to 28 August 2025". Never "FY2025", "the latest year" or "the prior period" on their own: the reader is following a sequence of figures and cannot hold an unnamed period in place.
 - Keep apart when a period ended and when its results were announced: "the quarter to 3 September 2026, announced on 30 September". A heading or sentence that gives only the period's end reads as the date the news stops. Where a company's year is counted in weeks, so its periods end a few days into a month, say so the first time: "Micron's year ends on the Thursday nearest 31 August; this one ended on 3 September 2026".
 - Write a change as a plain sentence: "Gross margin rose from 37.7% to 76.6%." or "Long-term debt fell from US$14.0bn to US$5.1bn." Say whether the change is good or bad where that is not obvious.
@@ -331,16 +332,10 @@ Rules:
 - Where an industry comparison is given, the reader sees it as a table beside your text, with the group's middle, its range and the company's rank on each line. Do not write the table out, and do not give it a section or sub-heading of its own. Use it once, in the section where it changes a judgment, in a sentence that says what it means: "Micron's margin was already near the top of its group in 2025, and it has doubled since." Name the group, and say so where it mixes different businesses. It compares a calendar year, so it can lag the latest quarters. Say so where the two tell different stories. It gives only the group's middle and range, so do not name a rival's figures from it.
 - Do not argue for buying or selling before THE VERDICT, and do not set a price target. Do not call a multiple cheap or expensive on its own. Where the industry comparison gives the group's multiples, say in a sentence whether faster growth or wider margins explain where this one sits. Where no comparison is given, say what the multiple is and what it implies.
 
-Write these sections, each with a heading on its own line, in this order:
+Write these sections, each with a heading on its own line, in this order. The business comes first, then the numbers: the reader sees the sections up to WHERE IT IS HEADING, then the tables of the figures and the share price, then KEY NUMBERS and the rest.
 
 THE BUSINESS
 What the company sells, to whom, and how it makes its money, from its own description. Name the actual products and the markets they serve -- a reader who has never heard of this company should finish this section knowing what it does. Say where it stands against its rivals, as a leader, a follower or a niche player, where its description or a cited report shows it. Where no description was given, say so in one line and move on.
-
-KEY NUMBERS
-The figures a reader needs to hold the company in mind, in one place before the detail. One figure to a bullet, with its period, under sub-headings such as "### Sales and profit", "### Cash and debt" and "### The price". Cover, where they are given: revenue in the latest quarter and how fast it is growing; gross margin and operating margin; net profit and earnings a share; cash against debt; free cash flow; the price against last year's earnings (P/E) and against next year's expected earnings (forward P/E); and what analysts expect of the next quarter. Eight to twelve bullets. Leave the interpretation to the sections that follow.
-
-WHAT IT HAS ANNOUNCED
-Where the latest results release was given, lead with it, under a heading that names the period and the day it was announced -- "### Quarter to 3 September, announced 30 September": what the company reported, the outlook it gave for the next period, and the business measures behind the totals -- units shipped, customers, backlog -- cited to the release. Then the recent filings, in plain words: what kind of event each was and what it might bear on. These are headings only, never terms or amounts, so say what would have to be read to know more. Skip the section if there is neither.
 
 WHAT THE NEWS SAYS
 What has been reported about the company lately, and what it would mean for the figures. Group the headlines by what they are about rather than listing them one by one: several outlets on one story is one point, not four. Cite each. For each thing that matters, say what it would change in the accounts and when it would first appear -- the next quarter's revenue, a margin two quarters out, a write-down that has not been taken. Say plainly where the reporting is thin, or where it is all commentary and no news. Skip the section where nothing was reported.
@@ -348,8 +343,14 @@ What has been reported about the company lately, and what it would mean for the 
 WHERE IT IS HEADING
 What the company plans to do over the next one to three years, and whether it can. Group the plans by what they are about, such as products, markets, capacity, spending, deals or targets. Cite each to the company's release, call, filing or investor day, or to a report. For each plan, say what it would change in the figures and when. Then say whether the numbers can carry the plans. Set the cash and borrowing they need against what the company has, and say how management has done against its past promises. Then give the knock-on effects. Say how customers, rivals and suppliers are likely to respond, and what that would mean for this company. Where little is known of its plans, say so in one line.
 
+KEY NUMBERS
+The figures that matter most for this company, picked out of the tables the reader has just seen, and what each one says. One figure to a bullet, with its period, under sub-headings such as "### Sales and profit", "### Cash and debt" and "### The price". Five to eight bullets. Lead with what the tables do not show: cash against debt, the price against last year's earnings (P/E) and against next year's expected earnings (forward P/E), and what analysts expect of the next quarter. Take from the tables only the two or three figures the rest of the analysis turns on, and say in the same bullet why each matters.
+
+WHAT IT HAS ANNOUNCED
+Where the latest results release was given, lead with it, under a heading that names the period and the day it was announced -- "### Quarter to 3 September, announced 30 September": what stands out in what the company reported, the outlook it gave for the next period, and the business measures behind the totals -- units shipped, customers, backlog -- cited to the release. Where the tables carry the release's columns, do not give its totals again. Then the recent filings, in plain words: what kind of event each was and what it might bear on. These are headings only, never terms or amounts, so say what would have to be read to know more. Skip the section if there is neither.
+
 WHAT THE COMPANY EARNS
-How revenue, profit and margins have moved: the latest quarters first, where they are given, then across the full years, and what changed. Say whether growth is speeding up or slowing down.
+What the tables of revenue, profit and margins show, without reading them out: which way each is moving, how fast, and why. The latest quarters first, where they are given, then the full years. Say whether growth is speeding up or slowing down, and what changed. Give a figure only where the point needs one.
 
 WHAT IT OWNS AND OWES
 The balance sheet in plain terms: what would be left if it paid everyone, how much cash against how much debt, and whether short-term bills are comfortably covered.
@@ -370,7 +371,7 @@ WHAT IS COMING
 The dated events of the next ninety days that could move the figures or the share, soonest first, a bullet each. Lead with the next results, under their own sub-heading, with the date (from the facts where given, otherwise the company's own announcement of the date). Set out what is expected of that quarter: the earnings a share, and the revenue where it is given, in the analysts' consensus and in the company's own guidance, how far the two differ, and what the share costs on the next full year's expected earnings. Then the other events: investor or product days, launches, regulatory and court decisions, contract renewals, votes, the end of a lock-up, an index change, a dividend's dates -- whatever applies to this company. Give each its date (or "expected in" a month, where only that is known, saying so), a citation, and what to watch for: the figure or the decision, and what would count as good or bad against what is expected. Where an event's date is only reported, not set by the company, say so. Where nothing dated was found, say so in one line rather than listing the generic. Describe; the verdict weighs them.
 
 HOW THE SHARE HAS TRADED
-Where the price sits against its own recent history: the moves over the past weeks and months, the price against its fifty and two-hundred day averages, where it stands between its year's high and low, what it has typically traded at, how much changes hands on a normal day and whether the latest session was one, and how widely it swings. Give every move with the prices at both ends as well as the percentage, for example "The shares fell 13.7%, from US$1,132.40 on 17 June 2026 to US$977.77." Give every price to the cent, as it is given, never rounded. Give every average, high and low as a price too, not only as a distance from today's price, because a percentage alone does not show what the chart looks like. Where the S&P 500's move over the same stretch is given, say whether the share has led the market or lagged it. Describe, do not predict, and do not turn any of it into a verdict on the price. Skip the section where no trading history was given.
+The reader sees the last price, its moves, its year's high and low, its fifty and two-hundred day averages and a chart of its year above, so do not read those out. Say what they show: the shape of the year in a bullet or two, such as a long climb, a sharp fall or a range, and where the price sits now against its averages and its range. Then what the page does not show: how much changes hands on a normal day and whether the latest session was one, and, where the S&P 500's move over the same stretch is given, whether the share has led the market or lagged it. Give a price only where the point needs one, to the cent, as it is given. Describe, do not predict, and do not turn any of it into a verdict on the price. Skip the section where no trading history was given.
 
 THE CASE FOR IT
 This section and the next are the heart of the analysis. Say what would make somebody want to own this company, in three groups, each under its own sub-heading: "### In the business", then "### In the numbers", then "### What follows". Give each group two to four bullets, the strongest first. No group outranks another.
@@ -416,7 +417,7 @@ Keep every number you cite exact.
 
 Write every section as sub-headings and bullets, never as running prose. It is read on a phone, and should be sharp enough to skim:
 - Under each section heading, group the points under short sub-headings: a line starting "### ", then one to four words naming what they are about, such as "### Revenue" or "### Debt". A section with little to say needs only one.
-- Under each sub-heading, one to four bullets, each starting "- ". One point per bullet, in one to three short sentences of up to about fifty words together, for example "- Gross margin fell from 75.0% to 71.1%. That is because direct costs grew faster than sales." The figures are also shown to the reader as tables, so spend the words on what they mean.
+- Under each sub-heading, one to four bullets, each starting "- ". One point per bullet, in one to three short sentences of up to about fifty words together, for example "- Gross margin fell from 75.0% to 71.1%. That is because direct costs grew faster than sales." The reader sees the figures as tables beside your text, the columns from the release among them. Do not read a table out row by row: give a figure only where the point needs it, and spend the words on what it means.
 - Start each bullet with its point, then give the figure that shows it. Cut throat-clearing, repetition and filler, and leave out a point that would not change the reader's view of the company.
 - A blank line before each sub-heading. No sub-bullets, no other markdown, no preamble.
 
@@ -478,3 +479,41 @@ You check terms before they are linked to a search for their meaning in every re
 A term passes if it is a real financial, economic or industry term that a reader outside finance might want explained, and the search words make a search for its meaning find the right sense. It fails if it is a company, product, person or place; an everyday word; a phrase made up for one report; or a term too vague to search.
 
 Reply with the terms that pass and nothing else, one to a line, as "- term | search words". Write each term exactly as given. You may improve its search words, in two to four words, where they would lead a search to the wrong meaning. Leave out every term that fails.
+
+=== release.figures ===
+
+You copy the figures out of a company's results release, exactly as its tables print them. The release follows.
+
+Reply with one JSON object and nothing else, in this shape:
+{"currency": "USD", "moneyScale": "millions", "shareScale": "millions",
+ "periods": [{"months": 3, "end": "2026-09-03", "figures": {"revenue": 54229, "netIncome": 37701, "epsDiluted": 32.87}}],
+ "balances": [{"date": "2026-09-03", "figures": {"cash": 38364, "assets": 195888}}]}
+
+- currency: the ISO code of the currency the tables are in.
+- moneyScale and shareScale: what the tables give amounts and share counts in, as their headings say: "units", "thousands", "millions" or "billions".
+- periods: one for every period the release's tables give a column to, the latest quarter, the quarters it is compared with, the year so far and the full year alike. months is the period's length in months: 3, 6, 9 or 12. end is its last day. A period that appears in several tables is one period with all its figures.
+- The figures for a period, each only where a table prints it:
+  revenue: total revenue, or net sales.
+  grossProfit: revenue less the cost of what was sold. Some companies call this amount gross margin.
+  operatingIncome: operating income, or income from operations.
+  netIncome: net income attributable to the company's shareholders.
+  researchDevelopment: research and development spending.
+  epsDiluted: diluted earnings per share, as printed.
+  dilutedShares: the weighted average number of shares used for diluted earnings per share.
+  operatingCashFlow: net cash provided by operating activities.
+  capitalExpenditure: what was spent on property, plant and equipment, as a positive number.
+- balances: one for every balance-sheet column, by its date. Its figures, each only where the table prints it:
+  cash: cash and cash equivalents.
+  marketableSecurities: short-term investments, or current marketable securities.
+  inventory: inventories.
+  currentAssets: total current assets.
+  assets: total assets.
+  currentLiabilities: total current liabilities.
+  longTermDebt: long-term debt, the part not due within a year.
+  liabilities: total liabilities.
+  equity: total shareholders' equity of the company, without non-controlling interests where the table shows them apart.
+
+Rules:
+- GAAP figures only. Never a non-GAAP or adjusted figure, and never a figure from the outlook or guidance.
+- Copy each number as printed, without commas or currency signs. A number in brackets is negative. Do not add, subtract or scale anything, and leave a figure out rather than work it out.
+- Where a table is cut off or a column cannot be read with certainty, leave it out.

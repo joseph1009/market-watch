@@ -105,6 +105,50 @@ func TestTheAnalysisPageTabulatesTheAccounts(t *testing.T) {
 	}
 }
 
+// The page reads the business first, then the tables, then what the figures
+// say, as the owner asked on 4 October 2026.
+func TestTheAnalysisPageGivesTheBusinessBeforeTheNumbers(t *testing.T) {
+	acc := Accounts{Currency: "USD", Years: []Period{
+		{Label: "FY to 31 Dec 2025", Figures: map[string]float64{"revenue": 3.37e9}},
+		{Label: "FY to 31 Dec 2024", Figures: map[string]float64{"revenue": 2.8e9}},
+	}}
+	prose := "THE BUSINESS\n\n### What it sells\n- Rides.\n\nWHERE IT IS HEADING\n\n### Plans\n- Banking.\n\nKEY NUMBERS\n\n### Sales\n- Revenue grew."
+	page := render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, prose, acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	business, plans, table, numbers := strings.Index(page, "<h2>THE BUSINESS</h2>"), strings.Index(page, "Banking."),
+		strings.Index(page, "FY Dec 2025"), strings.Index(page, "<h2>KEY NUMBERS</h2>")
+	if business < 0 || plans < 0 || table < 0 || numbers < 0 {
+		t.Fatalf("a part is missing:\n%s", page)
+	}
+	if !(business < plans && plans < table && table < numbers) {
+		t.Errorf("the order is business %d, plans %d, table %d, numbers %d", business, plans, table, numbers)
+	}
+
+	// With nothing to split at, the analysis follows the tables whole.
+	page = render(AnalysisDoc("GRAB", "Grab Holdings", AnalysisVerdict{}, "THE BUSINESS\n\n- Rides.", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	if strings.Index(page, "<h2>THE BUSINESS</h2>") < strings.Index(page, "FY Dec 2025") {
+		t.Error("an analysis with no figures heading came before the tables")
+	}
+}
+
+// The periods read from a results release are marked, and the page says where
+// they came from.
+func TestTheReleaseColumnsAreMarked(t *testing.T) {
+	acc := Accounts{Currency: "USD", Release: "filed 30 September 2026", Quarters: []Period{
+		{Label: "3 months to 3 Sep 2026", Figures: map[string]float64{"revenue": 54.2e9}, Release: true},
+		{Label: "3 months to 28 May 2026", Figures: map[string]float64{"revenue": 41.5e9}},
+	}}
+	page := render(AnalysisDoc("MU", "Micron", AnalysisVerdict{}, "", acc, nil, nil, IdeasOptions{}, nil, time.Now(), time.UTC))
+	for _, want := range []string{
+		`<th class="num">Mar–May 2026</th><th class="num">Jun–Aug 2026*</th>`,
+		"where marked *, from its results release, filed 30 September 2026",
+		"Micron, from its filings and its results release, filed 30 September 2026",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+}
+
 // An analysis's citations link to its footnotes, on the page and in the
 // chat, as the brief's do.
 func TestTheAnalysisCitationsLinkToTheirSources(t *testing.T) {

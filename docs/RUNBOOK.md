@@ -39,6 +39,7 @@ analysis makes one, and so does `/industry`.
 | `analysis` | Writes up one company for `/analyse`. It searches for the last fortnight's news and the company's plans itself, **with web search** | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with headings in capitals |
 | `industry` | Explains an industry for `/industry`: how it fits together, where it is heading, and companies to look into, **with web search** | `industry.system` | Opus | `MODEL_INDUSTRY` | `### ` sub-headings over bullets, then `COMPANIES BY PART` and `part\|name\|ticker\|exchange\|why` |
 | `terms` | Checks a term the brief or an analysis listed twice before it is linked in every report: a real term, with search words that find the right meaning | `terms.check` | Opus | `MODEL_TERMS` | Lines of `- term \| search words`, only those that pass |
+| `release` | Copies the GAAP figures out of a results release for `/analyse`, when the filings don't reach its quarter yet. The code checks them against the filings before using them | `release.figures` | Opus | `MODEL_RELEASE` | One JSON object: currency, scales, periods and balance sheets |
 
 The sorting sends the day's articles in batches of 60, two at a time
 (`RELAY_CONCURRENCY`). When a person is answering, the batches hold 150 each,

@@ -194,11 +194,13 @@ func (s Snapshot) quarterTable() string {
 	if s.TTM != nil {
 		b.WriteString(", then the last four added together")
 	}
-	b.WriteString(". A fourth quarter is the full year less its first nine months, and its earnings a share are its profit over its own average diluted shares, worked out the same way. These are the freshest filed figures: lead with them when the last full year is months old.\n")
+	b.WriteString(". A fourth quarter is the full year less its first nine months, and its earnings a share are its profit over its own average diluted shares, worked out the same way. These are the freshest figures: lead with them when the last full year is months old.")
+	b.WriteString(s.releaseNote())
+	b.WriteString("\n")
 
 	b.WriteString(pad("", 32))
 	for _, q := range columns {
-		b.WriteString(padLeft(q.Label, cellWidth))
+		b.WriteString(padLeft(q.heading(), cellWidth))
 	}
 	b.WriteString("\n")
 	for _, row := range incomeRows {
@@ -258,6 +260,10 @@ func (s Snapshot) quarterTable() string {
 		}
 		return Year{}, false
 	})
-	fmt.Fprintf(&b, "Quarters read from the filings up to %s.\n", s.Quarters[0].End.Format("2 January 2006"))
+	if s.Quarters[0].FromRelease {
+		fmt.Fprintf(&b, "Quarters read from the filings, and from the results release for the quarter to %s.\n", s.Quarters[0].End.Format("2 January 2006"))
+	} else {
+		fmt.Fprintf(&b, "Quarters read from the filings up to %s.\n", s.Quarters[0].End.Format("2 January 2006"))
+	}
 	return b.String()
 }

@@ -77,6 +77,9 @@ type Options struct {
 type segment struct {
 	blocks []string
 
+	// heading is the section heading the segment opens with, as written.
+	heading string
+
 	// newMessage starts the segment on a fresh message even when there is room
 	// left in the current one.
 	newMessage bool
@@ -616,7 +619,7 @@ func plainSegments(body string) []segment {
 			}
 			// Ruled off like the brief's sections, so each stands apart from
 			// the bold sub-headings inside the one before.
-			current = &segment{blocks: []string{divider + "\n<b>" + heading + "</b>"}}
+			current = &segment{blocks: []string{divider + "\n<b>" + heading + "</b>"}, heading: heading}
 			if rest = strings.TrimSpace(rest); rest != "" {
 				current.blocks = append(current.blocks, rest)
 			}

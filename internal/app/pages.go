@@ -199,7 +199,7 @@ func humanize(v float64) string {
 // period's reported figures, and the share's price.
 func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 	period := func(y fundamentals.Year) telegram.Period {
-		p := telegram.Period{Label: y.Label, Figures: map[string]float64{}}
+		p := telegram.Period{Label: y.Label, Figures: map[string]float64{}, Release: y.FromRelease}
 		for k, v := range y.Figures {
 			if v.Known {
 				p.Figures[k] = v.Amount
@@ -208,6 +208,9 @@ func pageAccounts(s fundamentals.Snapshot) telegram.Accounts {
 		return p
 	}
 	acc := telegram.Accounts{Currency: s.Currency, AsOf: s.Balance.AsOf, Price: s.Price, Trading: s.Trading}
+	if s.ReleaseAdded {
+		acc.Release = s.ReleaseFrom
+	}
 	for _, y := range s.Years {
 		acc.Years = append(acc.Years, period(y))
 	}

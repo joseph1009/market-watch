@@ -136,6 +136,10 @@ type App struct {
 	Accounts *fundamentals.Client
 	Analyzer *fundamentals.Analyzer
 
+	// ReleaseReader copies the figures out of a results release, for the
+	// periods the filings do not reach yet. Nil leaves the tables as filed.
+	ReleaseReader *fundamentals.ReleaseReader
+
 	// Industry explains how an industry fits together, for /industry.
 	Industry *industry.Explainer
 
@@ -264,6 +268,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 	a.Terms = glossary
 	a.Learned = &terms.Store{Path: filepath.Join(cfg.DataDir, terms.File)}
 	a.TermCheck = &terms.Checker{Completer: rel.Plain(relay.Terms)}
+	a.ReleaseReader = &fundamentals.ReleaseReader{Completer: rel.Plain(relay.Release)}
 	if cfg.PagesURL != "" {
 		a.pageStore = &pages.Store{Dir: filepath.Join(cfg.DataDir, "pages"), BaseURL: cfg.PagesURL}
 		a.Pages = a.pageStore

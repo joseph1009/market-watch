@@ -601,37 +601,15 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	defer cancel()
 
 	snapshot, err := a.Accounts.Fetch(ctx, ticker, accountYears)
-	if err == nil {
-		// The price is what turns filed figures into multiples. It is fetched
-		// after the filings so a quote outage costs the valuation block and
-		// never the analysis.
-		snapshot.Price = a.quoteFor(ctx, ticker)
-
-		// What the company does, how the share has traded, and what has been
-		// written about it. All best-effort: the accounts are the part that
-		// cannot be had anywhere else, and a failed fetch here must not cost
-		// them.
-		for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snapshot, a.now()) {
-			a.Log.Warn("analysis context", "ticker", ticker, "error", problem)
-		}
-		snapshot.Trading = a.tradingFor(ctx, ticker)
-		if err := a.addNews(ctx, &snapshot); err != nil {
-			a.Log.Warn("analysis news", "ticker", ticker, "error", err)
-		}
-		a.addExpectations(ctx, &snapshot)
-		a.addRelease(ctx, &snapshot, analysisReleaseRunes)
-		a.addPeers(ctx, &snapshot)
-		snapshot.Backdrop = a.backdrop(ctx)
-		cached.Save("snapshot", snapshot)
-	}
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)
 		cached.Fail(err)
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker))
 	}
 
-	// The analysis is a run of its own, so its request and reply sit together
-	// in one directory rather than among a brief's.
+	// The analysis is a run of its own, so its requests and replies -- the
+	// release's figures, then the analysis -- sit together in one directory
+	// rather than among a brief's.
 	if a.Relay != nil {
 		var run *relay.Run
 		if ctx, run, err = a.Relay.Begin(ctx, "analysis-"+ticker); err != nil {
@@ -639,6 +617,30 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 		}
 		a.Log.Info("relay run", "dir", run.Dir)
 	}
+
+	// The price is what turns filed figures into multiples. It is fetched
+	// after the filings so a quote outage costs the valuation block and
+	// never the analysis.
+	snapshot.Price = a.quoteFor(ctx, ticker)
+
+	// What the company does, how the share has traded, and what has been
+	// written about it. All best-effort: the accounts are the part that
+	// cannot be had anywhere else, and a failed fetch here must not cost
+	// them.
+	for _, problem := range fundamentals.AddBusiness(ctx, a.Filings, &snapshot, a.now()) {
+		a.Log.Warn("analysis context", "ticker", ticker, "error", problem)
+	}
+	snapshot.Trading = a.tradingFor(ctx, ticker)
+	if err := a.addNews(ctx, &snapshot); err != nil {
+		a.Log.Warn("analysis news", "ticker", ticker, "error", err)
+	}
+	a.addExpectations(ctx, &snapshot)
+	release, filed := a.addRelease(ctx, &snapshot, analysisReleaseRunes)
+	a.addReleaseFigures(ctx, &snapshot, release, filed)
+	a.addPeers(ctx, &snapshot)
+	snapshot.Backdrop = a.backdrop(ctx)
+	cached.Save("snapshot", snapshot)
+
 	analysis, err := a.Analyzer.Analyze(ctx, snapshot)
 	if err != nil {
 		return err
@@ -792,6 +794,10 @@ func analysisMessages(snapshot fundamentals.Snapshot, w analysisParts, opts tele
 		messages = append(messages, block)
 	}
 	messages = append(messages, telegram.RenderSourceList(sourceLinks(w.sources))...)
+	if snapshot.ReleaseAdded {
+		return append(messages, fmt.Sprintf("<i>%s, from its filings and its results release, %s</i>",
+			escape(snapshot.Company), escape(snapshot.ReleaseFrom)))
+	}
 	return append(messages, fmt.Sprintf(
 		"<i>%s, from filings up to %s</i>",
 		escape(snapshot.Company),

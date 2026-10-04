@@ -126,6 +126,7 @@ var required = map[string][]string{
 	"analysis.tools":   {"find_concepts", "read_concept", "compute", "{{.Lookups}}"},
 	"industry.system":  {"### ", "COMPANIES BY PART", "part|name|ticker|exchange|why"},
 	"terms.check":      {"term | search words"},
+	"release.figures":  {`"moneyScale"`, `"periods"`, `"months"`, `"balances"`, "epsDiluted"},
 }
 
 // CheckPrompts reports what a prompts file is missing, naming every fault rather than

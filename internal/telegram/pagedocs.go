@@ -553,6 +553,7 @@ func thousandsFloat(v float64, decimals int) string {
 type Period struct {
 	Label   string
 	Figures map[string]float64
+	Release bool // from the results release, not yet filed
 }
 
 // Accounts is what an analysis's page shows of the company's figures.
@@ -565,6 +566,10 @@ type Accounts struct {
 	Price    *model.Quote
 	Trading  *model.Trading
 	Peers    *Peers
+
+	// Release is which results release the periods marked Release are
+	// from, "filed 30 September 2026", where any are.
+	Release string
 }
 
 // Peers is the company beside its industry group, written out already.
@@ -586,6 +591,13 @@ type PeerRow struct {
 func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Accounts, related []Related, sources []pages.Link, opts IdeasOptions, terms []model.Term, now time.Time, where *time.Location) pages.Doc {
 	doc := pages.Doc{Kicker: "Analysis · " + ticker, Title: company,
 		Dek: []string{escape(now.In(where).Format("Monday 2 January 2006"))}}
+	cited := sourceArticles(sources)
+	// Linked whole, so a term is linked once on the page, then split.
+	blocks, split := businessFirst(plainSegments(prose))
+	blocks = linkTerms(cite(blocks, cited), terms)
+	if split > 0 {
+		doc.Parts = append(doc.Parts, pages.Prose(blocks[:split]))
+	}
 	if price := priceParts(acc.Price, acc.Trading); len(price) > 0 {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "price", Title: "The share price", Parts: price})
 	}
@@ -600,13 +612,8 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		t.Note = p.About
 		doc.Parts = append(doc.Parts, pages.Section{ID: "peers", Title: "Beside its industry", Parts: []pages.Part{t}})
 	}
-	cited := sourceArticles(sources)
-	if prose != "" {
-		var blocks []string
-		for _, seg := range plainSegments(prose) {
-			blocks = append(blocks, seg.blocks...)
-		}
-		doc.Parts = append(doc.Parts, pages.Prose(linkTerms(cite(blocks, cited), terms)))
+	if len(blocks) > split {
+		doc.Parts = append(doc.Parts, pages.Prose(blocks[split:]))
 	}
 	if v.Verdict != "" {
 		doc.Note = analysisNote(opts)
@@ -634,10 +641,37 @@ func AnalysisDoc(ticker, company string, v AnalysisVerdict, prose string, acc Ac
 		}
 		doc.Parts = append(doc.Parts, pages.Sources{Title: "Sources", Links: numbered})
 	}
-	if !acc.AsOf.IsZero() {
+	switch {
+	case acc.Release != "":
+		doc.Footer = []string{"<i>" + escape(company) + ", from its filings and its results release, " + escape(acc.Release) + "</i>"}
+	case !acc.AsOf.IsZero():
 		doc.Footer = []string{"<i>" + escape(company) + ", from filings up to " + acc.AsOf.Format("2 Jan 2006") + "</i>"}
 	}
 	return doc
+}
+
+// numbersBegin are the headings the analysis's figures may open with, the
+// first of them where the model left out the one before.
+var numbersBegin = map[string]bool{"KEY NUMBERS": true, "WHAT IT HAS ANNOUNCED": true, "WHAT THE COMPANY EARNS": true}
+
+// businessFirst splits an analysis where its figures begin, so the page reads
+// the business first, then the tables, then what the figures say. The owner
+// asked for the business before the numbers on 4 October 2026. It returns
+// the analysis's blocks, and how many of them come before the tables. An
+// analysis with no heading to split at goes after the tables whole, as it
+// did before.
+func businessFirst(segs []segment) (blocks []string, split int) {
+	found := false
+	for _, seg := range segs {
+		if numbersBegin[seg.heading] && !found {
+			found, split = true, len(blocks)
+		}
+		blocks = append(blocks, seg.blocks...)
+	}
+	if !found {
+		split = 0
+	}
+	return blocks, split
 }
 
 // lines of the accounts table, in the order a reader reads a company: what
@@ -694,7 +728,7 @@ func accountsParts(acc Accounts) []pages.Part {
 		periods := append([]Period(nil), acc.Quarters...)
 		reverse(periods)
 		if acc.TTM != nil {
-			periods = append(periods, Period{Label: "Last 12 months", Figures: acc.TTM.Figures})
+			periods = append(periods, Period{Label: "Last 12 months", Figures: acc.TTM.Figures, Release: acc.TTM.Release})
 		}
 		parts = append(parts, accountsTable("Quarter by quarter", periods, acc.Currency))
 	}
@@ -707,10 +741,10 @@ func accountsParts(acc Accounts) []pages.Part {
 		margin := pages.Columns{Title: "Operating margin, year by year"}
 		for _, y := range years {
 			if v, ok := y.Figures["revenue"]; ok {
-				revenue.Items = append(revenue.Items, pages.Bar{Label: shortPeriod(y.Label), Value: v, Text: money(v, acc.Currency)})
+				revenue.Items = append(revenue.Items, pages.Bar{Label: columnHead(y), Value: v, Text: money(v, acc.Currency)})
 			}
 			if v, ok := ratio("operatingIncome", "revenue")(y.Figures); ok {
-				margin.Items = append(margin.Items, pages.Bar{Label: shortPeriod(y.Label), Value: v, Text: fmt.Sprintf("%.1f%%", v)})
+				margin.Items = append(margin.Items, pages.Bar{Label: columnHead(y), Value: v, Text: fmt.Sprintf("%.1f%%", v)})
 			}
 		}
 		if len(revenue.Items) > 1 {
@@ -725,7 +759,7 @@ func accountsParts(acc Accounts) []pages.Part {
 			in, ok1 := y.Figures["operatingCashFlow"]
 			out, ok2 := y.Figures["capitalExpenditure"]
 			if ok1 && ok2 {
-				cash.Items = append(cash.Items, pages.Pair{Label: shortPeriod(y.Label), A: in, B: out, Text: money(in-out, acc.Currency)})
+				cash.Items = append(cash.Items, pages.Pair{Label: columnHead(y), A: in, B: out, Text: money(in-out, acc.Currency)})
 			}
 		}
 		if len(cash.Items) > 1 {
@@ -734,15 +768,29 @@ func accountsParts(acc Accounts) []pages.Part {
 		}
 	}
 	if len(parts) > 0 {
-		parts = append(parts, pages.Small("<i>From the company's filings with the SEC. Margins are the share of revenue left at each line; free cash flow is cash from operations less what was spent on investment.</i>"))
+		from := "From the company's filings with the SEC."
+		if acc.Release != "" {
+			from = "From the company's filings with the SEC, and where marked *, from its results release, " + escape(acc.Release) +
+				", which comes before the filing. The release's figures for periods already filed match the filings."
+		}
+		parts = append(parts, pages.Small("<i>"+from+" Margins are the share of revenue left at each line; free cash flow is cash from operations less what was spent on investment.</i>"))
 	}
 	return parts
+}
+
+// columnHead is a period's column head, marked where it is from the results
+// release.
+func columnHead(p Period) string {
+	if p.Release {
+		return shortPeriod(p.Label) + "*"
+	}
+	return shortPeriod(p.Label)
 }
 
 func accountsTable(caption string, periods []Period, currency string) pages.Table {
 	t := pages.Table{Caption: caption, Head: []string{""}, Align: "l", Labels: true}
 	for _, p := range periods {
-		t.Head = append(t.Head, shortPeriod(p.Label))
+		t.Head = append(t.Head, columnHead(p))
 		t.Align += "r"
 	}
 	for _, line := range accountLines {

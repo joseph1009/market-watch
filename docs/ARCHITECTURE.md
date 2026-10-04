@@ -90,20 +90,20 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L815) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L820) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
-[`Publish`](../internal/app/app.go#L404) → [`brief(ctx, share: true)`](../internal/app/app.go#L420).
+[`Publish`](../internal/app/app.go#L409) → [`brief(ctx, share: true)`](../internal/app/app.go#L425).
 
 `brief` does three things before any work starts:
 
 - It takes `a.running`, a lock. So a `/now` that arrives during a brief waits,
   instead of starting a second run.
-- It calls [`Relay.Begin`](../internal/relay/relay.go#L97). That creates a
+- It calls [`Relay.Begin`](../internal/relay/relay.go#L98). That creates a
   folder for this run and puts it on the context. Every model call the run
   makes lands in that folder, numbered in order.
-- It calls [`sendReport`](../internal/app/app.go#L507), which is the pipeline.
+- It calls [`sendReport`](../internal/app/app.go#L512), which is the pipeline.
 
 ### 2. Gathering
 
@@ -315,7 +315,7 @@ chart source.
 Since 1 October 2026 the brief has been written in plainer English, with about
 twice the room. Each sub-heading and sector heading has an emoji
 ([config/sectors.yaml](../config/sectors.yaml)). The key figure in a bullet is
-marked `**so**`, and [`highlight`](../internal/telegram/render.go#L416) shows
+marked `**so**`, and [`highlight`](../internal/telegram/render.go#L419) shows
 it in bold. [`linkTerms`](../internal/telegram/terms.go#L19) links the first
 mention in a section of each term in
 [config/glossary.yaml](../config/glossary.yaml) to a page that explains it. It
@@ -323,22 +323,22 @@ leaves tags, links and bold text alone.
 [`renderCalendar`](../internal/telegram/calendar.go#L25) lays out the look
 ahead.
 
-[`telegram.RenderWith`](../internal/telegram/render.go#L92) turns the report
+[`telegram.RenderWith`](../internal/telegram/render.go#L95) turns the report
 into Telegram's HTML. It lays out the overview, each section under its line of
 biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L787)), the quiet
+([`renderCandidates`](../internal/telegram/render.go#L790)), the quiet
 watchlists, the source links, and a footer of token counts. Citations become
-links through [`linkCitations`](../internal/telegram/render.go#L744).
+links through [`linkCitations`](../internal/telegram/render.go#L747).
 
 The brief is written as sub-headings, each a `### ` line, over one-sentence
-bullets. [`paragraphs`](../internal/telegram/render.go#L278) keeps each
-sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L373)
+bullets. [`paragraphs`](../internal/telegram/render.go#L281) keeps each
+sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L376)
 makes the sub-heading bold and turns each `- ` into a bullet, with a blank line
 between bullets. The section headings are in capitals so they stand above the
 sub-headings. A block written the older way, as a label and a dash, still gets
-its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L317)).
+its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L320)).
 
-[`pack`](../internal/telegram/render.go#L437) then spreads the pieces across
+[`pack`](../internal/telegram/render.go#L440) then spreads the pieces across
 messages, within Telegram's limit of 4,096 characters. It breaks between
 sections rather than in the middle of a thought. It never leaves a heading
 alone at the end of a message.
@@ -400,7 +400,7 @@ may use.
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L420) starts the closer look as soon as the
+[`brief`](../internal/app/app.go#L425) starts the closer look as soon as the
 owner has the brief. When it is done, it posts both to the channel. Until
 2026-10-01 the closer look waited twenty minutes after the brief, queued on the
 data volume. In those days the channel got the brief at once and the closer
@@ -516,7 +516,7 @@ only Claude Code uses (below). It then calls
   address, and so are the Finnhub and FRED keys in theirs. The scrubber removes
   every credential the settings hold (`config.Secrets`). Error text sent to the
   chat is scrubbed of the same list.
-- [`app.New`](../internal/app/app.go#L186) builds the service. It loads the
+- [`app.New`](../internal/app/app.go#L190) builds the service. It loads the
   lists from `config/`, and the changes made to them from Telegram from the
   data volume.
 - It installs a SIGTERM handler, so a brief that is being sent finishes its
@@ -557,7 +557,7 @@ sender is allowed and then routes on the command:
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L589) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L839) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L845) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L330) | Follow a company or stop following it; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L413) | Turn a feed on or off |
@@ -599,17 +599,17 @@ the question again. `/analyse NVDA` still works in one line.
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
-1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L226)
+1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L248)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
    [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L135) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
    currency the filer reports in. It prefers later filings over earlier ones
-   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L443)).
+   that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L482)).
    It builds the current year so far beside the full years
-   ([`buildYTD`](../internal/fundamentals/metrics.go#L551)), using only
+   ([`buildYTD`](../internal/fundamentals/metrics.go#L590)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L849) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L855) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -621,21 +621,38 @@ following.
      the analysis can say whether the share led the market or lagged it.
    - [`addNews`](../internal/app/prices.go#L232) adds what has been written in
      the last month. That is the news feed's company headlines and two Tavily
-     searches ([`searchCompany`](../internal/app/research.go#L164)), which cost
+     searches ([`searchCompany`](../internal/app/research.go#L214)), which cost
      two credits. [`Relevant`](../internal/fundamentals/news.go#L92) keeps only
      the pieces that actually name the company. Of the twelve places, the
      searches get first call on eight and the feed gets four
      ([`SetNews`](../internal/fundamentals/news.go#L74)). Sorted by date, the
      feed's daily share-price items used to take all twelve.
 4. Three more optional reads.
-   [`addExpectations`](../internal/app/research.go#L101) adds what analysts
+   [`addExpectations`](../internal/app/research.go#L115) adds what analysts
    expect, and what insiders, short sellers and funds have done
    ([`consensus.Client.Fetch`](../internal/consensus/consensus.go#L132)).
-   [`addRelease`](../internal/app/research.go#L128) adds the company's latest
+   [`addRelease`](../internal/app/research.go#L143) adds the company's latest
    results release ([`sec.Client.EarningsRelease`](../internal/sec/release.go#L40)).
-   [`backdrop`](../internal/app/research.go#L143) adds commodities, the dollar
+   [`addReleaseFigures`](../internal/app/research.go#L162) adds the release's
+   own figures, when the filings don't reach its quarter yet. A release comes
+   weeks before the 10-Q or 10-K with the same figures. Until 2026-10-04 the
+   tables, the twelve months, the multiples and the balance sheet all stopped
+   at the last filing in those weeks. A quick model call (stage `release`)
+   copies the GAAP figures out of the release's tables
+   ([`ReleaseReader`](../internal/fundamentals/release.go#L77)).
+   [`Snapshot.AddRelease`](../internal/fundamentals/release.go#L112) then
+   checks the release's columns for periods already filed against the
+   filings. Revenue and net income must match in at least one, and no
+   revenue, profit or earnings a share may differ. Only then does it add the
+   new periods, marked `FromRelease`, and build the years, quarters and
+   twelve months again. The balance sheet has its own test
+   ([`releaseBalance`](../internal/fundamentals/release.go#L240)): its assets,
+   equity and cash must match. A line that doesn't match keeps its filed
+   figure, shown with its own date. The model's tables and the page mark the
+   release's columns with a *.
+   [`backdrop`](../internal/app/research.go#L193) adds commodities, the dollar
    and the cost of money, from FRED.
-   [`addPeers`](../internal/app/research.go#L50) sets the company beside the
+   [`addPeers`](../internal/app/research.go#L64) sets the company beside the
    others in its industry group of Nasdaq's list, worth US$500m or more
    ([`Client.Peers`](../internal/fundamentals/peers.go#L90)). The SEC's frames
    API gives one figure for every filer for one calendar year in a single
@@ -726,28 +743,28 @@ channel's copy.
 ### Every model call
 
 There is one path, and this is it.
-[`Relay.Begin`](../internal/relay/relay.go#L97) opens a run folder and puts it
-on the context. Then [`Run.Ask`](../internal/relay/relay.go#L228):
+[`Relay.Begin`](../internal/relay/relay.go#L98) opens a run folder and puts it
+on the context. Then [`Run.Ask`](../internal/relay/relay.go#L229):
 
 1. writes `NN-stage-request.txt`, which holds the system prompt and the prompt;
 2. notes it in the run's ledger, a checklist in markdown;
 3. hands it to an `Answerer`;
 4. writes `NN-stage-reply.txt` beside it, and ticks the ledger line.
 
-The answerer is normally [`Claude`](../internal/relay/answer.go#L84). It runs
+The answerer is normally [`Claude`](../internal/relay/answer.go#L85). It runs
 `claude -p` as a fresh process for each call, with `--no-session-persistence`.
 The system prompt goes in a temporary file, because Windows limits a command
 line to 32K characters. The working folder is the run's own, so the call sees
 no `CLAUDE.md` and no project settings. `ANTHROPIC_API_KEY` is removed from the
-child process's environment ([`childEnv`](../internal/relay/answer.go#L394)),
+child process's environment ([`childEnv`](../internal/relay/answer.go#L395)),
 so the subscription is used rather than API credit.
 
 Its output is Claude Code's stream (`--output-format stream-json`), which
-[`parseStream`](../internal/relay/answer.go#L237) reads. It gets the result,
+[`parseStream`](../internal/relay/answer.go#L238) reads. It gets the result,
 and the plan's standing (`rate_limit_event`: how much of each window is used,
 and when it resets). `OnLimits` passes that to `/usage`. When the last reading
 is more than five minutes old, `/usage` takes a new one with
-[`CheckLimits`](../internal/relay/answer.go#L303), a one-word call to Haiku.
+[`CheckLimits`](../internal/relay/answer.go#L304), a one-word call to Haiku.
 
 Tools are off for every stage except six: `scout`, `research`, `review`,
 `verdicts`, `analysis` and `industry`. Those get web search and web fetch and
@@ -775,7 +792,7 @@ Each call is written to a `-tools.txt` file beside the request and reply,
 copied into the run cache, and counted in the ledger. A stage without tools
 never gets the server, whatever its context carries.
 
-The other answerer, [`Session`](../internal/relay/answer.go#L428), waits for a
+The other answerer, [`Session`](../internal/relay/answer.go#L429), waits for a
 person to write the reply file. That is how you watch a run or answer it by
 hand.
 

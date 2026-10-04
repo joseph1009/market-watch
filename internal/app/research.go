@@ -14,6 +14,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/prices"
 	"github.com/joseph1009/market-watch/internal/search"
+	"github.com/joseph1009/market-watch/internal/sec"
 )
 
 // What the analysis and the closer look read beside the accounts: what
@@ -31,6 +32,19 @@ const (
 	// closer look's verdicts read: the headline figures, the quarter's table
 	// and, at most companies, the outlook.
 	analysisReleaseRunes = 7000
+
+	// releaseReadRunes is how much of the release is read for its figures:
+	// all of it, at most companies. Micron's ran to 19,000 characters on 30
+	// September 2026, its statements last.
+	releaseReadRunes = 60000
+
+	// releaseFiledLag is how long after a period's end its filing is still
+	// to come: a release whose filings already reach within this of it has
+	// nothing to add to them.
+	releaseFiledLag = 85 * 24 * time.Hour
+
+	// releaseBudget bounds copying the figures out of a release.
+	releaseBudget = 3 * time.Minute
 
 	// companySearchWindow is how far back /analyse searches for news: a
 	// month, which covers a results season and what came after it.
@@ -124,18 +138,54 @@ func (a *App) addExpectations(ctx context.Context, snap *fundamentals.Snapshot) 
 	return &r
 }
 
-// addRelease attaches the company's latest results release.
-func (a *App) addRelease(ctx context.Context, snap *fundamentals.Snapshot, runes int) {
+// addRelease attaches the company's latest results release, cut to runes,
+// and returns all of it, with the day it was filed.
+func (a *App) addRelease(ctx context.Context, snap *fundamentals.Snapshot, runes int) (string, time.Time) {
 	if a.Filings == nil {
-		return
+		return "", time.Time{}
 	}
-	filing, text, err := a.Filings.EarningsRelease(ctx, snap.Ticker, a.now().Add(-releaseSince), runes)
+	filing, text, err := a.Filings.EarningsRelease(ctx, snap.Ticker, a.now().Add(-releaseSince), max(runes, releaseReadRunes))
 	if err != nil {
 		a.Log.Info("no results release", "ticker", snap.Ticker, "error", err)
+		return "", time.Time{}
+	}
+	snap.Release = sec.ClipRunes(text, runes)
+	snap.ReleaseFrom = "filed " + filing.Filed.Format("2 January 2006")
+	return text, filing.Filed
+}
+
+// addReleaseFigures adds the release's own figures to the accounts for the
+// periods the filings do not reach yet: the quarter just announced, in the
+// weeks before its 10-Q or 10-K is filed. Best-effort, and checked against
+// the filings first (fundamentals.AddRelease). A release that cannot be read,
+// or does not match them, leaves the accounts as filed.
+func (a *App) addReleaseFigures(ctx context.Context, snap *fundamentals.Snapshot, release string, filed time.Time) {
+	if a.ReleaseReader == nil || release == "" {
 		return
 	}
-	snap.Release = text
-	snap.ReleaseFrom = "filed " + filing.Filed.Format("2 January 2006")
+	var latest time.Time
+	if len(snap.Quarters) > 0 {
+		latest = snap.Quarters[0].End
+	}
+	if len(snap.Years) > 0 && snap.Years[0].End.After(latest) {
+		latest = snap.Years[0].End
+	}
+	if filed.Sub(latest) < releaseFiledLag {
+		return // the release's period is filed already
+	}
+	ctx, cancel := context.WithTimeout(ctx, releaseBudget)
+	defer cancel()
+	figures, err := a.ReleaseReader.Read(ctx, release)
+	if err != nil {
+		a.Log.Warn("release figures", "ticker", snap.Ticker, "error", err)
+		return
+	}
+	skipped, err := snap.AddRelease(figures, filed)
+	if err != nil {
+		a.Log.Info("release figures not used", "ticker", snap.Ticker, "why", err)
+		return
+	}
+	a.Log.Info("release figures added", "ticker", snap.Ticker, "latest", snap.Quarters[0].Label, "balance sheet", skipped == "", "why not", skipped)
 }
 
 // backdrop reads the commodities, the dollar and the cost of money, once for

@@ -110,7 +110,7 @@ func (c *Client) EarningsRelease(ctx context.Context, ticker string, since time.
 		if err != nil {
 			return filing, "", err
 		}
-		return filing, clipRunes(plainText(text), maxRunes), nil
+		return filing, ClipRunes(plainText(text), maxRunes), nil
 	}
 	return Filing{}, "", fmt.Errorf("%s has filed no results since %s", strings.ToUpper(ticker), since.Format("2 Jan 2006"))
 }
@@ -181,9 +181,9 @@ func (c *Client) archiveURL() string {
 	return defaultArchiveURL
 }
 
-// clipRunes cuts text to n runes at the last line break before it, and says
+// ClipRunes cuts text to n runes at the last line break before it, and says
 // that it did.
-func clipRunes(text string, n int) string {
+func ClipRunes(text string, n int) string {
 	r := []rune(text)
 	if n <= 0 || len(r) <= n {
 		return text

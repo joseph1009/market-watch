@@ -122,6 +122,10 @@ type Year struct {
 	Label   string
 	End     time.Time
 	Figures map[string]Value
+
+	// FromRelease marks a period the filings do not reach yet, read from
+	// the company's results release (release.go).
+	FromRelease bool `json:",omitempty"`
 }
 
 // Balance is the most recent balance sheet.
@@ -134,6 +138,14 @@ type Balance struct {
 	// income statements stop at the last annual report, and comparing the two
 	// without saying so invents a consistency that is not there.
 	Form string
+
+	// FromRelease marks a balance sheet read from the results release.
+	FromRelease bool `json:",omitempty"`
+
+	// Older gives the date of each line taken from an earlier balance sheet
+	// than AsOf: one the latest does not give, or, from a release, one that
+	// does not match the filings.
+	Older map[string]time.Time `json:",omitempty"`
 }
 
 // Snapshot is everything read for one company.
@@ -219,6 +231,16 @@ type Snapshot struct {
 	// Missing names the lines this filer does not report, so the analysis can
 	// say so rather than treat an absence as a zero.
 	Missing []string
+
+	// ReleaseAdded says the release's own figures were added for the periods
+	// the filings do not reach yet (release.go).
+	ReleaseAdded bool `json:",omitempty"`
+
+	// obs is every figure read, by line, and years how many full years are
+	// shown: kept so the periods can be built again once a release's figures
+	// are added. Neither is saved.
+	obs   map[string][]Observation
+	years int
 }
 
 // Fetch reads a company's reported figures: the last few fiscal years of the
@@ -267,18 +289,25 @@ func (c *Client) Fetch(ctx context.Context, ticker string, years int) (Snapshot,
 	sort.Strings(snap.Missing)
 
 	snap.Currency = reportingCurrency(byKey)
-	snap.Years = buildYears(byKey, years, snap.Currency)
-	var lastYear time.Time
-	if len(snap.Years) > 0 {
-		lastYear = snap.Years[0].End
-	}
-	snap.YTD, snap.PriorYTD = buildYTD(byKey, snap.Currency, lastYear)
-	snap.Quarters, snap.TTM = buildQuarters(byKey, snap.Currency)
-	snap.Balance = buildBalance(byKey, snap.Currency)
+	snap.obs, snap.years = byKey, years
+	snap.build()
 	if len(snap.Years) == 0 && len(snap.Balance.Figures) == 0 {
 		return Snapshot{}, fmt.Errorf("%s files with the SEC but reports no figures this reads", snap.Ticker)
 	}
 	return snap, nil
+}
+
+// build lines the figures read up into years, the year so far, quarters and
+// the balance sheet.
+func (s *Snapshot) build() {
+	s.Years = buildYears(s.obs, s.years, s.Currency)
+	var lastYear time.Time
+	if len(s.Years) > 0 {
+		lastYear = s.Years[0].End
+	}
+	s.YTD, s.PriorYTD = buildYTD(s.obs, s.Currency, lastYear)
+	s.Quarters, s.TTM = buildQuarters(s.obs, s.Currency)
+	s.Balance = buildBalance(s.obs, s.Currency)
 }
 
 // buildYears lines the annual figures up by fiscal year end. Years are matched
@@ -315,6 +344,7 @@ func buildYears(byKey map[string][]Observation, want int, currency string) []Yea
 
 func buildBalance(byKey map[string][]Observation, currency string) Balance {
 	b := Balance{Figures: map[string]Value{}}
+	dates := map[string]time.Time{}
 	var cover Observation
 	for _, con := range balanceConcepts {
 		instants := Instant(keepCurrency(byKey[con.key], currency))
@@ -323,6 +353,7 @@ func buildBalance(byKey map[string][]Observation, currency string) Balance {
 		}
 		latest := instants[0]
 		b.Figures[con.key] = known(latest.Value)
+		dates[con.key] = latest.End
 
 		// The share count is from the filing's cover page, counted on a day
 		// weeks after the quarter closed. Left to date the balance sheet, it
@@ -338,6 +369,14 @@ func buildBalance(byKey map[string][]Observation, currency string) Balance {
 	}
 	if b.AsOf.IsZero() {
 		b.AsOf, b.Form = cover.End, cover.Form
+	}
+	for key, end := range dates {
+		if key != "sharesOutstanding" && daysBetween(b.AsOf, end) > 3 {
+			if b.Older == nil {
+				b.Older = map[string]time.Time{}
+			}
+			b.Older[key] = end
+		}
 	}
 	return b
 }

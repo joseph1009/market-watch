@@ -73,13 +73,14 @@ func (s Snapshot) Table() string {
 			if s.PriorYTD != nil {
 				b.WriteString(", and the second is the same stretch of the year before it")
 			}
-			b.WriteString(". The rest are full fiscal years, so do not add them together")
+			b.WriteString(". The rest are full fiscal years, so do not add them together.")
 		}
+		b.WriteString(s.releaseNote())
 		b.WriteString("\n")
 
 		b.WriteString(pad("", 32))
 		for _, y := range columns {
-			b.WriteString(padLeft(y.Label, cellWidth))
+			b.WriteString(padLeft(y.heading(), cellWidth))
 		}
 		b.WriteString("\n")
 
@@ -135,9 +136,17 @@ func (s Snapshot) Table() string {
 	b.WriteString(s.quarterTable())
 
 	if len(s.Balance.Figures) > 0 {
-		fmt.Fprintf(&b, "\nBalance sheet as at %s, from a %s filing:\n", s.Balance.AsOf.Format("2 January 2006"), s.Balance.Form)
+		if s.Balance.FromRelease {
+			fmt.Fprintf(&b, "\nBalance sheet as at %s, from the company's results release, %s, which comes before the filing. The release's balance sheets for dates already filed match the filings, but for any line dated otherwise:\n", s.Balance.AsOf.Format("2 January 2006"), s.ReleaseFrom)
+		} else {
+			fmt.Fprintf(&b, "\nBalance sheet as at %s, from a %s filing:\n", s.Balance.AsOf.Format("2 January 2006"), s.Balance.Form)
+		}
 		for _, row := range balanceRows {
-			fmt.Fprintf(&b, "%s%s\n", pad(row.label, 32), amount(s.Balance.Figure(row.key)))
+			fmt.Fprintf(&b, "%s%s", pad(row.label, 32), amount(s.Balance.Figure(row.key)))
+			if at, ok := s.Balance.Older[row.key]; ok && s.Balance.Figure(row.key).Known {
+				fmt.Fprintf(&b, "  (at %s, from an earlier balance sheet)", at.Format("2 January 2006"))
+			}
+			b.WriteString("\n")
 		}
 		fmt.Fprintf(&b, "%s%s\n", pad("Shares outstanding", 32), amount(s.Balance.Figure("sharesOutstanding")))
 
@@ -178,6 +187,23 @@ Per-share figures and share counts are as filed and are not restated for later s
 			strings.Join(s.Missing, ", "))
 	}
 	return b.String()
+}
+
+// releaseNote says which columns are from the results release, where any
+// are.
+func (s Snapshot) releaseNote() string {
+	if !s.ReleaseAdded {
+		return ""
+	}
+	return fmt.Sprintf(" A column marked * is from the company's results release, %s: the filing with those figures is not out yet. The release's columns for periods already filed match the filings, so these are the latest GAAP figures.", s.ReleaseFrom)
+}
+
+// heading is a period's column heading, marked where it is from the release.
+func (y Year) heading() string {
+	if y.FromRelease {
+		return y.Label + "*"
+	}
+	return y.Label
 }
 
 // Age says how stale the newest filing is, which decides how much of today's

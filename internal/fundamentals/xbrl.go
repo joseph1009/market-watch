@@ -198,7 +198,9 @@ func First(obs []Observation, want func(Observation) bool) (Observation, bool) {
 }
 
 // Annual keeps one observation per fiscal year: a full-year period from an
-// annual report, deduplicated so a restatement does not appear twice.
+// annual report, deduplicated so a restatement does not appear twice. A year
+// read from a results release counts too: it is added only where no annual
+// report covers the year yet (release.go).
 func Annual(obs []Observation) []Observation {
 	const (
 		minAnnualDays = 330 // a 52/53-week year runs a few days short of 365
@@ -212,7 +214,7 @@ func Annual(obs []Observation) []Observation {
 			continue
 		case o.Days() < minAnnualDays || o.Days() > maxAnnualDays:
 			continue
-		case formRank(o.Form) < 3:
+		case formRank(o.Form) < 3 && o.Form != releaseForm:
 			continue
 		case seen[o.End.Year()]:
 			continue
