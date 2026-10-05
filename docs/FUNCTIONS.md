@@ -376,9 +376,9 @@ What passes between the functions:
 | Step | Code | What it does |
 |---|---|---|
 | 1 | [`handleIndustry`](../internal/app/industry.go#L21) | With no topic, says how to ask. Otherwise opens the run cache (`industry`) and a relay run, replies "Mapping…", and gives itself one model call's time plus two minutes. |
-| 2 | [`industry.Explainer.Explain`](../internal/industry/industry.go#L61) | **Opus with the web** (stage `industry`) writes the explanation in the brief's style, with `### ` sub-headings that each have an emoji, over plain-English bullets. It ends with a `COMPANIES BY PART` table of `part\|name\|ticker\|exchange\|why`. |
-| 3 | [`industry.Split`](../internal/industry/industry.go#L86) → [`industry.Verify`](../internal/industry/industry.go#L113) → [`VerifyRelated`](../internal/fundamentals/related.go#L90) | Cuts the table out of the text and checks each ticker against OpenFIGI. A ticker that fails, or a "?", is dropped. |
-| 4 | [`RenderIndustry`](../internal/telegram/industry.go#L31) | The heading and its note, the text with its finance words linked, then "🏢 Companies to look into", grouped by part. |
+| 2 | [`industry.Explainer.Explain`](../internal/industry/industry.go#L65) | **Opus with the web** (stage `industry`) writes the explanation in the brief's style, with `### ` sub-headings that each have an emoji, over plain-English bullets. It ends with a `COMPANIES BY PART` table of `part\|name\|ticker\|exchange\|why`. |
+| 3 | [`industry.Split`](../internal/industry/industry.go#L94) → [`industry.Verify`](../internal/industry/industry.go#L121) → [`VerifyRelated`](../internal/fundamentals/related.go#L90) | Cuts the table out of the text and checks each ticker against OpenFIGI. A ticker that fails, or a "?", is dropped. |
+| 4 | [`RenderIndustry`](../internal/telegram/industry.go#L33) | The heading and its note, the text with its finance words linked, then "🏢 Companies to look into", grouped by part. |
 | 5 | [`send`](../internal/app/pages.go#L39), [`rememberSent`](../internal/app/channel.go#L69) | Sends to the owner. With pages on, it sends the big picture, the parts and a button (see 8b). It keeps the channel's copy for `/share`. That copy adds "AI-written, unchecked, not advice." |
 
 **Links:** works with **6**. Send `/analyse` with any of the tickers to read that company's accounts. Feeds **8**.

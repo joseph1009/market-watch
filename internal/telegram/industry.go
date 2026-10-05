@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/pages"
 )
 
 // IndustryCompany is one company /industry suggests looking into, under the
@@ -26,9 +27,10 @@ const (
 )
 
 // RenderIndustry lays out /industry: the heading and its note, the
-// explanation in sub-headings over bullets with its jargon linked, and the
-// companies grouped by part, each with a checked ticker.
-func RenderIndustry(topic, prose string, companies []IndustryCompany, opts IdeasOptions, terms []model.Term) []string {
+// explanation in sub-headings over bullets with its jargon linked, the
+// companies grouped by part, each with a checked ticker, and the sources as
+// numbered footnotes, which the explanation's [3] link to.
+func RenderIndustry(topic, prose string, companies []IndustryCompany, sources []pages.Link, opts IdeasOptions, terms []model.Term) []string {
 	note := industryNote
 	if opts.ForChannel {
 		note = industryChannelNote
@@ -37,7 +39,7 @@ func RenderIndustry(topic, prose string, companies []IndustryCompany, opts Ideas
 		fmt.Sprintf("<b>🧭 %s — how the industry fits together</b>\n%s", escape(capitalise(topic)), note),
 	}}}
 	if prose != "" {
-		segs = append(segs, segment{blocks: linkTerms(paragraphs(prose), terms)})
+		segs = append(segs, segment{blocks: linkTerms(cite(paragraphs(prose), sourceArticles(sources)), terms)})
 	}
 
 	if len(companies) > 0 {
@@ -55,7 +57,7 @@ func RenderIndustry(topic, prose string, companies []IndustryCompany, opts Ideas
 		}
 		segs = append(segs, segment{blocks: blocks})
 	}
-	return pack(segs)
+	return append(pack(segs), RenderSourceList(sources)...)
 }
 
 // capitalise raises the first letter: "robotics" heads as "Robotics".

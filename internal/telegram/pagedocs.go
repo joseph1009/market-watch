@@ -1107,7 +1107,7 @@ func reverse[T any](s []T) {
 
 // IndustryDoc is /industry as a page: the industry drawn as a chain of its
 // parts, the explanation, and the companies in each part.
-func IndustryDoc(topic, prose string, companies []IndustryCompany, opts IdeasOptions, terms []model.Term) pages.Doc {
+func IndustryDoc(topic, prose string, companies []IndustryCompany, sources []pages.Link, opts IdeasOptions, terms []model.Term) pages.Doc {
 	doc := pages.Doc{Kicker: "How an industry fits together", Title: capitalise(topic), Note: industryNoteFor(opts)}
 	parts := partsOf(companies)
 	if len(parts) > 1 {
@@ -1124,7 +1124,7 @@ func IndustryDoc(topic, prose string, companies []IndustryCompany, opts IdeasOpt
 	}
 	if prose != "" {
 		doc.Parts = append(doc.Parts, pages.Section{ID: "explained", Title: "How it works",
-			Parts: []pages.Part{pages.Prose(linkTerms(paragraphs(prose), terms))}})
+			Parts: []pages.Part{pages.Prose(linkTerms(cite(paragraphs(prose), sourceArticles(sources)), terms))}})
 	}
 	if len(parts) > 0 {
 		sec := pages.Section{ID: "companies", Title: "Companies to look into", Lead: "<i>Every ticker checked against its exchange.</i>"}
@@ -1140,6 +1140,15 @@ func IndustryDoc(topic, prose string, companies []IndustryCompany, opts IdeasOpt
 			sec.Parts = append(sec.Parts, t)
 		}
 		doc.Parts = append(doc.Parts, sec)
+	}
+	// The pages the explanation drew on, as footnotes to the whole of it.
+	if len(sources) > 0 {
+		numbered := make([]pages.Link, len(sources))
+		for i, l := range sources {
+			l.N = i + 1
+			numbered[i] = l
+		}
+		doc.Parts = append(doc.Parts, pages.Sources{Title: "Sources", Links: numbered})
 	}
 	return doc
 }

@@ -47,6 +47,10 @@ type Explanation struct {
 	Text      string // the prose, in "### " sub-headings over bullets
 	Companies []Company
 	Usage     model.Usage
+
+	// Sources are the pages the prose cites by number, [3], in that order,
+	// as the analysis's are (fundamentals.SplitSources).
+	Sources []fundamentals.Source `json:",omitempty"`
 }
 
 // Explainer writes the explanation.
@@ -70,12 +74,16 @@ func (e *Explainer) Explain(ctx context.Context, topic string) (Explanation, err
 	if err != nil {
 		return Explanation{}, fmt.Errorf("explain %q: %w", topic, err)
 	}
+	// The sources first, wherever the model put them: after the companies,
+	// the companies' list would take them in.
+	text, sources := fundamentals.SplitSources(text)
 	prose, companies := Split(text)
 	return Explanation{
 		Topic:     topic,
 		Text:      prose,
 		Companies: Verify(ctx, e.Verifier, companies),
 		Usage:     usage,
+		Sources:   sources,
 	}, nil
 }
 

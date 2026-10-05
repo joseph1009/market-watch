@@ -738,19 +738,23 @@ company. The next message is the topic, however many words it has.
 `/industry robotics` still works in one line.
 
 [`handleIndustry`](../internal/app/industry.go#L21) asks
-[`industry.Explainer.Explain`](../internal/industry/industry.go#L61), which is
+[`industry.Explainer.Explain`](../internal/industry/industry.go#L65), which is
 Opus with web search, under `industry.system`. It explains how the industry
 fits together, part by part. It also says what people are saying about the
 industry, what is coming, and what follows from it. It lists three to six
 listed companies to look into for each part, spread across countries, each
 shown with its flag and country.
-[`industry.Split`](../internal/industry/industry.go#L86) cuts the
+It cites the pages it drew on by number, [3], as `/analyse` does, and lists
+them under `SOURCES`. [`SplitSources`](../internal/fundamentals/sources.go)
+takes that list out first and renumbers the citations to match.
+[`industry.Split`](../internal/industry/industry.go#L94) cuts the
 `COMPANIES BY PART` table out.
-[`industry.Verify`](../internal/industry/industry.go#L113) checks every ticker
+[`industry.Verify`](../internal/industry/industry.go#L121) checks every ticker
 against OpenFIGI through `VerifyRelated`.
-[`RenderIndustry`](../internal/telegram/industry.go#L31) lays it out in the
-brief's style, with the companies grouped by part. `/share` posts the
-channel's copy.
+[`RenderIndustry`](../internal/telegram/industry.go#L33) lays it out in the
+brief's style, with the companies grouped by part and the sources as
+numbered footnotes at the end, which the citations link to. The page does the
+same. `/share` posts the channel's copy.
 
 ### Every model call
 

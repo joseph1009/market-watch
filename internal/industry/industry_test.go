@@ -90,3 +90,33 @@ func TestThePromptLooksAheadAndOneStepFurther(t *testing.T) {
 		}
 	}
 }
+
+// The explanation cites its pages by number, as the analysis does, and lists
+// them under SOURCES, which may come before or after the companies.
+func TestAnIndustryCitesItsSourcesByNumber(t *testing.T) {
+	c := &fakeCompleter{reply: `### 🧭 The big picture
+- Robots sold for about US$50bn in 2025 [2].
+
+COMPANIES BY PART
+Robot makers|Fanuc|6954|JP|the largest maker of factory robots
+
+SOURCES
+2. Reuters, 30 Sep 2026, report on robot orders|https://www.reuters.com/robots`}
+	e := &Explainer{Completer: c, Verifier: fakeVerifier{"6954|JP": "FANUC CORP"}}
+	got, err := e.Explain(context.Background(), "robotics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Sources) != 1 || got.Sources[0].URL != "https://www.reuters.com/robots" {
+		t.Errorf("sources = %+v", got.Sources)
+	}
+	if !strings.Contains(got.Text, "in 2025 [1].") || strings.Contains(got.Text, "SOURCES") {
+		t.Errorf("prose = %q, want the citation renumbered to [1] and no list", got.Text)
+	}
+	if len(got.Companies) != 1 {
+		t.Errorf("companies = %+v", got.Companies)
+	}
+	if system := config.Prompt("industry.system"); !strings.Contains(system, "SOURCES") || !strings.Contains(system, "Never name a source or a date in brackets") {
+		t.Error("the industry prompt does not ask for numbered citations")
+	}
+}

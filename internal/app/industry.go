@@ -61,10 +61,10 @@ func (a *App) handleIndustry(ctx context.Context, msg telegram.Message, args []s
 	}
 
 	industryFor := func(opts telegram.IdeasOptions) outgoing {
-		doc := telegram.IndustryDoc(exp.Topic, exp.Text, companies, opts, a.knownTerms())
+		doc := telegram.IndustryDoc(exp.Topic, exp.Text, companies, sourceLinks(exp.Sources), opts, a.knownTerms())
 		return outgoing{
 			title:    capitalise(exp.Topic) + " · how the industry fits together",
-			messages: telegram.RenderIndustry(exp.Topic, exp.Text, companies, opts, a.knownTerms()),
+			messages: telegram.RenderIndustry(exp.Topic, exp.Text, companies, sourceLinks(exp.Sources), opts, a.knownTerms()),
 			summary:  telegram.IndustrySummary(exp.Topic, exp.Text, companies, opts),
 			doc:      &doc,
 		}

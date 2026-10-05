@@ -288,7 +288,7 @@ func TestTheIndustryPageDrawsTheChain(t *testing.T) {
 		{Part: "Robot makers", Name: "Fanuc", Symbol: "6954.JP", Why: "the largest"},
 		{Part: "Motion parts", Name: "Nabtesco", Symbol: "6268.JP", Why: "reducers"},
 	}
-	page := render(IndustryDoc("robotics", "### 🧭 The big picture\n- Robots move.", companies, IdeasOptions{}, nil))
+	page := render(IndustryDoc("robotics", "### 🧭 The big picture\n- Robots move.", companies, nil, IdeasOptions{}, nil))
 	for _, want := range []string{
 		`<figure class="chain">`, `<span class="step-name">Motion parts</span><span class="step-items"><code>6324.JP</code><code>6268.JP</code>`,
 		`<span class="step-name">Robot makers</span>`, "<figcaption>Motion parts</figcaption>", "Robots move.",
@@ -297,6 +297,20 @@ func TestTheIndustryPageDrawsTheChain(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("the page is missing %q", want)
 		}
+	}
+
+	// Its citations link to numbered footnotes, on the page and in the chat.
+	sources := []pages.Link{{Title: "Reuters, robot orders", URL: "https://www.reuters.com/robots"}}
+	prose := "### 🧭 The big picture\n- Robots sold for US$50bn [1]."
+	page = render(IndustryDoc("robotics", prose, companies, sources, IdeasOptions{}, nil))
+	for _, want := range []string{`<a href="https://www.reuters.com/robots" class="cite"`, "Sources", "Reuters, robot orders"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+	chat := strings.Join(RenderIndustry("robotics", prose, companies, sources, IdeasOptions{}, nil), "\n")
+	if !strings.Contains(chat, `<a href="https://www.reuters.com/robots">[1]</a>`) || !strings.Contains(chat, "Reuters, robot orders") {
+		t.Errorf("the chat lacks the citation or its footnote:\n%s", chat)
 	}
 	if strings.Index(page, "step-name\">Motion parts") > strings.Index(page, "step-name\">Robot makers") {
 		t.Error("the parts are out of the explanation's order")
