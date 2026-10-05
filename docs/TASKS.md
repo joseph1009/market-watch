@@ -148,8 +148,51 @@ is, what it needs from you, and why it is worth doing.
   Fly, and a live test before it is deployed. The alternative is a 2 GB
   machine, at about $6 a month more.
 
+## Working remotely
+
+- **A Sprite to work on the code from anywhere.** Agreed on 5 October 2026.
+  A Fly Sprite named `market-watch-dev` would hold a clone of the repo and run
+  Claude Code, so the code can be changed without this PC. It is kept apart
+  from the bot's machine. A deploy replaces that machine, and a slip there
+  could stop the brief.
+
+  A Sprite sleeps about 30 seconds after the last activity and is billed only
+  while awake. Light use should cost about $2–3 a month. The legacy Fly
+  allowance doesn't help, since the bot's 1 GB machine likely uses it all.
+
+  Done so far: the Sprite CLI is installed on the PC, at
+  `C:\Users\Admin\bin\sprite.exe`, version 2026-09-02.
+
+  Steps:
+  1. You log in with `sprite login`. It needs your browser.
+  2. Create the Sprite and see what comes installed: Go, git, Claude Code.
+  3. Clone the repo. Add the fly CLI and `gh`.
+  4. Copy HANDOVER.md and the memory notes across. The standing rules live
+     only there, as the repo has no CLAUDE.md. Add a way to copy them back.
+  5. Let `scripts/fly-deploy.sh` deploy without .env. It would skip the
+     secrets, which are already on Fly, so none need to live on the Sprite.
+     Check that its `fly auth whoami` test works with a deploy token.
+  6. Write the setup down as a script and a note in the runbook, so the
+     Sprite can be rebuilt.
+
+  It needs from you: three logins on the Sprite. Claude Code with your
+  subscription, GitHub with `gh auth login`, and a Fly deploy token limited
+  to this app, made with `fly tokens create deploy -a joseph-market-watch`.
+  Never your full-account token.
+
+  To know: the Sprite's Claude sessions share your plan's limits with the
+  bot. A heavy session around 07:30 ET could slow the brief. Work in one
+  place at a time, or HANDOVER.md and the memory notes drift apart.
+
 ## Done
 
+- 5 October 2026, at the owner's request: the brief shows the market in its
+  parts. The page has the broad market, the 11 sectors, four industries, and
+  commodities, rates, the dollar and Bitcoin, each over the last session, the
+  week and the month. Under them, "What the moves say" reads 13 gaps between
+  pairs, such as equal weight against the S&P 500, each against its usual
+  size over the past year. The unusual ones get a line under the overview in
+  Telegram, and the model is asked what they say together.
 - 3 October 2026, at the owner's request:
   - `/analyse` and `/industry` run in the background, three at a time, in
     the order asked. Other commands no longer wait behind them. Once any plan

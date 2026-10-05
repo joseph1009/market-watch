@@ -90,7 +90,7 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L820) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L827) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
@@ -161,6 +161,19 @@ US$2bn or more, followed or not. These are the moves the closer look's
 reactions start from (`market.Moves`). Each moved at least three times its
 usual daily move, on at least twice its usual trading. A session the previous
 brief already reported gives none.
+
+Beside them, [`marketBoard`](../internal/app/board.go#L15) reads the market in
+its parts from the daily charts: the broad market, the eleven sectors, four
+industries, and oil, gold, copper, the 10-year yield, long bonds, the dollar
+and Bitcoin. [`prices.MakeBoard`](../internal/prices/board.go#L204) puts each
+on the last finished US session, with its moves over the session, the week
+and the month. Bitcoin, which trades every day, is read on the same dates.
+Then it reads thirteen gaps between pairs of them, such as equal weight
+against the S&P 500 or copper against gold. Each gap is set against its
+typical size over the past year, on the session and on the month, and read on
+whichever is the larger. A gap one and a half times its usual or more is
+unusual. Each pair has a plain reading for either side of it, so code does
+the sums and says what they mean, and the model only weighs them.
 
 Then [`feed.Collect`](../internal/feed/collect.go#L115), the heart of the
 gathering, runs these steps:
@@ -267,21 +280,24 @@ the brief.
 
 ### 4. Writing
 
-[`report.Generator.Generate`](../internal/report/generate.go#L73) does four
+[`report.Generator.Generate`](../internal/report/generate.go#L77) does four
 things:
 
 - [`splitByCoverage`](../internal/report/prompt.go#L84) decides which
   watchlists have enough news for a section, and which are just quiet.
-- [`buildPrompt`](../internal/report/prompt.go#L119) puts the prompt together.
+- [`buildPrompt`](../internal/report/prompt.go#L122) puts the prompt together.
   It starts with the market levels
-  ([`renderMarketData`](../internal/report/prompt.go#L348)) and the prices with
-  the movers' history ([`renderPrices`](../internal/report/prompt.go#L386)),
-  then the moves across the market
-  ([`renderMarketMoves`](../internal/report/prompt.go#L363)).
+  ([`renderMarketData`](../internal/report/prompt.go#L355)) and the prices with
+  the movers' history ([`renderPrices`](../internal/report/prompt.go#L449)),
+  then the market in its parts and its gaps
+  ([`renderBoard`](../internal/report/prompt.go#L371)), whose funds the prices
+  then leave out ([`offBoard`](../internal/report/prompt.go#L411)), then the
+  moves across the market
+  ([`renderMarketMoves`](../internal/report/prompt.go#L426)).
   Then come each active section's articles under its line of biggest moves
   ([`sectionMoves`](../internal/report/moves.go#L30)). Last comes the general
   news the overview may draw on. Every article gets a citation number from
-  [`numbering`](../internal/report/prompt.go#L253). The writer is told that the
+  [`numbering`](../internal/report/prompt.go#L260). The writer is told that the
   reader sees the moves line, so it explains the moves rather than listing
   them.
 - The call goes through `Completer`, which is the relay.
@@ -315,7 +331,7 @@ chart source.
 Since 1 October 2026 the brief has been written in plainer English, with about
 twice the room. Each sub-heading and sector heading has an emoji
 ([config/sectors.yaml](../config/sectors.yaml)). The key figure in a bullet is
-marked `**so**`, and [`highlight`](../internal/telegram/render.go#L419) shows
+marked `**so**`, and [`highlight`](../internal/telegram/render.go#L431) shows
 it in bold. [`linkTerms`](../internal/telegram/terms.go#L19) links the first
 mention in a section of each term in
 [config/glossary.yaml](../config/glossary.yaml) to a page that explains it. It
@@ -326,19 +342,19 @@ ahead.
 [`telegram.RenderWith`](../internal/telegram/render.go#L95) turns the report
 into Telegram's HTML. It lays out the overview, each section under its line of
 biggest moves, the new names
-([`renderCandidates`](../internal/telegram/render.go#L790)), the quiet
+([`renderCandidates`](../internal/telegram/render.go#L802)), the quiet
 watchlists, the source links, and a footer of token counts. Citations become
-links through [`linkCitations`](../internal/telegram/render.go#L747).
+links through [`linkCitations`](../internal/telegram/render.go#L759).
 
 The brief is written as sub-headings, each a `### ` line, over one-sentence
-bullets. [`paragraphs`](../internal/telegram/render.go#L281) keeps each
-sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L376)
+bullets. [`paragraphs`](../internal/telegram/render.go#L289) keeps each
+sub-heading with its bullets. [`bullets`](../internal/telegram/render.go#L388)
 makes the sub-heading bold and turns each `- ` into a bullet, with a blank line
 between bullets. The section headings are in capitals so they stand above the
 sub-headings. A block written the older way, as a label and a dash, still gets
-its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L320)).
+its label in bold ([`emphasizeLabel`](../internal/telegram/render.go#L332)).
 
-[`pack`](../internal/telegram/render.go#L440) then spreads the pieces across
+[`pack`](../internal/telegram/render.go#L452) then spreads the pieces across
 messages, within Telegram's limit of 4,096 characters. It breaks between
 sections rather than in the middle of a thought. It never leaves a heading
 alone at the end of a message.
@@ -351,9 +367,12 @@ opening line, the writer's `## IN SHORT` bullets, and the next 24 hours'
 releases and results, each written as "… @ time".
 
 The page is laid out from the report, not from the messages, by
-[`BriefDoc`](../internal/telegram/pagedocs.go#L43). It shows the markets as a
-table and a bar chart, from the FRED readings and the benchmark funds
-([`pageMarket`](../internal/app/pages.go#L125)). Then it shows the overview,
+[`BriefDoc`](../internal/telegram/pagedocs.go#L43). It shows the markets: the FRED readings as a table
+([`pageMarket`](../internal/app/pages.go#L125)), then the board, a table for
+each group of funds with its moves coloured, and "What the moves say", the
+gaps with the unusual ones marked
+([`boardParts`](../internal/telegram/pagedocs.go#L152)). A report from before
+the board shows the benchmark funds as a bar chart instead. Then it shows the overview,
 what is coming up as a table for each day, and each sector with its biggest
 moves and its own sources. The wording is the same as the messages'.
 [`pages.Render`](../internal/pages/render.go#L35) lets through only Telegram's
@@ -377,7 +396,7 @@ cost and did, for `/stats`. When search is on,
 It counts how many kept stories no feed carried, and how many of the brief's
 citations came from search alone. It also lists, by source, the cited stories
 that no search found. The citations are read back out of the text by
-[`Report.Referenced`](../internal/model/report.go#L114). These numbers are what
+[`Report.Referenced`](../internal/model/report.go#L119). These numbers are what
 will decide whether search can take over from the media feeds.
 
 ### 7. The channel
@@ -1304,6 +1323,13 @@ unknown symbol, which comes back at once with zeros, doesn't count as a
 failure. `Benchmarks` is the twelve funds. `MarketSymbol` is the one a share's
 move is measured against. `Index` and `LabelFor` help with the layout.
 
+**[board.go](../internal/prices/board.go)** is the market in its parts.
+`boardFunds` lists the 28 lines in four groups, and `pairs` the thirteen
+gaps, each with what either side of it says. `MakeBoard` reads them on the
+session `sessions` finds: a New York session dated today counts only after
+4pm there. `usual` is a gap's typical size, the root of its mean square over
+the past 252 sessions.
+
 **[history.go](../internal/prices/history.go)** is the chart source, which
 needs no key. `History.Fetch` returns a `Series` of daily prices in the local
 currency. `Latest` turns the last two closes into a price. It is dated by when
@@ -1425,7 +1451,8 @@ messages. `paragraphs` and `bullets` turn the `### ` sub-headings and `- `
 points into bold lines and bullets (`emphasizeLabel` handles the older
 label-and-dash blocks). `linkCitations` turns `[3]` into a link. Each section's
 heading carries its line of biggest moves, and the overview's heading the
-line of moves across the market. `renderCandidates` draws the new
+line of moves across the market. Under it go the board's unusual gaps, a
+line for the last session and one for the past month (`Board.Lines`). `renderCandidates` draws the new
 names, `renderSources` the links, and `renderFooter` the token counts.
 `RenderPlain` does the same for an analysis, and `RenderAnalysis` puts the
 verdict last.

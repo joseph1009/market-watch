@@ -63,7 +63,7 @@ func BriefDoc(rep model.Report, market Market, opts Options) pages.Doc {
 	}
 	doc.Parts = append(doc.Parts, pages.Box{Title: "In short", Items: short})
 
-	if markets := marketsSection(market); len(markets.Parts) > 0 {
+	if markets := marketsSection(market, rep.Board); len(markets.Parts) > 0 {
 		doc.Parts = append(doc.Parts, markets)
 	}
 
@@ -117,9 +117,10 @@ func BriefDoc(rep model.Report, market Market, opts Options) pages.Doc {
 	return doc
 }
 
-// marketsSection is the markets in figures: the readings in a table, the
-// funds in a chart.
-func marketsSection(m Market) pages.Section {
+// marketsSection is the markets in figures: the readings in a table, then
+// the market in its parts, a table a group, and the gaps between them; or,
+// for a brief without the board, the benchmark funds in a chart.
+func marketsSection(m Market, board model.Board) pages.Section {
 	sec := pages.Section{ID: "markets", Title: "The markets"}
 	if len(m.Gauges) > 0 {
 		t := pages.Table{Head: []string{"", "Level", "Day", "Week", "As of"}, Align: "lrrrr"}
@@ -130,6 +131,10 @@ func marketsSection(m Market) pages.Section {
 		t.Note = "<i>From FRED, the Federal Reserve Bank of St. Louis. A day's change in a rate is in percentage points; a monthly figure's \"day\" is the month before.</i>"
 		sec.Parts = append(sec.Parts, t)
 	}
+	if len(board.Funds) > 0 {
+		sec.Parts = append(sec.Parts, boardParts(board)...)
+		return sec
+	}
 	if len(m.Funds) > 0 {
 		bars := pages.Bars{Title: "How each corner of the market moved on the last session"}
 		for _, f := range m.Funds {
@@ -139,6 +144,87 @@ func marketsSection(m Market) pages.Section {
 		sec.Parts = append(sec.Parts, bars)
 	}
 	return sec
+}
+
+// boardParts are the board on the page: a table for each group of funds,
+// with its moves coloured, then what the gaps between pairs of them say, the
+// unusual ones marked.
+func boardParts(board model.Board) []pages.Part {
+	var parts []pages.Part
+	names, funds := board.Groups()
+	for _, name := range names {
+		t := pages.Table{Caption: name, Head: []string{"", "", "Level", "Last session", "Week", "Month"}, Align: "llrrrr", Labels: true}
+		for _, f := range funds[name] {
+			t.Rows = append(t.Rows, []string{escape(f.Name), "<code>" + escape(f.Symbol) + "</code>", escape(f.LevelText()),
+				"<b>" + escape(f.Move(f.Day)) + "</b>", escape(f.Move(f.Week)), escape(f.Move(f.Month))})
+			t.Tones = append(t.Tones, []string{"", "", "", moveTone(f, f.Day), moveTone(f, f.Week), moveTone(f, f.Month)})
+		}
+		parts = append(parts, t)
+	}
+	if last := len(parts) - 1; last >= 0 {
+		t := parts[last].(pages.Table)
+		t.Note = "<i>From the daily charts, on the session of " + escape(board.Session.Format("Monday 2 January")) +
+			". Funds that track each market, so close to it but not the index itself. The 10-year yield moves in percentage points; Bitcoin is read on the same days as the US market.</i>"
+		parts[last] = t
+	}
+	if len(board.Gaps) == 0 {
+		return parts
+	}
+	bySymbol := map[string]model.BoardFund{}
+	for _, f := range board.Funds {
+		bySymbol[f.Symbol] = f
+	}
+	// The ones that stood out first, then the rest, the furthest from
+	// normal first.
+	gaps := append([]model.Gap(nil), board.Gaps...)
+	sort.SliceStable(gaps, func(i, j int) bool {
+		if gaps[i].Unusual != gaps[j].Unusual {
+			return gaps[i].Unusual
+		}
+		return gaps[i].Times() > gaps[j].Times()
+	})
+	t := pages.Table{Caption: "What the moves say", Head: []string{"Check", "What happened", "How unusual", "What it says"}, Align: "llll"}
+	for _, g := range gaps {
+		a, b := bySymbol[g.A], bySymbol[g.B]
+		over, va, vb := "Last session", a.Day, b.Day
+		if g.Window == "month" {
+			over, va, vb = "Past month", a.Month, b.Month
+		}
+		happened := fmt.Sprintf("<i>%s:</i> %s %s, %s %s", over,
+			escape(g.A), escape(a.Move(va)), escape(g.B), escape(b.Move(vb)))
+		reading := escape(g.Reading)
+		if g.Unusual {
+			reading = "<b>" + reading + "</b>"
+		}
+		t.Rows = append(t.Rows, []string{"<b>" + escape(g.Name) + "</b>", happened, escape(howUnusual(g)), reading})
+		t.Marked = append(t.Marked, g.Unusual)
+	}
+	t.Note = "<i>Each check sets one fund's move against another's, over the last session or the past month, whichever was further from normal. Normal is the usual gap between the two over the past year. The marked rows stood out: a gap of one and a half times the usual or more.</i>"
+	return append(parts, t)
+}
+
+// howUnusual says in words how a gap compares with the usual one.
+func howUnusual(g model.Gap) string {
+	times := g.Times()
+	switch {
+	case times == 0:
+		return ""
+	case g.Unusual:
+		return fmt.Sprintf("Stood out: %.1f times the usual gap", times)
+	case times >= 1:
+		return "A little wider than usual"
+	default:
+		return "Normal"
+	}
+}
+
+// moveTone colours a move: up or down, or none for a flat one.
+func moveTone(f model.BoardFund, v float64) string {
+	switch f.Move(v) {
+	case "flat":
+		return ""
+	}
+	return direction(v)
 }
 
 // withoutHeadline is the overview after its opening line, which heads the

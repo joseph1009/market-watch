@@ -110,6 +110,14 @@ func RenderWith(rep model.Report, opts Options) []string {
 		if len(rep.MarketMoves) > 0 {
 			heading += "\n<i>Across the market: " + escape(model.Moves(model.MarketQuotes(rep.MarketMoves))) + "</i>"
 		}
+		// What the gaps between the market's parts say, where any stood out.
+		session, month := rep.Board.Lines(boardLineShown)
+		if session != "" {
+			heading += "\n<i>Stood out on the last session: " + escape(session) + "</i>"
+		}
+		if month != "" {
+			heading += "\n<i>Stood out over the past month: " + escape(month) + "</i>"
+		}
 		segs = append(segs, segment{blocks: append(
 			[]string{heading}, linkTerms(cite(paragraphs(rep.Overview), rep.Cited), opts.Terms)...)})
 	}
@@ -303,6 +311,10 @@ func paragraphs(body string) []string {
 // subheadingMarker opens a sub-heading in the brief and the analysis: a topic
 // of a few words over the bullets that belong to it.
 const subheadingMarker = "### "
+
+// boardLineShown is how many of the unusual gaps between the market's parts
+// the line under the overview names. The page has them all.
+const boardLineShown = 4
 
 // labelSeparators are what the model may put between a block's topic label and
 // its first sentence. It is asked for " - "; a hyphen is routinely typeset as a

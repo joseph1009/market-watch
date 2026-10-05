@@ -55,6 +55,11 @@ type Report struct {
 	// market, followed or not, biggest against their usual first. They are
 	// shown in a line under the overview.
 	MarketMoves []MarketMove `json:"market_moves,omitempty"`
+
+	// Board is the market in its parts on the last session, and what the
+	// gaps between pairs of funds say. Its unusual gaps are shown in a line
+	// under the overview, and all of it on the page.
+	Board Board `json:"board,omitzero"`
 }
 
 // Usage is how much text one run sent and got back.

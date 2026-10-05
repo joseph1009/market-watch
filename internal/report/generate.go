@@ -64,6 +64,10 @@ type Generator struct {
 	// model is shown them so it can say why where an article does.
 	MarketMoves []model.MarketMove
 
+	// Board is the market in its parts on the last session, with the gaps
+	// between pairs of funds that say what kind of day it was.
+	Board model.Board
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -83,7 +87,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	// articles produces filler -- "the watchlist was thin today" -- rather than
 	// anything worth the space.
 	active, quiet := splitByCoverage(articles, groups, MinSectionArticles)
-	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince, calendar: g.Calendar, moves: g.MarketMoves}
+	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince, calendar: g.Calendar, moves: g.MarketMoves, board: g.Board}
 	prompt := buildPrompt(articles, active, m, now, g.display())
 
 	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
@@ -134,6 +138,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	rep.Cited = articles
 	rep.Calendar = g.Calendar
 	rep.MarketMoves = g.MarketMoves
+	rep.Board = g.Board
 
 	if rep.IsEmpty() {
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))

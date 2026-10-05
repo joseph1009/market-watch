@@ -1302,6 +1302,49 @@ func TestTheMovesAcrossTheMarketSitUnderTheOverview(t *testing.T) {
 	}
 }
 
+// What the gaps between the market's parts say: the unusual ones in a line
+// under the overview, and on the page every fund by group and every gap,
+// the unusual ones marked.
+func TestTheMarketInItsPartsIsShown(t *testing.T) {
+	rep := testReport()
+	rep.Board = model.Board{
+		Session: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC),
+		Funds: []model.BoardFund{
+			{Symbol: "SPY", Name: "S&P 500", Group: "The broad market", Level: 763.99, Day: 0.5, Week: 1.1, Month: -2},
+			{Symbol: "RSP", Name: "S&P 500, equal weight", Group: "The broad market", Level: 210.2, Day: -2, Week: 0, Month: 1},
+			{Symbol: "TNX", Name: "10-year Treasury yield", Group: "Commodities, rates, the dollar and Bitcoin", Yield: true, Level: 5.3, Day: 0.08},
+		},
+		Gaps: []model.Gap{
+			{Name: "Equal weight vs the S&P 500", A: "RSP", B: "SPY", Day: -2.5, Month: 3, UsualDay: 0.5, UsualMonth: 2,
+				Unusual: true, Reading: "Narrow: the biggest companies carried the index.", Short: "the giants carried the index"},
+			{Name: "Copper vs gold", A: "CPER", B: "GLD", Day: 3, Month: 9, UsualDay: 1, UsualMonth: 3,
+				Unusual: true, Window: "month", Reading: "Copper over gold.", Short: "copper over gold"},
+			{Name: "Chips vs software", A: "SMH", B: "IGV", Day: 0.2, UsualDay: 1, UsualMonth: 3,
+				Reading: "Money went to chipmakers.", Short: "chips over software"},
+		},
+	}
+
+	out := strings.Join(Render(rep, time.UTC), "\n")
+	if want := "<i>Stood out on the last session: the giants carried the index</i>\n<i>Stood out over the past month: copper over gold</i>"; !strings.Contains(out, want) {
+		t.Errorf("rendered brief lacks %q:\n%s", want, out)
+	}
+	page := render(BriefDoc(rep, Market{}, Options{Display: time.UTC}))
+	for _, want := range []string{
+		"The broad market", "Commodities, rates, the dollar and Bitcoin",
+		`<td class="num down"><b>-2.0%</b></td>`, `<td class="num up"><b>+0.08</b></td>`, "5.30%",
+		"What the moves say", `<tr class="marked">`, "Stood out: 5.0 times the usual gap", "Stood out: 3.0 times the usual gap", "<td>Normal</td>",
+		"<i>Last session:</i> RSP -2.0%, SPY +0.5%",
+		"Money went to chipmakers.",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Count(page, `<tr class="marked">`) != 2 {
+		t.Errorf("want two gaps marked")
+	}
+}
+
 // The week's picks come under their themes, each theme with its numbers and
 // what the research found, labelled popular or early; the reactions follow,
 // then the earlier picks. A pick says where it fits and what its price is

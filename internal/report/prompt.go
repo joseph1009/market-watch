@@ -111,6 +111,9 @@ type market struct {
 
 	// moves are the outsized moves across the whole market.
 	moves []model.MarketMove
+
+	// board is the market in its parts, and the gaps between them.
+	board model.Board
 }
 
 // buildPrompt renders the articles into the user turn. Articles are ordered by
@@ -151,7 +154,11 @@ func buildPrompt(articles []model.Article, groups []model.Group, m market, now t
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
-	if block := renderPrices(m.quotes, m.trends, display); block != "" {
+	if block := renderBoard(m.board); block != "" {
+		b.WriteString(block)
+		b.WriteString("\n")
+	}
+	if block := renderPrices(offBoard(m.quotes, m.board), m.trends, display); block != "" {
 		b.WriteString(block)
 		b.WriteString("\n")
 	}
@@ -356,6 +363,62 @@ func renderMarketData(levels []prices.Reading) string {
 		b.WriteString("- " + r.Line() + "\n")
 	}
 	return b.String()
+}
+
+// renderBoard writes the market in its parts, a group at a time, then the
+// gaps between pairs of funds with their usual sizes and what each says.
+// Measured, like the prices, and labelled so.
+func renderBoard(board model.Board) string {
+	if len(board.Funds) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nThe market in its parts on the last US session, %s, from each fund's close against the session before, and a week and a month back. Measured on the exchange, not reported by any article:\n",
+		board.Session.Format("Monday 2 January"))
+	names, funds := board.Groups()
+	for _, name := range names {
+		b.WriteString(name + ":\n")
+		for _, f := range funds[name] {
+			if f.Yield {
+				fmt.Fprintf(&b, "- %s: %s, %s percentage points on the day, %s over the week, %s over the month\n",
+					f.Name, f.LevelText(), f.Move(f.Day), f.Move(f.Week), f.Move(f.Month))
+				continue
+			}
+			fmt.Fprintf(&b, "- %s (%s): %s, %s on the day, %s over the week, %s over the month\n",
+				f.Name, f.Symbol, f.LevelText(), f.Move(f.Day), f.Move(f.Week), f.Move(f.Month))
+		}
+	}
+	if len(board.Gaps) == 0 {
+		return b.String()
+	}
+	b.WriteString("\nThe gaps between them. Each is the first fund's move less the second's, in percentage points, beside its usual size over the past year. Each is read on the session or the month, whichever is the larger against its usual size. UNUSUAL marks a gap at least one and a half times its usual size: the reader is shown those in a line under the overview, and every gap on the page.\n")
+	for _, g := range board.Gaps {
+		fmt.Fprintf(&b, "- %s (%s less %s): %+.1f on the day, against a usual %.1f; %+.1f over the month, against a usual %.1f.",
+			g.Name, g.A, g.B, g.Day, g.UsualDay, g.Month, g.UsualMonth)
+		if g.Unusual {
+			if g.Window == "month" {
+				b.WriteString(" UNUSUAL over the month.")
+			} else {
+				b.WriteString(" UNUSUAL on the day.")
+			}
+		}
+		b.WriteString(" Reads: " + g.Reading + "\n")
+	}
+	return b.String()
+}
+
+// offBoard is the quotes the board does not already show.
+func offBoard(quotes []model.Quote, board model.Board) []model.Quote {
+	if len(board.Funds) == 0 {
+		return quotes
+	}
+	out := make([]model.Quote, 0, len(quotes))
+	for _, q := range quotes {
+		if !prices.OnBoard(q.Symbol) {
+			out = append(out, q)
+		}
+	}
+	return out
 }
 
 // renderMarketMoves lists the outsized moves across the market, with each

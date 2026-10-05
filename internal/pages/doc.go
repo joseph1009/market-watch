@@ -65,6 +65,7 @@ type Table struct {
 	Align   string     // "lrr": a letter a column
 	Rows    [][]string // Telegram HTML cells
 	Marked  []bool     // rows to stand out, where set
+	Tones   [][]string // a cell's colour, "up" or "down", where set
 	Note    string     // Telegram HTML, under the table
 	// Labels keeps the first column, the rows' names, in view while a wide
 	// table scrolls sideways on a phone.
@@ -337,7 +338,7 @@ func (t Table) write(w *writer) {
 			w.WriteString("<tr>")
 		}
 		for i, cell := range row {
-			w.WriteString("<td" + align(t.Align, i) + ">" + safe(cell, false) + "</td>")
+			w.WriteString("<td" + cellClass(t.Align, i, t.tone(r, i)) + ">" + safe(cell, false) + "</td>")
 		}
 		w.WriteString("</tr>\n")
 	}
@@ -770,6 +771,31 @@ func lines(s string) string {
 		parts[i] = safe(p, false)
 	}
 	return strings.Join(parts, "<br>\n")
+}
+
+// tone is a cell's colour, or none.
+func (t Table) tone(r, i int) string {
+	if r < len(t.Tones) && i < len(t.Tones[r]) {
+		if c := t.Tones[r][i]; c == "up" || c == "down" {
+			return c
+		}
+	}
+	return ""
+}
+
+// cellClass is a cell's alignment and colour as a class attribute.
+func cellClass(spec string, i int, colour string) string {
+	var classes []string
+	if i < len(spec) && spec[i] == 'r' {
+		classes = append(classes, "num")
+	}
+	if colour != "" {
+		classes = append(classes, colour)
+	}
+	if len(classes) == 0 {
+		return ""
+	}
+	return " class=\"" + strings.Join(classes, " ") + "\""
 }
 
 func align(spec string, i int) string {

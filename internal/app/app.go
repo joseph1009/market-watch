@@ -540,6 +540,11 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	widely := make(chan []model.MarketMove, 1)
 	go func() { widely <- a.marketMoves(ctx, since) }()
 
+	// The market in its parts, and what the gaps between them say: a few
+	// dozen charts, read beside the rest.
+	parts := make(chan model.Board, 1)
+	go func() { parts <- a.marketBoard(ctx) }()
+
 	// SEC filings are gathered before the feeds so they arrive on the same
 	// footing: deduped, matched and scored with everything else rather than
 	// bolted on afterwards.
@@ -669,6 +674,8 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	a.Generator.MovesSince = since
 	a.Generator.Calendar = <-due
 	a.Generator.MarketMoves = <-widely
+	a.Generator.Board = <-parts
+	cached.Save("board", a.Generator.Board)
 	cached.Save("calendar", a.Generator.Calendar)
 	cached.Save("market_moves", a.Generator.MarketMoves)
 	cached.Save("levels", a.Generator.Levels)

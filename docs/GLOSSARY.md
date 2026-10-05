@@ -16,6 +16,8 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Sector, section, watchlist.** These all mean the brief's sections, such as chips or banks. Each one is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). A "followed" company is one listed there.
 
+**Board, gaps.** The market in its parts on the brief's page: the broad market, the 11 sectors, four industries, and commodities, rates, the dollar and Bitcoin ([prices/board.go](../internal/prices/board.go)). A gap is one fund's move less another's, such as equal weight less the S&P 500. It is set against its usual size over the past year, and is unusual at one and a half times that or more. The unusual ones go in the lines "Stood out on the last session" and "Stood out over the past month" under the overview.
+
 **Moves line.** The line under a section's heading. It shows the biggest moves of that section's shares on the day ([report/moves.go](../internal/report/moves.go)). The overview has one too, "Across the market". It shows the day's biggest moves among all US companies worth US$2bn or more, each against the share's usual ([movers.go](../internal/app/movers.go)).
 
 **Industry group, peers.** The companies in the same industry as Nasdaq's list files them, worth US$500m or more. `/analyse` and the verdicts set a company's growth, margins and multiples beside theirs, each on its latest twelve months filed with the SEC ([peers.go](../internal/fundamentals/peers.go)).
