@@ -50,7 +50,7 @@ Software|Some Startup|?|?|private`}
 	v := fakeVerifier{"6324|JP": "HARMONIC DRIVE SYSTEMS INC", "6954|JP": "FANUC CORP"}
 	e := &Explainer{Completer: c, Verifier: v, Now: func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }}
 
-	got, err := e.Explain(context.Background(), "  robotics ")
+	got, err := e.Explain(context.Background(), "  robotics ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ Robot makers|Fanuc|6954|JP|the largest maker of factory robots
 SOURCES
 2. Reuters, 30 Sep 2026, report on robot orders|https://www.reuters.com/robots`}
 	e := &Explainer{Completer: c, Verifier: fakeVerifier{"6954|JP": "FANUC CORP"}}
-	got, err := e.Explain(context.Background(), "robotics")
+	got, err := e.Explain(context.Background(), "robotics", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,5 +118,36 @@ SOURCES
 	}
 	if system := config.Prompt("industry.system"); !strings.Contains(system, "SOURCES") || !strings.Contains(system, "Never name a source or a date in brackets") {
 		t.Error("the industry prompt does not ask for numbered citations")
+	}
+}
+
+// A reader who names a market gets that market's listings alone: the model
+// is told so, and a company it lists elsewhere is dropped all the same.
+func TestAMarketKeepsTheCompaniesToItsListings(t *testing.T) {
+	c := &fakeCompleter{reply: `### 🧭 The big picture
+- Chips and the models trained on them.
+
+COMPANIES BY PART
+Chips|NVIDIA|NVDA|US|designs most AI chips
+Chips|TSMC|2330|TT|makes them
+Chips|Taiwan Semiconductor|TSM|US|its American shares
+Models|SoftBank|9984|JP|invests in model makers`}
+	v := fakeVerifier{"NVDA|US": "NVIDIA CORP", "2330|TT": "TAIWAN SEMICONDUCTOR", "TSM|US": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD", "9984|JP": "SOFTBANK GROUP CORP"}
+	e := &Explainer{Completer: c, Verifier: v}
+
+	got, err := e.Explain(context.Background(), "AI", "US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.prompt, "companies listed in United States only, exchange code US") {
+		t.Errorf("prompt does not ask for US listings:\n%s", c.prompt)
+	}
+	if got.Market != "US" || len(got.Companies) != 2 {
+		t.Fatalf("market %q, companies %+v; want NVDA and TSM", got.Market, got.Companies)
+	}
+	for _, co := range got.Companies {
+		if co.Exchange != "US" {
+			t.Errorf("kept %s on %s", co.Name, co.Exchange)
+		}
 	}
 }

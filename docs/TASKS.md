@@ -9,13 +9,11 @@ is, what it needs from you, and why it is worth doing.
 
 ## Waiting on you
 
-- **Try the latest changes live.** The changes of 2 October 2026 are built
-  but have not run on real data yet. They cover plain writing in every
-  report, the reworked `/analyse` (the case for and against, where the
-  company is heading, whether its figures hold up) and `/industry`'s look
-  ahead. One `/analyse` and one `/industry` would show how they read. Each
-  uses the Claude plan.
-- **Push and deploy.** The commits since 1 October are on your machine only.
+- **Try the latest changes live.** The market board and `/industry -m` are
+  built but have not run with the model yet. One brief would show how the
+  overview uses the board, and one `/industry AI -m US` the market filter.
+  Each uses the Claude plan.
+- **Push and deploy.** The commits since 5 October are on your machine only.
   Push them with `git push`, then deploy with `scripts/fly-deploy.sh`.
 
 ## Reliability

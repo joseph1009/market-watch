@@ -574,7 +574,7 @@ sender is allowed and then routes on the command:
 | `/now` | [`handleNow`](../internal/app/commands.go#L247) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L589) | Writes up a company (see below) |
-| `/industry` | [`handleIndustry`](../internal/app/industry.go#L21) | How an industry fits together, where it is heading, and companies to look into (see below) |
+| `/industry` | [`handleIndustry`](../internal/app/industry.go#L22) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
 | `/stats` | [`handleStats`](../internal/app/commands.go#L845) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
@@ -756,8 +756,17 @@ news and for a foreign filer's own latest results.
 company. The next message is the topic, however many words it has.
 `/industry robotics` still works in one line.
 
-[`handleIndustry`](../internal/app/industry.go#L21) asks
-[`industry.Explainer.Explain`](../internal/industry/industry.go#L65), which is
+`-m` and a market keep the companies to its listings: `/industry AI -m US`.
+Without it they come from every market, as before.
+[`industry.ParseMarket`](../internal/industry/market.go#L23) takes the flag
+out of the topic. The market is one of the exchange codes the companies' list
+uses (US, JP, HK, LN, TT and the rest); any other answer gets the list back
+instead of a run. The model is told to list only that market's companies,
+foreign companies by their shares listed there, and `listedIn` drops any it
+lists elsewhere all the same. The title then says so: "AI (US-listed)".
+
+[`handleIndustry`](../internal/app/industry.go#L22) asks
+[`industry.Explainer.Explain`](../internal/industry/industry.go#L69), which is
 Opus with web search, under `industry.system`. It explains how the industry
 fits together, part by part. It also says what people are saying about the
 industry, what is coming, and what follows from it. It lists three to six
@@ -766,9 +775,9 @@ shown with its flag and country.
 It cites the pages it drew on by number, [3], as `/analyse` does, and lists
 them under `SOURCES`. [`SplitSources`](../internal/fundamentals/sources.go)
 takes that list out first and renumbers the citations to match.
-[`industry.Split`](../internal/industry/industry.go#L94) cuts the
+[`industry.Split`](../internal/industry/industry.go#L118) cuts the
 `COMPANIES BY PART` table out.
-[`industry.Verify`](../internal/industry/industry.go#L121) checks every ticker
+[`industry.Verify`](../internal/industry/industry.go#L145) checks every ticker
 against OpenFIGI through `VerifyRelated`.
 [`RenderIndustry`](../internal/telegram/industry.go#L33) lays it out in the
 brief's style, with the companies grouped by part and the sources as

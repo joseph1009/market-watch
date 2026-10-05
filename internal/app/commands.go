@@ -27,7 +27,7 @@ const helpText = `<b>📊 Market Watch</b>
 
 /now — build and send a brief right now
 /analyse — analyse a company from its filings: I ask which one (or send /analyse NVDA)
-/industry — how an industry fits together, and companies to look into in each part: I ask which one (or send /industry robotics)
+/industry — how an industry fits together, and companies to look into in each part: I ask which one (or send /industry robotics; add -m and a market for its listings only, as in /industry AI -m US)
 /watchlist — show the companies you follow, by sector
 /watchlist add &lt;sector&gt; &lt;TICKER&gt; [name] — follow a company, e.g. /watchlist add industrials-defense PLTR Palantir
 /watchlist remove &lt;sector&gt; &lt;ticker or name&gt; — stop following it
