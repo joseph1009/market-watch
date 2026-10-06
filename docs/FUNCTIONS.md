@@ -558,9 +558,10 @@ All in [cmd/market-watch/main.go](../cmd/market-watch/main.go).
 
 | Script | What it does | Links |
 |---|---|---|
-| [fly-deploy.sh](../scripts/fly-deploy.sh) | Creates the app and volume if they are missing. Copies the secrets from `.env`, printing only their names. Runs `fly deploy`, then runs `--check` on the machine as the app's user. | 15 (`--check`) |
+| [fly-deploy.sh](../scripts/fly-deploy.sh) | Creates the app and volume if they are missing. Copies the secrets from `.env`, printing only their names. Runs `fly deploy`, then runs `--check` on the machine as the app's user. Without `.env`, as on the Sprite, it only deploys an app that already exists, keeping its secrets, and then checks. | 15 (`--check`) |
 | [sync-from-fly.sh](../scripts/sync-from-fly.sh) | Copies `prefs.yaml`, `covered.json`, `runs.json`, `candidates.json`, `scorecard.json` and `terms.json` from Fly into `./data`. It backs up what they replace to `data/.backup/<time>/`, and leaves alone any file Fly doesn't have. Then it runs `--fold`. | 9, 15 (`--fold`) |
 | [sync-cache-from-fly.sh](../scripts/sync-cache-from-fly.sh) | Copies the latest `brief`, `analysis` and/or `recommendations` run cache from Fly into `data/cache/`. | 13 |
+| [sprite.sh](../scripts/sprite.sh) | `setup` builds the Sprite the code is worked on from: flyctl, the repository, the git identity and a test run. `push` and `pull` carry HANDOVER.md and the memory notes, which are not in git, between it and this PC. See "The Sprite" in the runbook. | |
 
 ---
 

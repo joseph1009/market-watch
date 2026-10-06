@@ -7,6 +7,11 @@
 # .env, and deploys. Run it from the repository root. It prints no secret: they
 # are read from .env and handed to `fly secrets import` on standard input.
 #
+# Without .env, as on the Sprite the code is worked on from, it only deploys:
+# the app must already exist, and the secrets it has on Fly stay as they are.
+# There a deploy token limited to the app is enough, in FLY_API_TOKEN, made
+# with `fly tokens create deploy -a joseph-market-watch`.
+#
 # Before the first run:
 #   1. Install flyctl and log in: https://fly.io/docs/flyctl/install/, then
 #      `fly auth login`.
@@ -23,10 +28,40 @@ VOLUME="market_watch_data"
 
 die() { echo "fly-deploy: $*" >&2; exit 1; }
 
+# As the service's own user, not root: anything this writes to /data has to
+# stay writable by the service afterwards.
+#
+# On Windows, flyctl ends every ssh command with "The handle is invalid" and a
+# failing exit status when it is not attached to a console, which it is not
+# under Git Bash, even when the command succeeded. A command that really failed
+# says "Process exited with status" instead, so that is what decides.
+check() {
+  echo "== check"
+  local status=0 out
+  out="$("$FLY" ssh console -a "$APP" -C "runuser -u app -- env HOME=/home/app /usr/local/bin/market-watch --check" 2>&1)" || status=$?
+  printf '%s\n' "$out" | grep -v 'The handle is invalid' || true
+  if [ "$status" -ne 0 ]; then
+    if printf '%s' "$out" | grep -q 'Process exited with status' \
+      || ! printf '%s' "$out" | grep -q 'The handle is invalid'; then
+      die "the check failed on the machine"
+    fi
+  fi
+}
+
 FLY="$(command -v fly || command -v flyctl || true)"
 [ -n "$FLY" ] || die "flyctl is not installed: https://fly.io/docs/flyctl/install/"
-[ -f .env ] || die "run this from the repository root, where .env is"
 [ -f fly.toml ] || die "run this from the repository root, where fly.toml is"
+
+if [ ! -f .env ]; then
+  # Reading the app's status tests that the deploy token is for this app.
+  "$FLY" status -a "$APP" >/dev/null 2>&1 \
+    || die "no .env, and $APP cannot be read: set FLY_API_TOKEN to a deploy token for it"
+  echo "== no .env: deploying $APP with the secrets it already has on Fly"
+  "$FLY" deploy -a "$APP"
+  check
+  exit 0
+fi
+
 "$FLY" auth whoami >/dev/null 2>&1 || die "not logged in to Fly: run 'fly auth login'"
 
 # The secrets the service reads, where .env gives them a value; an optional one
@@ -63,24 +98,7 @@ grep -E "$SECRETS" .env \
 
 echo "== deploy"
 "$FLY" deploy -a "$APP"
-
-# As the service's own user, not root: anything this writes to /data has to
-# stay writable by the service afterwards.
-#
-# On Windows, flyctl ends every ssh command with "The handle is invalid" and a
-# failing exit status when it is not attached to a console, which it is not
-# under Git Bash, even when the command succeeded. A command that really failed
-# says "Process exited with status" instead, so that is what decides.
-echo "== check"
-status=0
-out="$("$FLY" ssh console -a "$APP" -C "runuser -u app -- env HOME=/home/app /usr/local/bin/market-watch --check" 2>&1)" || status=$?
-printf '%s\n' "$out" | grep -v 'The handle is invalid' || true
-if [ "$status" -ne 0 ]; then
-  if printf '%s' "$out" | grep -q 'Process exited with status' \
-    || ! printf '%s' "$out" | grep -q 'The handle is invalid'; then
-    die "the check failed on the machine"
-  fi
-fi
+check
 
 cat <<EOF
 

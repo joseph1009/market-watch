@@ -31,7 +31,10 @@ FLY="$(command -v fly || command -v flyctl || true)"
 [ -n "$FLY" ] || die "flyctl is not installed: https://fly.io/docs/flyctl/install/"
 [ -f fly.toml ] || die "run this from the repository root, where fly.toml is"
 [ -d config ] || die "run this from the repository root, where config/ is"
-"$FLY" auth whoami >/dev/null 2>&1 || die "not logged in to Fly: run 'fly auth login'"
+# Reading the app's status tests that the login can reach this app, whether
+# it is a full login or a deploy token limited to the app.
+"$FLY" status -a "$APP" >/dev/null 2>&1 \
+  || die "cannot read $APP: run 'fly auth login', or set FLY_API_TOKEN to a deploy token"
 
 mkdir -p data
 backup="data/.backup/$(date +%Y%m%d-%H%M%S)"

@@ -758,6 +758,100 @@ fly logs -a joseph-market-watch
 
 On Windows, `fly logs --no-tail` can hang. Put `timeout 100` in front of it.
 
+## The Sprite
+
+The code can be worked on from a Fly Sprite named `market-watch-dev`, so it can
+be changed without this PC. A Sprite is a small machine that keeps its files.
+It sleeps about 30 seconds after the last activity and is billed only while
+awake. It is kept apart from the bot's machine, since a deploy replaces that
+one and a slip there could stop the brief.
+
+To build it, install the sprite CLI, log in with `sprite login`, and from the
+root of the repository run:
+
+```
+scripts/sprite.sh setup
+```
+
+It creates the Sprite if it is missing, installs flyctl, clones the repository,
+keeps the same files out of git as here, copies HANDOVER.md and the memory
+notes across, and runs the tests. Running it again is safe.
+
+To get a shell on it, the Sprite's version of ssh, run this on the PC:
+
+```
+sprite console -s market-watch-dev
+```
+
+It wakes the Sprite if it is asleep. You start in `/home/sprite`, and the
+repository is in `~/market-watch`. Type `exit` to leave, and the Sprite goes
+back to sleep about 30 seconds later. If `sprite` isn't found, use its full
+path, `C:\Users\Admin\bin\sprite.exe`.
+
+Two shortcuts:
+
+- `sprite exec -s market-watch-dev -- <command>` runs one command and returns,
+  without opening a shell.
+- `sprite use market-watch-dev`, run once in the repository folder, makes it
+  the default there. After that, `sprite console` needs no `-s`.
+
+Three logins are then left, which only you can do:
+
+1. **Claude Code.** Run `sprite console -s market-watch-dev`, then `claude`, and
+   log in with your subscription.
+2. **GitHub.** In the same console, `gh auth login`, then `gh auth setup-git`
+   so that git pushes with it.
+3. **Fly.** A deploy token limited to the app, never your full-account login.
+   From this PC:
+
+   ```
+   fly tokens create deploy -a joseph-market-watch -x 8760h -n "market-watch-dev sprite" \
+     | sprite exec -s market-watch-dev -- bash -c 'mkdir -p ~/.config && umask 077 && cat > ~/.config/fly-deploy-token'
+   ```
+
+   The token goes straight to the Sprite and is never shown. It lasts a year.
+   The Sprite reads it into `FLY_API_TOKEN` at login. With it,
+   `scripts/fly-deploy.sh` deploys without `.env`: the app's secrets are
+   already on Fly and stay as they are. The sync scripts work with it too.
+
+   **Where it is kept:** only on the Sprite, in
+   `/home/sprite/.config/fly-deploy-token`, readable by the Sprite's user
+   alone. Fly shows a token only once, when it is made, so that file is the
+   only copy. There is none on the PC or in the repository.
+
+   - To see it, open a console on the Sprite and run
+     `cat ~/.config/fly-deploy-token`.
+   - To list the app's tokens, run `fly tokens list -a joseph-market-watch`
+     on the PC. This one is named "market-watch-dev sprite".
+   - If it is lost or leaks, cancel it with `fly tokens revoke <id>`, using
+     the id from that list, and make a new one with the command above. It
+     reaches this app only, so a leaked token can't touch anything else on
+     the Fly account.
+
+   The current token was made on 6 October 2026 and runs out on
+   6 October 2027.
+
+No `.env` lives on the Sprite, so a live sample sent to Telegram can't be run
+there. Everything else works as it does here.
+
+HANDOVER.md and the memory notes are not in git, so they travel by hand:
+
+```
+scripts/sprite.sh push    # this PC to the Sprite
+scripts/sprite.sh pull    # the Sprite to this PC
+```
+
+Each overwrites the other side's copy. Work in one place at a time, and copy
+the files across when you switch.
+
+Things to know:
+
+- Sessions on the Sprite share your plan's limits with the bot. A heavy
+  session around 07:30 New York could slow the brief.
+- To steer a session from your phone, start Claude Code in the repository on
+  the Sprite and turn on Remote Control with `/remote-control`. Whether an idle
+  Remote Control session keeps the Sprite awake, and billed, is not yet known.
+
 ---
 
 **Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → [4 Function by function](FUNCTIONS.md) → [5 Reviewing the code](REVIEW.md) → **6 Running it** → [7 Backlog](TASKS.md)

@@ -149,7 +149,7 @@ is, what it needs from you, and why it is worth doing.
 ## Working remotely
 
 - **A Sprite to work on the code from anywhere.** Agreed on 5 October 2026.
-  A Fly Sprite named `market-watch-dev` would hold a clone of the repo and run
+  A Fly Sprite named `market-watch-dev` holds a clone of the repo and runs
   Claude Code, so the code can be changed without this PC. It is kept apart
   from the bot's machine. A deploy replaces that machine, and a slip there
   could stop the brief.
@@ -158,25 +158,23 @@ is, what it needs from you, and why it is worth doing.
   while awake. Light use should cost about $2–3 a month. The legacy Fly
   allowance doesn't help, since the bot's 1 GB machine likely uses it all.
 
-  Done so far: the Sprite CLI is installed on the PC, at
-  `C:\Users\Admin\bin\sprite.exe`, version 2026-09-02.
+  Done on 6 October 2026: the Sprite is built, by `scripts/sprite.sh setup`.
+  It has the repository, Go, flyctl, gh and Claude Code, and the tests pass
+  there. HANDOVER.md and the memory notes are copied across, and
+  `scripts/sprite.sh push` and `pull` carry them each way. The deploy and sync
+  scripts work with a deploy token and no .env. "The Sprite" in the runbook has
+  the details.
 
-  Steps:
-  1. You log in with `sprite login`. It needs your browser.
-  2. Create the Sprite and see what comes installed: Go, git, Claude Code.
-  3. Clone the repo. Add the fly CLI and `gh`.
-  4. Copy HANDOVER.md and the memory notes across. The standing rules live
-     only there, as the repo has no CLAUDE.md. Add a way to copy them back.
-  5. Let `scripts/fly-deploy.sh` deploy without .env. It would skip the
-     secrets, which are already on Fly, so none need to live on the Sprite.
-     Check that its `fly auth whoami` test works with a deploy token.
-  6. Write the setup down as a script and a note in the runbook, so the
-     Sprite can be rebuilt.
+  The three logins are done too: Claude Code, GitHub, and a Fly deploy token
+  kept on the Sprite (the runbook says where, and how to replace it). From
+  the Sprite, the token reads the app and reaches its machine over ssh.
 
-  It needs from you: three logins on the Sprite. Claude Code with your
-  subscription, GitHub with `gh auth login`, and a Fly deploy token limited
-  to this app, made with `fly tokens create deploy -a joseph-market-watch`.
-  Never your full-account token.
+  Still to do:
+  1. Try a real deploy from the Sprite, the next time there is one to make.
+  2. Test whether an idle Remote Control session keeps the Sprite awake.
+  3. If it does, a `/code` command on the bot that wakes the Sprite and starts
+     a session, and `/code stop` to end it. It needs a token limited to
+     Sprites, set as a secret on Fly.
 
   To know: the Sprite's Claude sessions share your plan's limits with the
   bot. A heavy session around 07:30 ET could slow the brief. Work in one
