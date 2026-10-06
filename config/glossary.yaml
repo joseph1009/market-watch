@@ -175,3 +175,17 @@
   words: [DRAM]
 - url: https://en.wikipedia.org/wiki/Flash_memory
   words: [NAND, flash memory]
+
+# Learned from the reports, 6 Oct 2026: each links to a search for its meaning.
+- url: "https://www.google.com/search?q=10-year+Treasury+yield+government+bonds+meaning"
+  words: ["10-year Treasury yield"]
+- url: "https://www.google.com/search?q=effective+fed+funds+rate+US+interest+rates+meaning"
+  words: ["effective fed funds rate"]
+- url: "https://www.google.com/search?q=goodwill+acquisition+accounting+meaning"
+  words: ["goodwill"]
+- url: "https://www.google.com/search?q=price+to+sales+stock+valuation+meaning"
+  words: ["price to sales"]
+- url: "https://www.google.com/search?q=share-based+pay+stock-based+compensation+accounting+meaning"
+  words: ["share-based pay"]
+- url: "https://www.google.com/search?q=uprate+nuclear+power+meaning"
+  words: ["uprate"]
