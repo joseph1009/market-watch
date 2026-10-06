@@ -177,8 +177,9 @@ is, what it needs from you, and why it is worth doing.
   itself after two quiet hours. A running service keeps a Sprite awake, so it
   is off unless asked for. "Remote Control" in the runbook has the details.
 
-  Still to do: a Sprites token in SPRITES_TOKEN on Fly, then try `/code` from
-  the phone, and see what a month costs.
+  Live since v21 on 6 October 2026, and tried from the phone the same day.
+
+  Still to do: see what a month of it costs.
 
   To know: the Sprite's Claude sessions share your plan's limits with the
   bot. A heavy session around 07:30 ET could slow the brief. Work in one
