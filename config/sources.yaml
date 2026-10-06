@@ -201,11 +201,15 @@
   url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910
   weight: 8
   enabled: true
+# Switched off 2026-10-06: the address answers 404, and the 6 October brief was
+# written without it from 527 articles from 57 other sources. The only Yahoo
+# feed still answering, feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC,
+# carries S&P 500 stories only: market wraps CNBC and MarketWatch already bring.
 - id: yahoo-finance
   name: Yahoo Finance
   url: https://finance.yahoo.com/news/rssindex
   weight: 6
-  enabled: true
+  enabled: false
 - id: marketwatch-top
   name: MarketWatch Top Stories
   url: https://feeds.content.dowjones.io/public/rss/mw_topstories

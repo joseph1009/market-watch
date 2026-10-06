@@ -41,8 +41,8 @@ func TestTheFilesHoldTheWatchlistAndFeeds(t *testing.T) {
 			on++
 		}
 	}
-	if len(feeds) != 49 || on != 42 {
-		t.Errorf("%d feeds, %d on; want 49 and 42", len(feeds), on)
+	if len(feeds) != 49 || on != 41 {
+		t.Errorf("%d feeds, %d on; want 49 and 41", len(feeds), on)
 	}
 }
 
@@ -143,7 +143,7 @@ func TestEditsApplyOnTopOfTheFiles(t *testing.T) {
 	if err := p.RemoveCompany("semis-ai", "INTC"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.SwitchFeed("yahoo-finance", false); err != nil {
+	if _, err := p.SwitchFeed("marketwatch-top", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Save(path); err != nil {
@@ -161,7 +161,7 @@ func TestEditsApplyOnTopOfTheFiles(t *testing.T) {
 		t.Error("the removed company came back")
 	}
 	for _, s := range again.EnabledSources() {
-		if s.ID == "yahoo-finance" {
+		if s.ID == "marketwatch-top" {
 			t.Error("the feed switched off came back on")
 		}
 	}
@@ -206,7 +206,7 @@ watchlist_edits:
     - {sector: semis-ai, company: NotListed}
 feed_switches:
   cnbc-top: true
-  yahoo-finance: false
+  marketwatch-top: false
 `
 	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
@@ -219,8 +219,8 @@ feed_switches:
 	if len(p.Edits.Added) != 1 || p.Edits.Added[0].Symbol != "PLTR" || len(p.Edits.Removed) != 0 {
 		t.Errorf("edits = %+v, want only Palantir left", p.Edits)
 	}
-	if len(p.FeedSwitches) != 1 || p.FeedSwitches["yahoo-finance"] {
-		t.Errorf("switches = %v, want only yahoo-finance off", p.FeedSwitches)
+	if len(p.FeedSwitches) != 1 || p.FeedSwitches["marketwatch-top"] {
+		t.Errorf("switches = %v, want only marketwatch-top off", p.FeedSwitches)
 	}
 	saved, _ := os.ReadFile(path)
 	if strings.Contains(string(saved), "NotListed") {
@@ -245,7 +245,7 @@ func TestFoldChangesOnlyTheLinesEdited(t *testing.T) {
 	_ = p.AddCompany("industrials-defense", model.Company{Symbol: "PLTR", Name: "Palantir"})
 	_ = p.AddCompany("macro-rates", model.Company{Name: "Federal Reserve"})
 	_ = p.RemoveCompany("consumer-retail", "TGT")
-	_, _ = p.SwitchFeed("yahoo-finance", false)
+	_, _ = p.SwitchFeed("marketwatch-top", false)
 
 	done, err := Fold(dir, *p)
 	if err != nil {

@@ -497,7 +497,7 @@ nothing to migrate, because the service reads the file as it is.
 /watchlist remove consumer-retail TGT
 /watchlist edits                              (what has changed here)
 /watchlist reset                              (drop every change made here)
-/sources off yahoo-finance
+/sources off marketwatch-top
 ```
 
 A ticker given without a name takes the name the SEC files it under, without
