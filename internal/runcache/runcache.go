@@ -33,9 +33,11 @@ package runcache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -201,6 +203,11 @@ func (e *Entry) Save(name string, v any) {
 		return
 	}
 	data, err := json.MarshalIndent(v, "", "  ")
+	var unsupported *json.UnsupportedValueError
+	if errors.As(err, &unsupported) {
+		// A NaN or an infinity: written as null, the rest as it is.
+		data, err = json.MarshalIndent(finite(reflect.ValueOf(v)), "", "  ")
+	}
 	if err != nil {
 		e.logf("cache: could not encode %s: %v", name, err)
 		return

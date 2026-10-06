@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -201,4 +202,45 @@ func TestANilCacheDoesNothing(t *testing.T) {
 	e.Fail(errors.New("x"))
 	e.Finish(nil)
 	From(context.Background()).Save("x", 1)
+}
+
+// A figure the history is too short for is NaN, which JSON cannot hold: it is
+// written as null and the rest of the value is kept, as encoding/json would
+// name it.
+func TestANaNIsSavedAsNull(t *testing.T) {
+	type listing struct {
+		Symbol string
+	}
+	type stock struct {
+		listing
+		R24, R12 float64
+		Note     string    `json:"note,omitempty"`
+		Hidden   string    `json:"-"`
+		AsOf     time.Time `json:"as_of"`
+	}
+	c := &Cache{Root: t.TempDir()}
+	_, e := c.Start(context.Background(), Recommendations, "")
+	e.Save("leaders", []stock{{listing: listing{Symbol: "ARW"}, R24: math.NaN(), R12: 0.42, Hidden: "x",
+		AsOf: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)}})
+
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(e.Dir(), "leaders.json"))), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("leaders = %v", got)
+	}
+	s := got[0]
+	if v, ok := s["R24"]; !ok || v != nil {
+		t.Errorf("R24 = %v, want null", v)
+	}
+	if s["R12"] != 0.42 || s["Symbol"] != "ARW" || s["as_of"] != "2026-10-02T00:00:00Z" {
+		t.Errorf("leader = %v", s)
+	}
+	if _, ok := s["note"]; ok {
+		t.Errorf("empty omitempty field written: %v", s)
+	}
+	if _, ok := s["Hidden"]; ok {
+		t.Errorf("hidden field written: %v", s)
+	}
 }

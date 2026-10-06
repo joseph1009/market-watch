@@ -47,7 +47,7 @@ Companion documents:
 | 10 | [The other commands](#10-the-other-commands) | Owner's command | [`HandleMessage`](../internal/app/commands.go#L70) |
 | 11 | [Failure alerts](#11-failure-alerts) | A scheduled brief failing | [`reportFailure`](../internal/app/app.go#L1086) |
 | 12 | [Model calls (the relay)](#12-model-calls-the-relay) | Every call to a model | [`Relay.Begin`](../internal/relay/relay.go#L98), [`Run.Ask`](../internal/relay/relay.go#L229) |
-| 13 | [Run cache](#13-run-cache) | The brief, `/analyse`, the closer look | [`Cache.Start`](../internal/runcache/runcache.go#L97) |
+| 13 | [Run cache](#13-run-cache) | The brief, `/analyse`, the closer look | [`Cache.Start`](../internal/runcache/runcache.go#L99) |
 | 14 | [Secret scrubbing](#14-secret-scrubbing) | Every log line and error reply | [`logging.New`](../internal/logging/scrub.go#L35), [`logging.Scrub`](../internal/logging/scrub.go#L47) |
 | 15 | [Command-line modes](#15-command-line-modes) | `--check`, `--once`, `--once --share`, `--clear`, `--fold` | [`main`](../cmd/market-watch/main.go#L33) |
 | 16 | [Deploy and sync scripts](#16-deploy-and-sync-scripts) | By hand | [scripts/](../scripts/) |
@@ -524,9 +524,9 @@ Which model answers each stage (`DefaultModels` in [answer.go](../internal/relay
 
 ## 13. Run cache
 
-**Entry point:** [`Cache.Start`](../internal/runcache/runcache.go#L97)`(ctx, kind, subject)`, called by [`brief`](../internal/app/app.go#L425), [`handleAnalyse`](../internal/app/commands.go#L589), [`handleIndustry`](../internal/app/industry.go#L22) and [`sendIdeas`](../internal/app/ideas.go#L88).
+**Entry point:** [`Cache.Start`](../internal/runcache/runcache.go#L99)`(ctx, kind, subject)`, called by [`brief`](../internal/app/app.go#L425), [`handleAnalyse`](../internal/app/commands.go#L589), [`handleIndustry`](../internal/app/industry.go#L22) and [`sendIdeas`](../internal/app/ideas.go#L88).
 
-**What it does:** keeps the **latest** run of each kind in `data/cache/<kind>/`, where the kind is `brief`, `analysis`, `recommendations` or `industry`. It holds each step's data as JSON ([`Save`](../internal/runcache/runcache.go#L199)), the messages sent, the model calls, and `run.json` ([`Finish`](../internal/runcache/runcache.go#L239)). A run writes under `data/cache/.running/` and moves into its kind's folder when it finishes. If two runs of one kind overlap, the one that finished last is kept. Each compares its end time with the `run.json` of the run already kept. Secrets are scrubbed out. `scripts/sync-cache-from-fly.sh` brings it down from Fly. A change to the brief, analysis or closer look should start from it, rather than from a new run.
+**What it does:** keeps the **latest** run of each kind in `data/cache/<kind>/`, where the kind is `brief`, `analysis`, `recommendations` or `industry`. It holds each step's data as JSON ([`Save`](../internal/runcache/runcache.go#L201)), the messages sent, the model calls, and `run.json` ([`Finish`](../internal/runcache/runcache.go#L246)). A run writes under `data/cache/.running/` and moves into its kind's folder when it finishes. If two runs of one kind overlap, the one that finished last is kept. Each compares its end time with the `run.json` of the run already kept. Secrets are scrubbed out. `scripts/sync-cache-from-fly.sh` brings it down from Fly. A change to the brief, analysis or closer look should start from it, rather than from a new run.
 
 ---
 

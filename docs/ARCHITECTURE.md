@@ -1530,7 +1530,10 @@ times in `run.json`, and a run that ended before the one already kept is
 thrown away. The folder always holds the run that finished last. A run cut
 short, by a restart say, stays
 under `.running/` until the next run of its kind starts. `Save` writes a step's data as JSON,
-numbering a name that is used twice. `Text` writes the messages and the model
+numbering a name that is used twice. A NaN or an infinity, which JSON has no
+word for, is written as null ([finite.go](../internal/runcache/finite.go)):
+the market's figures use NaN where a share's history is too short, and the
+closer look's leaders went unsaved because of it. `Text` writes the messages and the model
 calls. `Fail` and `Finish` write `run.json`. Everything written is scrubbed of
 the settings' secrets. Every method does nothing on a nil entry, so a run
 without a cache works the same as before. `sendReport`, `handleAnalyse` and
