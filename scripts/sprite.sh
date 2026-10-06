@@ -95,6 +95,25 @@ setup() {
   echo "== the working files"
   push
 
+  # Remote Control asks twice the first time, in a terminal: whether to trust
+  # the folder, and whether to turn Remote Control on. The service has no
+  # terminal, so both answers are written into Claude Code's settings.
+  echo "== Remote Control"
+  on "python3 -c 'import json, os
+p = os.path.expanduser(\"~/.claude.json\")
+d = json.load(open(p)) if os.path.exists(p) else {}
+d.setdefault(\"projects\", {}).setdefault(\"$REMOTE_REPO\", {})[\"hasTrustDialogAccepted\"] = True
+d[\"remoteDialogSeen\"] = True
+json.dump(d, open(p, \"w\"), indent=2)'"
+  # Created stopped: the service keeps the Sprite awake while it runs, and
+  # /code in the bot's chat starts it.
+  if ! on "sprite-env services get remote-control" >/dev/null 2>&1; then
+    on "sprite-env services create remote-control --cmd /bin/bash \
+      --args $REMOTE_REPO/scripts/remote-control.sh --dir $REMOTE_REPO \
+      --env HOME=/home/sprite,PATH=/home/sprite/.local/bin:/.sprite/bin:/usr/local/bin:/usr/bin:/bin \
+      --no-stream && sprite-env services stop remote-control"
+  fi
+
   echo "== a test run"
   on "cd $REMOTE_REPO && go vet ./... && go test ./... >/tmp/test.log 2>&1 && echo tests pass || { tail -30 /tmp/test.log; exit 1; }"
 

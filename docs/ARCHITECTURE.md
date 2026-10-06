@@ -90,11 +90,11 @@ poller. This section is what the scheduler sets off.
 
 ### 1. Waking up
 
-[`RunScheduler`](../internal/app/app.go#L827) works out the next run afresh
+[`RunScheduler`](../internal/app/app.go#L840) works out the next run afresh
 each time, rather than ticking at a fixed interval. That keeps the schedule
 pinned to 07:30 US Eastern, two hours before the open, even across a change to
 or from daylight saving. When the timer fires, it calls
-[`Publish`](../internal/app/app.go#L409) → [`brief(ctx, share: true)`](../internal/app/app.go#L425).
+[`Publish`](../internal/app/app.go#L422) → [`brief(ctx, share: true)`](../internal/app/app.go#L438).
 
 `brief` does three things before any work starts:
 
@@ -103,7 +103,7 @@ or from daylight saving. When the timer fires, it calls
 - It calls [`Relay.Begin`](../internal/relay/relay.go#L98). That creates a
   folder for this run and puts it on the context. Every model call the run
   makes lands in that folder, numbered in order.
-- It calls [`sendReport`](../internal/app/app.go#L512), which is the pipeline.
+- It calls [`sendReport`](../internal/app/app.go#L525), which is the pipeline.
 
 ### 2. Gathering
 
@@ -414,12 +414,12 @@ look was still running, the closer look then goes alone
 The channel only goes one way. Its readers can't reach `HandleMessage`. The bot
 takes commands only from the owner's chat, and from the owner's other chats
 listed in `TELEGRAM_COMMAND_CHATS` and `TELEGRAM_CONTROL_CHATS`.
-[`needs`](../internal/app/commands.go#L200) says which command each kind of chat
+[`needs`](../internal/app/commands.go#L208) says which command each kind of chat
 may use.
 
 ### 8. Worth a closer look
 
-[`brief`](../internal/app/app.go#L425) starts the closer look as soon as the
+[`brief`](../internal/app/app.go#L438) starts the closer look as soon as the
 owner has the brief. When it is done, it posts both to the channel. Until
 2026-10-01 the closer look waited twenty minutes after the brief, queued on the
 data volume. In those days the channel got the brief at once and the closer
@@ -523,7 +523,7 @@ of Massive making it available.
 only Claude Code uses (below). It then calls
 [`run`](../cmd/market-watch/main.go#L73), which does the following.
 
-- [`config.Load`](../config/config.go#L206) reads the environment, and `.env`
+- [`config.Load`](../config/config.go#L213) reads the environment, and `.env`
   through [`LoadDotEnv`](../config/dotenv.go#L22). It reports every missing
   variable at once, rather than one per run.
 - [`config.LoadPrompts`](../config/prompts.go#L61) checks that the prompts file
@@ -535,7 +535,7 @@ only Claude Code uses (below). It then calls
   address, and so are the Finnhub and FRED keys in theirs. The scrubber removes
   every credential the settings hold (`config.Secrets`). Error text sent to the
   chat is scrubbed of the same list.
-- [`app.New`](../internal/app/app.go#L190) builds the service. It loads the
+- [`app.New`](../internal/app/app.go#L195) builds the service. It loads the
   lists from `config/`, and the changes made to them from Telegram from the
   data volume.
 - It installs a SIGTERM handler, so a brief that is being sent finishes its
@@ -565,23 +565,24 @@ for it to write each call to.
 
 [`Client.Poll`](../internal/telegram/updates.go#L77) keeps asking Telegram for
 new messages (`getUpdates`). It hands each one to
-[`HandleMessage`](../internal/app/commands.go#L70), which checks that the
+[`HandleMessage`](../internal/app/commands.go#L72), which checks that the
 sender is allowed and then routes on the command:
 
 | Command | Handler | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L227) | Registers the chat as the owner's, once |
-| `/now` | [`handleNow`](../internal/app/commands.go#L247) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
+| `/start` | [`handleStart`](../internal/app/commands.go#L235) | Registers the chat as the owner's, once |
+| `/now` | [`handleNow`](../internal/app/commands.go#L255) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L589) | Writes up a company (see below) |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L597) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L22) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L845) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L853) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
-| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L330) | Follow a company or stop following it; list or drop the changes made here |
-| `/sources` | [`handleSources`](../internal/app/commands.go#L413) | Turn a feed on or off |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L319) | When the next brief is due |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L276) | Delete the bot's earlier messages |
+| `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L338) | Follow a company or stop following it; list or drop the changes made here |
+| `/sources` | [`handleSources`](../internal/app/commands.go#L421) | Turn a feed on or off |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L327) | When the next brief is due |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L284) | Delete the bot's earlier messages |
+| `/code` | [`handleCode`](../internal/app/code.go) | Turns Remote Control on the Sprite on or off, through the Sprites API ([sprites](../internal/sprites/sprites.go)), so the code can be worked on from the Claude app. The owner's chat only |
 
 Most commands answer at once, so they are handled in turn. `/analyse` and
 `/industry` take minutes, so once they know what to look at they run in the
@@ -614,7 +615,7 @@ Otherwise Telegram would reopen the reply box every time the chat is opened,
 until the question was answered. An answer that doesn't look like a ticker gets
 the question again. `/analyse NVDA` still works in one line.
 
-[`handleAnalyse`](../internal/app/commands.go#L589) runs within its own time
+[`handleAnalyse`](../internal/app/commands.go#L597) runs within its own time
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
@@ -628,7 +629,7 @@ following.
    It builds the current year so far beside the full years
    ([`buildYTD`](../internal/fundamentals/metrics.go#L628)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L855) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L863) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -1575,7 +1576,7 @@ copies these down from Fly. It keeps what they replace in `data/.backup/`.
 ## Configuration
 
 All settings are environment variables, read once by
-[`config.Load`](../config/config.go#L206). The deployed values are in
+[`config.Load`](../config/config.go#L213). The deployed values are in
 [fly.toml](../fly.toml). The secrets are Fly secrets, set from `.env` by
 [scripts/fly-deploy.sh](../scripts/fly-deploy.sh) without being printed.
 [.env.example](../.env.example) explains every one. What the service follows
@@ -1591,6 +1592,8 @@ run.
   outside the US are still priced for the analysis, because the chart source
   needs no key.
 - No `MASSIVE_API_KEY` means no market history, and so no closer look at all.
+- No `SPRITES_TOKEN` means no `/code`, so Remote Control on the Sprite has to
+  be started from the PC (see "The Sprite" in [RUNBOOK.md](RUNBOOK.md)).
 - `CONSENSUS=false` stops asking Nasdaq. The verdicts and analyses then go
   without what analysts expect.
 - No `USER_AGENT` means no SEC filings, because EDGAR refuses a request that

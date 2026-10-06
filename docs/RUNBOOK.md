@@ -844,13 +844,57 @@ scripts/sprite.sh pull    # the Sprite to this PC
 Each overwrites the other side's copy. Work in one place at a time, and copy
 the files across when you switch.
 
-Things to know:
+Sessions on the Sprite share your plan's limits with the bot. A heavy session
+around 07:30 New York could slow the brief.
 
-- Sessions on the Sprite share your plan's limits with the bot. A heavy
-  session around 07:30 New York could slow the brief.
-- To steer a session from your phone, start Claude Code in the repository on
-  the Sprite and turn on Remote Control with `/remote-control`. Whether an idle
-  Remote Control session keeps the Sprite awake, and billed, is not yet known.
+### Remote Control
+
+Remote Control lets you work on the Sprite from the Claude app on your phone.
+It runs on the Sprite as a service named `remote-control`, which runs
+[scripts/remote-control.sh](../scripts/remote-control.sh). `scripts/sprite.sh
+setup` installs it.
+
+**To start it,** send `/code` to the bot. The bot wakes the Sprite, starts the
+service and waits until Remote Control is connected, which takes a few
+seconds. It then says "Remote Control is on". Open the Code tab in the Claude
+app, pick market-watch, and start a session there.
+
+**To stop it,** send `/code stop`, and the Sprite goes back to sleep about 30
+seconds later. If you forget, it stops itself after two hours with no session
+activity. A running service keeps the Sprite awake, and billed, so it is off
+unless you start it.
+
+`/code` works in the owner's chat only, since a session on the Sprite can
+change the code and deploy it.
+
+**What `/code` needs:** a Sprites token in `SPRITES_TOKEN` on Fly, which lets
+the bot start and stop the service through the Sprites API.
+
+1. Make a token at [sprites.dev/account](https://sprites.dev/account).
+2. Put it in `.env` on the PC as `SPRITES_TOKEN=...`.
+3. Run `scripts/fly-deploy.sh` from the PC. It sends the token to Fly with the
+   other secrets, without printing it.
+
+Treat the token as reaching every Sprite in your account, not just this one:
+the Sprites docs don't say it can be limited to one. Anyone
+who can ssh into the bot's machine could read it, which is why the app sits in
+your personal Fly organisation. If it leaks, delete it at sprites.dev/account
+and make a new one. `CODE_SPRITE` names the Sprite, if it's ever not
+`market-watch-dev`.
+
+From the PC, without the bot:
+
+```
+sprite exec -s market-watch-dev -- sprite-env services start remote-control
+sprite exec -s market-watch-dev -- sprite-env services stop remote-control
+sprite exec -s market-watch-dev -- sprite-env services get remote-control
+sprite exec -s market-watch-dev -- tail /.sprite/logs/services/remote-control.log
+```
+
+To change the two hours, set `IDLE_MINUTES` in the service's environment.
+The first run of Remote Control asks two questions in a terminal: whether to
+trust the folder, and whether to turn Remote Control on. The service has no
+terminal, so the setup script writes both answers into Claude Code's settings.
 
 ---
 

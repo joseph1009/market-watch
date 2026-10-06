@@ -40,6 +40,7 @@ const helpText = `<b>📊 Market Watch</b>
 /share — post the latest brief or analysis to the channel
 /scorecard — how past buy, hold and sell verdicts have done
 /clear — remove the bot's earlier messages from this chat
+/code — turn on Remote Control on the Sprite, to work on the code from the Claude app (/code stop turns it off)
 /help — this message
 
 The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
@@ -60,6 +61,7 @@ func BotCommands() []telegram.Command {
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
 		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
+		{Command: "code", Description: "Turn Remote Control on the Sprite on, or off with /code stop"},
 		{Command: "help", Description: "What I can do"},
 	}
 }
@@ -149,6 +151,11 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleScorecard(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
+	case "code":
+		// Waking the Sprite and waiting for Remote Control takes up to a
+		// minute, so the bot keeps reading meanwhile.
+		a.detach(ctx, msg, command, func(ctx context.Context) error { return a.handleCode(ctx, msg, args) })
+		return
 	default:
 		err = a.Bot.SendMessage(ctx, msg.Chat.ID,
 			fmt.Sprintf("Unknown command %s. Try /help.", escape("/"+command)))
@@ -195,11 +202,12 @@ func (a *App) accessOf(chat int64) access {
 }
 
 // needs is the least access a command takes. /start would move the daily
-// brief, /clear and /share act on the owner's deliveries, and the control
-// commands spend the most or change what everyone reads.
+// brief, /clear and /share act on the owner's deliveries, /code opens the
+// code to change, and the control commands spend the most or change what
+// everyone reads.
 func needs(command string) access {
 	switch command {
-	case "start", "clear", "share":
+	case "start", "clear", "share", "code":
 		return ownerAccess
 	case "now", "watchlist", "sources":
 		return controlAccess

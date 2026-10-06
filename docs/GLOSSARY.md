@@ -12,7 +12,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 ## What the reader sees
 
-**Brief.** The daily message. It goes out on weekdays at 07:30 New York time, two hours before the US market opens. In Singapore that is 19:30 while the US is on daylight saving time (until 1 November), and 20:30 after that. It starts with an overview, then has one section for each sector. Every claim carries a numbered link to its article. [`sendReport`](../internal/app/app.go#L512) builds it.
+**Brief.** The daily message. It goes out on weekdays at 07:30 New York time, two hours before the US market opens. In Singapore that is 19:30 while the US is on daylight saving time (until 1 November), and 20:30 after that. It starts with an overview, then has one section for each sector. Every claim carries a numbered link to its article. [`sendReport`](../internal/app/app.go#L525) builds it.
 
 **Sector, section, watchlist.** These all mean the brief's sections, such as chips or banks. Each one is described in plain words in [config/sectors.yaml](../config/sectors.yaml). The companies each one follows are listed in [config/companies.yaml](../config/companies.yaml). A "followed" company is one listed there.
 

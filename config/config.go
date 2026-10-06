@@ -144,6 +144,13 @@ type Config struct {
 	// free plan is enough. Empty means no closer look.
 	MassiveAPIKey string
 
+	// SpritesToken lets /code start and stop Remote Control on the Sprite
+	// the code is worked on from, CodeSprite, so a session can be started
+	// from a phone. It is made at sprites.dev/account. Empty disables /code.
+	// See "The Sprite" in docs/RUNBOOK.md.
+	SpritesToken string
+	CodeSprite   string
+
 	// Consensus reads what analysts expect of a company, and what its
 	// insiders, short sellers and funds have done, from the data behind
 	// Nasdaq's website, for the closer look and /analyse. On by default; it
@@ -220,6 +227,8 @@ func Load() (*Config, error) {
 		FinnhubAPIKey:    envOr("FINNHUB_API_KEY", ""),
 		TavilyAPIKey:     envOr("TAVILY_API_KEY", ""),
 		MassiveAPIKey:    envOr("MASSIVE_API_KEY", ""),
+		SpritesToken:     envOr("SPRITES_TOKEN", ""),
+		CodeSprite:       envOr("CODE_SPRITE", "market-watch-dev"),
 		DataDir:          envOr("DATA_DIR", DefaultDataDir),
 	}
 
@@ -360,6 +369,7 @@ var stageModelVars = map[string]string{
 var secretVars = []string{
 	"TELEGRAM_BOT_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "FINNHUB_API_KEY",
 	"FRED_API_KEY", "TAVILY_API_KEY", "MASSIVE_API_KEY", "TWELVEDATA_API_KEY",
+	"SPRITES_TOKEN",
 }
 
 // Secrets are the credentials this configuration holds, for scrubbing out of
@@ -367,7 +377,7 @@ var secretVars = []string{
 func (c *Config) Secrets() []string {
 	return []string{
 		c.TelegramBotToken, c.ClaudeToken, c.FinnhubAPIKey,
-		c.FREDAPIKey, c.TavilyAPIKey, c.MassiveAPIKey,
+		c.FREDAPIKey, c.TavilyAPIKey, c.MassiveAPIKey, c.SpritesToken,
 		os.Getenv("TWELVEDATA_API_KEY"),
 	}
 }

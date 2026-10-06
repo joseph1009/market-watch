@@ -67,7 +67,7 @@ fi
 # The secrets the service reads, where .env gives them a value; an optional one
 # left empty is not sent. ANTHROPIC_API_KEY is deliberately not one of them:
 # nothing uses it, and Claude Code would prefer it to the subscription.
-SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_MASTER_CHAT_ID|TELEGRAM_CHAT_ID|TELEGRAM_CHANNEL_ID|TELEGRAM_COMMAND_CHATS|TELEGRAM_CONTROL_CHATS|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY|TAVILY_API_KEY|MASSIVE_API_KEY)=[^[:space:]]'
+SECRETS='^(TELEGRAM_BOT_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|TELEGRAM_MASTER_CHAT_ID|TELEGRAM_CHAT_ID|TELEGRAM_CHANNEL_ID|TELEGRAM_COMMAND_CHATS|TELEGRAM_CONTROL_CHATS|USER_AGENT|FRED_API_KEY|FINNHUB_API_KEY|TAVILY_API_KEY|MASSIVE_API_KEY|SPRITES_TOKEN)=[^[:space:]]'
 # The chat id is required because it pins the one chat the bot will answer.
 # Without it, whoever sends /start first on the new machine becomes its owner.
 for name in TELEGRAM_BOT_TOKEN CLAUDE_CODE_OAUTH_TOKEN USER_AGENT; do

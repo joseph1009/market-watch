@@ -169,12 +169,16 @@ is, what it needs from you, and why it is worth doing.
   kept on the Sprite (the runbook says where, and how to replace it). From
   the Sprite, the token reads the app and reaches its machine over ssh.
 
-  Still to do:
-  1. Try a real deploy from the Sprite, the next time there is one to make.
-  2. Test whether an idle Remote Control session keeps the Sprite awake.
-  3. If it does, a `/code` command on the bot that wakes the Sprite and starts
-     a session, and `/code stop` to end it. It needs a token limited to
-     Sprites, set as a secret on Fly.
+  v20 was deployed from the Sprite on 6 October 2026, the first deploy made
+  there.
+
+  Remote Control is set up as a Sprite service. `/code` in the owner's chat
+  starts it through the Sprites API, `/code stop` stops it, and it stops
+  itself after two quiet hours. A running service keeps a Sprite awake, so it
+  is off unless asked for. "Remote Control" in the runbook has the details.
+
+  Still to do: a Sprites token in SPRITES_TOKEN on Fly, then try `/code` from
+  the phone, and see what a month costs.
 
   To know: the Sprite's Claude sessions share your plan's limits with the
   bot. A heavy session around 07:30 ET could slow the brief. Work in one

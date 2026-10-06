@@ -30,22 +30,22 @@ Companion documents:
 
 | # | Function | Starts from | Entry point |
 |---|---|---|---|
-| 1 | [Start-up and the three loops](#1-start-up-and-the-three-loops) | The process starting (on Fly, the machine booting) | [`main`](../cmd/market-watch/main.go#L33) → [`Serve`](../internal/app/app.go#L858) |
-| 2 | [The daily brief](#2-the-daily-brief) | The scheduler: 07:30 New York, weekdays | [`RunScheduler`](../internal/app/app.go#L827) → [`publishScheduled`](../internal/app/app.go#L415) |
-| 3 | [Worth a closer look](#3-worth-a-closer-look) | Straight after the brief: the daily run, `/now`, `--once` | [`brief`](../internal/app/app.go#L425) → [`sendIdeas`](../internal/app/ideas.go#L88) |
+| 1 | [Start-up and the three loops](#1-start-up-and-the-three-loops) | The process starting (on Fly, the machine booting) | [`main`](../cmd/market-watch/main.go#L33) → [`Serve`](../internal/app/app.go#L871) |
+| 2 | [The daily brief](#2-the-daily-brief) | The scheduler: 07:30 New York, weekdays | [`RunScheduler`](../internal/app/app.go#L840) → [`publishScheduled`](../internal/app/app.go#L428) |
+| 3 | [Worth a closer look](#3-worth-a-closer-look) | Straight after the brief: the daily run, `/now`, `--once` | [`brief`](../internal/app/app.go#L438) → [`sendIdeas`](../internal/app/ideas.go#L88) |
 | 3a | [Weekly themes](#3a-weekly-themes) | The first scheduled closer look of the week | [`runThemes`](../internal/app/themes.go#L72) |
 | 3b | [Daily reactions](#3b-daily-reactions) | Every closer look | [`runReactions`](../internal/app/reactions.go#L68) |
 | 3c | [Facts and verdicts](#3c-facts-and-verdicts) | Called by 3a and 3b | [`factsFor`](../internal/app/ideas.go#L281) → [`judge`](../internal/app/ideas.go#L231) |
 | 4 | [Market history](#4-market-history) | A background loop, and before each closer look | [`RunMarket`](../internal/app/marketdata.go#L54), [`topUpMarket`](../internal/app/marketdata.go#L89) |
-| 5 | [Scorecard](#5-scorecard) | Verdicts shown, `/analyse`, `/scorecard` | [`recordVerdicts`](../internal/app/ideas.go#L419), [`recordAnalysis`](../internal/app/commands.go#L810), [`handleScorecard`](../internal/app/ideas.go#L469) |
-| 6 | [`/analyse`](#6-analyse) | Owner's command | [`handleAnalyse`](../internal/app/commands.go#L589) |
+| 5 | [Scorecard](#5-scorecard) | Verdicts shown, `/analyse`, `/scorecard` | [`recordVerdicts`](../internal/app/ideas.go#L419), [`recordAnalysis`](../internal/app/commands.go#L818), [`handleScorecard`](../internal/app/ideas.go#L469) |
+| 6 | [`/analyse`](#6-analyse) | Owner's command | [`handleAnalyse`](../internal/app/commands.go#L597) |
 | 6b | [`/industry`](#6b-industry) | Owner's command | [`handleIndustry`](../internal/app/industry.go#L22) |
-| 7 | [`/now`](#7-now) | Owner's command | [`handleNow`](../internal/app/commands.go#L247) |
+| 7 | [`/now`](#7-now) | Owner's command | [`handleNow`](../internal/app/commands.go#L255) |
 | 8 | [The channel and `/share`](#8-the-channel-and-share) | The daily run; owner's command | [`shareBrief`](../internal/app/channel.go#L127) → [`sendTogether`](../internal/app/pages.go#L61), [`handleShare`](../internal/app/channel.go#L196) |
 | 8b | [Pages](#8b-pages) | Every long delivery, when `PAGES_URL` is set | [`send`](../internal/app/pages.go#L39) → [`pages.Store.Publish`](../internal/pages/pages.go#L52) |
-| 9 | [`/watchlist` and `/sources`](#9-watchlist-and-sources) | Owner's command | [`handleWatchlist`](../internal/app/commands.go#L330), [`handleSources`](../internal/app/commands.go#L413) |
-| 10 | [The other commands](#10-the-other-commands) | Owner's command | [`HandleMessage`](../internal/app/commands.go#L70) |
-| 11 | [Failure alerts](#11-failure-alerts) | A scheduled brief failing | [`reportFailure`](../internal/app/app.go#L1086) |
+| 9 | [`/watchlist` and `/sources`](#9-watchlist-and-sources) | Owner's command | [`handleWatchlist`](../internal/app/commands.go#L338), [`handleSources`](../internal/app/commands.go#L421) |
+| 10 | [The other commands](#10-the-other-commands) | Owner's command | [`HandleMessage`](../internal/app/commands.go#L72) |
+| 11 | [Failure alerts](#11-failure-alerts) | A scheduled brief failing | [`reportFailure`](../internal/app/app.go#L1099) |
 | 12 | [Model calls (the relay)](#12-model-calls-the-relay) | Every call to a model | [`Relay.Begin`](../internal/relay/relay.go#L98), [`Run.Ask`](../internal/relay/relay.go#L229) |
 | 13 | [Run cache](#13-run-cache) | The brief, `/analyse`, the closer look | [`Cache.Start`](../internal/runcache/runcache.go#L99) |
 | 14 | [Secret scrubbing](#14-secret-scrubbing) | Every log line and error reply | [`logging.New`](../internal/logging/scrub.go#L35), [`logging.Scrub`](../internal/logging/scrub.go#L47) |
@@ -71,7 +71,7 @@ Companion documents:
    ▼                              ▲   (2 years of bars)                             ├─ /scorecard ─► Due, Settle, Summary ◄──────┤
  brief ─► sendReport              │                                                 ├─ /share ─► share(latest delivery)          │
    │  (prices, calendar, filings, │ read by                                         ├─ /watchlist, /sources ─► prefs.yaml        │
-   │   search, feeds, triage,     │                                                 └─ /start /help /schedule /stats /clear      │
+   │   search, feeds, triage,     │                                                 └─ /start /help /schedule /stats /clear /code│
    │   review, brief, new names)  │                                                                                              │
    ├─► owner's chat               │                                                                                              │
    ├─► sendIdeas ─────────────────┘                                                                                              │
@@ -102,7 +102,7 @@ What passes between the functions:
 
 **Starts from:** the process starting. On Fly, the Docker `CMD` runs `market-watch` with no flags.
 
-**Entry point:** [`main`](../cmd/market-watch/main.go#L33) → [`run`](../cmd/market-watch/main.go#L73) → [`App.Serve`](../internal/app/app.go#L858)
+**Entry point:** [`main`](../cmd/market-watch/main.go#L33) → [`run`](../cmd/market-watch/main.go#L73) → [`App.Serve`](../internal/app/app.go#L871)
 
 **What it does:** loads and checks the settings and builds the service. Then it runs three loops side by side until the program is told to stop.
 
@@ -113,13 +113,13 @@ What passes between the functions:
 | Step | Code | What it does |
 |---|---|---|
 | 1 | [`main`](../cmd/market-watch/main.go#L33) | Parses the flags `--once`, `--share`, `--check`, `--clear` and `--fold`. `--fold` goes straight to [`runFold`](../cmd/market-watch/main.go#L151) (see 15). |
-| 2 | [`config.Load`](../config/config.go#L206) | Reads every environment variable, and `.env` on your machine. It reports all the missing ones at once. |
+| 2 | [`config.Load`](../config/config.go#L213) | Reads every environment variable, and `.env` on your machine. It reports all the missing ones at once. |
 | 3 | [`config.LoadPrompts`](../config/prompts.go#L61) → [`CheckPrompts`](../config/prompts.go#L134) | Reads [prompts.md](../config/prompts.md). It stops the program if a section has lost a marker that a reply is read by. |
 | 4 | [`logging.New`](../internal/logging/scrub.go#L35) | Wraps the log handler so every line has its secrets removed (see 14). |
-| 5 | [`app.New`](../internal/app/app.go#L190) | Builds the `App`. It loads `prefs.yaml`, `covered.json`, `runs.json`, `candidates.json`, `themes.json` and `scorecard.json` from the data folder. It creates the Telegram, Finnhub, chart, FRED, Tavily, SEC, Massive and Nasdaq clients, and connects each model stage to the relay. A feature that is switched off leaves its field nil (`TRIAGE`, `REVIEW`, `DISCOVER`, `IDEAS`, `CONSENSUS`). |
+| 5 | [`app.New`](../internal/app/app.go#L195) | Builds the `App`. It loads `prefs.yaml`, `covered.json`, `runs.json`, `candidates.json`, `themes.json` and `scorecard.json` from the data folder. It creates the Telegram, Finnhub, chart, FRED, Tavily, SEC, Massive and Nasdaq clients, and connects each model stage to the relay. A feature that is switched off leaves its field nil (`TRIAGE`, `REVIEW`, `DISCOVER`, `IDEAS`, `CONSENSUS`). |
 | 6 | `signal.NotifyContext` in [`run`](../cmd/market-watch/main.go#L73) | SIGTERM cancels the context, so a brief that is being sent finishes its delivery. |
-| 7 | [`Serve`](../internal/app/app.go#L858) | Publishes the command menu ([`BotCommands`](../internal/app/commands.go#L50) → [`SetMyCommands`](../internal/telegram/updates.go#L125)). It throws away commands sent while it was down ([`DrainUpdates`](../internal/telegram/updates.go#L131)). |
-| 8 | [`Serve`](../internal/app/app.go#L858) | Starts three goroutines: **[`RunScheduler`](../internal/app/app.go#L827)** (2, and 3 after each brief), **[`RunMarket`](../internal/app/marketdata.go#L54)** and **[`Bot.Poll`](../internal/telegram/updates.go#L77)** → [`HandleMessage`](../internal/app/commands.go#L70) (6–10). With `PAGES_URL` set, there is a fourth, the page server **[`pages.Store.Serve`](../internal/pages/pages.go#L146)** (8b). The first one to fail stops the others. |
+| 7 | [`Serve`](../internal/app/app.go#L871) | Publishes the command menu ([`BotCommands`](../internal/app/commands.go#L51) → [`SetMyCommands`](../internal/telegram/updates.go#L125)). It throws away commands sent while it was down ([`DrainUpdates`](../internal/telegram/updates.go#L131)). |
+| 8 | [`Serve`](../internal/app/app.go#L871) | Starts three goroutines: **[`RunScheduler`](../internal/app/app.go#L840)** (2, and 3 after each brief), **[`RunMarket`](../internal/app/marketdata.go#L54)** and **[`Bot.Poll`](../internal/telegram/updates.go#L77)** → [`HandleMessage`](../internal/app/commands.go#L72) (6–10). With `PAGES_URL` set, there is a fourth, the page server **[`pages.Store.Serve`](../internal/pages/pages.go#L146)** (8b). The first one to fail stops the others. |
 
 **Links:** everything else runs from these three loops. The `App` struct holds a lock called `running`, which lets only one brief or closer look run at a time.
 
@@ -127,9 +127,9 @@ What passes between the functions:
 
 ## 2. The daily brief
 
-**Starts from:** [`RunScheduler`](../internal/app/app.go#L827) at `REPORT_AT` (07:30) in `SCHEDULE_TZ` (America/New_York), weekdays only. [`config.NextRun`](../config/config.go#L396) works out the next time afresh each round, so daylight saving never shifts it. In Singapore that is 19:30 until 1 November.
+**Starts from:** [`RunScheduler`](../internal/app/app.go#L840) at `REPORT_AT` (07:30) in `SCHEDULE_TZ` (America/New_York), weekdays only. [`config.NextRun`](../config/config.go#L406) works out the next time afresh each round, so daylight saving never shifts it. In Singapore that is 19:30 until 1 November.
 
-**Entry point:** [`publishScheduled`](../internal/app/app.go#L415) → [`brief`](../internal/app/app.go#L425)`(share=true, scheduled=true)` → [`sendReport`](../internal/app/app.go#L512)
+**Entry point:** [`publishScheduled`](../internal/app/app.go#L428) → [`brief`](../internal/app/app.go#L438)`(share=true, scheduled=true)` → [`sendReport`](../internal/app/app.go#L525)
 
 **What it does:** gathers the day's prices, SEC filings, news searches and about forty feeds. Opus 5.5 rates and files every article, and a second pass reviews where each one landed. Opus writes the brief, including what is coming up today and this week. It also spots new company names, and each one is checked against its exchange. The brief goes to the owner and the closer look follows at once. Then both go to the channel as one post.
 
@@ -142,7 +142,7 @@ What passes between the functions:
 
 | Step | Code | What it does |
 |---|---|---|
-| 1 | [`brief`](../internal/app/app.go#L425) | Takes the run lock. Stops if no chat is registered. Opens the run cache (`brief`) and a relay run folder. |
+| 1 | [`brief`](../internal/app/app.go#L438) | Takes the run lock. Stops if no chat is registered. Opens the run cache (`brief`) and a relay run folder. |
 | 2 | [`collectPrices`](../internal/app/prices.go#L46), in the background | Prices the 12 benchmark funds and every followed share from Finnhub ([`prices.Client.Fetch`](../internal/prices/prices.go#L71)), at about one a second. Whatever Finnhub misses comes from the charts ([`fromCharts`](../internal/app/prices.go#L71) → [`History.Fetch`](../internal/prices/history.go#L88)). |
 | 3 | [`collectFilings`](../internal/app/filings.go#L25) → [`sec.Client.Collect`](../internal/sec/sec.go#L107) | Each followed company's recent important 8-Ks, as articles. |
 | 4 | [`collectSearch`](../internal/app/search.go#L26) → [`search.Queries`](../internal/search/queries.go#L56) → [`search.Client.Collect`](../internal/search/search.go#L93) | Tavily news searches, the general ones plus one for each sector, reaching back to the previous brief ([`searchSince`](../internal/app/search.go#L56)). |
@@ -163,7 +163,7 @@ What passes between the functions:
 | 16 | [`Covered.Record`](../internal/history/history.go#L89), [`Runs.Add`](../internal/history/runs.go#L121) (+ [`recordSearch`](../internal/app/search.go#L80)) | Writes down what the brief covered, only after delivery, and the run's numbers for `/stats`. |
 | 17 | [`lookFrom`](../internal/app/ideas.go#L80) → [`sendIdeas`](../internal/app/ideas.go#L88) | Runs the closer look straight away, from the brief's articles (see 3). It returns the channel's copy. |
 | 18 | [`shareBrief`](../internal/app/channel.go#L127) | Posts the brief and the closer look to the channel as one post (see 8). |
-| 19 | [`RunScheduler`](../internal/app/app.go#L827) | On any error, [`reportFailure`](../internal/app/app.go#L1086) tells the owner (see 11). Nothing is retried. |
+| 19 | [`RunScheduler`](../internal/app/app.go#L840) | On any error, [`reportFailure`](../internal/app/app.go#L1099) tells the owner (see 11). Nothing is retried. |
 
 **Links:**
 - Feeds **3** (closer look), with its articles.
@@ -177,7 +177,7 @@ What passes between the functions:
 ## 3. Worth a closer look
 
 **Starts from:**
-- The daily run, `/now` and `--once`. [`brief`](../internal/app/app.go#L425) calls [`sendIdeas`](../internal/app/ideas.go#L88) as soon as the owner has the brief, still holding the brief's run lock and relay run. Until 2026-10-01 the daily run waited 20 minutes first.
+- The daily run, `/now` and `--once`. [`brief`](../internal/app/app.go#L438) calls [`sendIdeas`](../internal/app/ideas.go#L88) as soon as the owner has the brief, still holding the brief's run lock and relay run. Until 2026-10-01 the daily run waited 20 minutes first.
 
 **Entry point:** [`sendIdeas`](../internal/app/ideas.go#L88)
 
@@ -263,7 +263,7 @@ What passes between the functions:
 
 | Step | Code | What it does |
 |---|---|---|
-| 1 | [`ideaFacts`](../internal/app/ideas.go#L320) → [`marketFor`](../internal/app/prices.go#L170) | Price history and last price from the charts ([`ChartSymbol`](../internal/prices/symbols.go#L38)). A US listing uses Finnhub's live price when it can ([`quoteFor`](../internal/app/commands.go#L855)). |
+| 1 | [`ideaFacts`](../internal/app/ideas.go#L320) → [`marketFor`](../internal/app/prices.go#L170) | Price history and last price from the charts ([`ChartSymbol`](../internal/prices/symbols.go#L38)). A US listing uses Finnhub's live price when it can ([`quoteFor`](../internal/app/commands.go#L863)). |
 | 2 | [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L256) | For a US SEC filer, 5 years of accounts, plus what `/analyse` reads:<br>• [`AddBusiness`](../internal/fundamentals/business.go#L39);<br>• [`addIdeaNews`](../internal/app/ideas.go#L378): the last fortnight's Finnhub news and one Tavily search;<br>• [`addExpectations`](../internal/app/research.go#L115) → [`consensus.Client.Fetch`](../internal/consensus/consensus.go#L156), the forward P/E on the first year with six months or more to run ([`Report.Forward`](../internal/consensus/consensus.go#L75));<br>• [`addRelease`](../internal/app/research.go#L143) → [`sec.EarningsRelease`](../internal/sec/release.go#L40);<br>• [`addPeers`](../internal/app/research.go#L64) → [`Client.Peers`](../internal/fundamentals/peers.go#L177).<br>The fact sheet is [`Snapshot.Table`](../internal/fundamentals/table.go#L46) + [`SensitivityFacts`](../internal/fundamentals/sensitivity.go#L140). |
 | 3 | [`ideaFacts`](../internal/app/ideas.go#L320), fallback | Without accounts (a company that doesn't file with the SEC, or a Singapore one), the sheet is [`TradingFacts`](../internal/fundamentals/market.go#L25), "no accounts were read", and the same news ([`addIdeaNews`](../internal/app/ideas.go#L378), [`NewsFacts`](../internal/fundamentals/market.go#L141)). |
 | 4 | [`ideas.Judge.Judge`](../internal/ideas/judge.go#L54) | **Opus with the web** (stage `verdicts`), 3 companies a call, 2 calls at a time. It must confirm the claim its case rests on in two independent sources, and searches the web where the facts don't settle it. For each company it gives the verdict, confidence, case, numbers, catalyst, sensitivity, the sources it checked, and the risk. |
@@ -309,7 +309,7 @@ What passes between the functions:
 | Step | Code | What it does |
 |---|---|---|
 | 1 | [`recordVerdicts`](../internal/app/ideas.go#L419) | For the closer look, [`NewRecord`](../internal/ideas/scorecard.go#L208) makes a record for each idea shown, with its chart symbol, source (`theme` or `reaction`), theme and today's dollar exchange rate ([`dollarRates`](../internal/app/ideas.go#L510)). |
-| 2 | [`recordAnalysis`](../internal/app/commands.go#L810) | For `/analyse`, with source `analysis`. The same verdict on the same share within 24 hours counts once ([`AddOnce`](../internal/ideas/scorecard.go#L274)). It checks and adds in one step, so two analyses of one share finishing together count once. |
+| 2 | [`recordAnalysis`](../internal/app/commands.go#L818) | For `/analyse`, with source `analysis`. The same verdict on the same share within 24 hours counts once ([`AddOnce`](../internal/ideas/scorecard.go#L274)). It checks and adds in one step, so two analyses of one share finishing together count once. |
 | 3 | [`Scorecard.Add`](../internal/ideas/scorecard.go#L260) | Adds the record in memory and rewrites the whole file. |
 
 **`/scorecard`**, via [`handleScorecard`](../internal/app/ideas.go#L469):
@@ -328,9 +328,9 @@ What passes between the functions:
 
 ## 6. `/analyse`
 
-**Starts from:** the owner sending `/analyse`. The bot asks which company ([`ask`](../internal/app/ask.go#L31)), opening a reply box with "Ticker, e.g. NVDA" in it. [`HandleMessage`](../internal/app/commands.go#L70) takes the chat's next message as the ticker ([`answering`](../internal/app/ask.go#L54)), if it comes within 10 minutes and no command comes first. If the question is dropped either way, it is deleted ([`withdraw`](../internal/app/ask.go#L102)). Otherwise Telegram would reopen the reply box every time the chat is opened. An answer that doesn't look like a ticker ([`asTicker`](../internal/app/ask.go#L116)) gets the question again. `/analyse NVDA` in one line still works, and so do the spellings `/analyze` and `/accounts`. A ticker the SEC has no filer for is answered at once ([`analyseWhich`](../internal/app/commands.go#L551)), without waiting its turn behind the analyses running. Once it has a ticker, the analysis runs in the background ([`background`](../internal/app/jobs.go)), so several can run at once (see 10).
+**Starts from:** the owner sending `/analyse`. The bot asks which company ([`ask`](../internal/app/ask.go#L31)), opening a reply box with "Ticker, e.g. NVDA" in it. [`HandleMessage`](../internal/app/commands.go#L72) takes the chat's next message as the ticker ([`answering`](../internal/app/ask.go#L54)), if it comes within 10 minutes and no command comes first. If the question is dropped either way, it is deleted ([`withdraw`](../internal/app/ask.go#L102)). Otherwise Telegram would reopen the reply box every time the chat is opened. An answer that doesn't look like a ticker ([`asTicker`](../internal/app/ask.go#L116)) gets the question again. `/analyse NVDA` in one line still works, and so do the spellings `/analyze` and `/accounts`. A ticker the SEC has no filer for is answered at once ([`analyseWhich`](../internal/app/commands.go#L559)), without waiting its turn behind the analyses running. Once it has a ticker, the analysis runs in the background ([`background`](../internal/app/jobs.go)), so several can run at once (see 10).
 
-**Entry point:** [`handleAnalyse`](../internal/app/commands.go#L589)
+**Entry point:** [`handleAnalyse`](../internal/app/commands.go#L597)
 
 **What it does:** reads a company's SEC filings: five years, the year so far, and the latest five quarters each on its own. It also reads its trading, its news, what analysts expect and its latest results release. Opus, searching the web for the last fortnight's news and the company's plans, writes an analysis with the house method. It centres on the case for and against the company, where the company is heading, and whether its figures hold up. It ends with a short BUY, HOLD or SELL verdict against the S&P 500 over 12 months.
 
@@ -343,9 +343,9 @@ What passes between the functions:
 
 | Step | Code | What it does |
 |---|---|---|
-| 1 | [`handleAnalyse`](../internal/app/commands.go#L589) | Opens the run cache (`analysis`), replies "reading…", and gives itself 5 minutes plus one model call's time. |
+| 1 | [`handleAnalyse`](../internal/app/commands.go#L597) | Opens the run cache (`analysis`), replies "reading…", and gives itself 5 minutes plus one model call's time. |
 | 2 | [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L256) | 5 years of XBRL accounts from EDGAR (US GAAP or IFRS), with the year so far. [`buildQuarters`](../internal/fundamentals/quarters.go#L44) adds the latest five quarters each on its own, and the twelve months the last four make. A quarter's income is taken as filed. Its cash flow is the difference between two running totals. A fourth quarter is the year minus nine months. Its earnings a share are its profit over its own diluted shares, worked out the same way. Figures a share filed before a stock split are put on its basis ([`adjustForSplits`](../internal/fundamentals/splits.go#L90)). |
-| 3 | [`quoteFor`](../internal/app/commands.go#L855) | The share price, which turns the filed figures into multiples. |
+| 3 | [`quoteFor`](../internal/app/commands.go#L863) | The share price, which turns the filed figures into multiples. |
 | 4 | [`AddBusiness`](../internal/fundamentals/business.go#L39) | The business description from the annual report (10-K or 20-F). |
 | 5 | [`tradingFor`](../internal/app/prices.go#L146) → [`Summarise`](../internal/prices/history.go#L281) | Returns, averages, range, VWAP and volatility, and the S&P 500's returns over the same stretches. |
 | 6 | [`addNews`](../internal/app/prices.go#L232) | Finnhub company news plus 2 Tavily searches ([`searchCompany`](../internal/app/research.go#L214)), which cost 2 credits. [`Relevant`](../internal/fundamentals/news.go#L92) keeps only the results that name the company. |
@@ -353,10 +353,10 @@ What passes between the functions:
 | 8 | [`Relay.Begin`](../internal/relay/relay.go#L98) → [`Analyzer.Analyze`](../internal/fundamentals/analyze.go#L65) | **Opus with the web** (stage `analysis`) reads [`Snapshot.Table`](../internal/fundamentals/table.go#L46), with the quarters in their own block ([`quarterTable`](../internal/fundamentals/quarters.go#L196)). [method.md](../config/method.md) is added to its system prompt. It searches for the last fortnight's news, the company's plans, and what is due in the next ninety days. For a foreign filer whose interim figures aren't in XBRL, it also searches for its latest results announcement. With `ANALYSIS_TOOLS` on, it also has three tools of the service's own ([`analysisTools`](../internal/app/tools.go#L20) → [`relay.WithTools`](../internal/relay/tools.go#L37)): `find_concepts`, `read_concept` and `compute`, served by this program as an MCP server ([`AccountTools`](../internal/fundamentals/tools.go#L46)). It may make 16 lookups. What it asked is kept in `-tools.txt` beside the reply. |
 | 9 | [`SplitRelated`](../internal/fundamentals/related.go#L54) → [`VerifyRelated`](../internal/fundamentals/related.go#L90) | Cuts out the "companies to read next to it" table and checks those tickers against OpenFIGI. |
 | 10 | [`SplitVerdict`](../internal/fundamentals/verdict.go#L29), [`SplitShort`](../internal/fundamentals/verdict.go#L67) | Takes out THE VERDICT section, then IN SHORT, the analysis's own summary in plain words. [`SplitSources`](../internal/fundamentals/sources.go#L51) then takes out the links, which become numbered footnotes at the end, and renumbers the [3] citations in the text to match. |
-| 11 | [`analysisMessages`](../internal/app/commands.go#L789) → [`RenderAnalysis`](../internal/telegram/render.go#L684) | The analysis, then the verdict, then the related list. |
+| 11 | [`analysisMessages`](../internal/app/commands.go#L797) → [`RenderAnalysis`](../internal/telegram/render.go#L684) | The analysis, then the verdict, then the related list. |
 | 12 | [`send`](../internal/app/pages.go#L39) | Sends to the owner. With pages on, it sends the IN SHORT summary (what the company does, who buys it, what is coming, the figures that matter most, one point for and one against, in the analysis's order), then the verdict in one line ([`AnalysisSummary`](../internal/telegram/summary.go#L184)) and a button to the whole analysis (see 8b). |
 | 13 | [`rememberFor`](../internal/app/channel.go#L59) | Keeps the owner's copy and the channel's copy, which carries the warning, for `/share`. |
-| 14 | [`recordAnalysis`](../internal/app/commands.go#L810) | Writes the verdict to the scorecard (see 5). |
+| 14 | [`recordAnalysis`](../internal/app/commands.go#L818) | Writes the verdict to the scorecard (see 5). |
 
 **Links:** feeds **5** and **8**. The closer look's verdicts (**3c**) read the same sources, except that they make 1 Tavily search instead of 2.
 
@@ -388,7 +388,7 @@ What passes between the functions:
 
 ## 7. `/now`
 
-**Entry point:** [`handleNow`](../internal/app/commands.go#L247) → [`SendReport`](../internal/app/app.go#L393) → [`brief`](../internal/app/app.go#L425)`(share=false, later=false)`
+**Entry point:** [`handleNow`](../internal/app/commands.go#L255) → [`SendReport`](../internal/app/app.go#L406) → [`brief`](../internal/app/app.go#L438)`(share=false, later=false)`
 
 **What it does:** runs the whole of **2**, for the owner only. It is followed at once by **3** with the **reactions only**. `lk.Scheduled` is false, so the weekly themes never run from `/now`. Nothing goes to the channel until `/share`. If no chat is registered yet, `/now` registers the sender's chat first.
 
@@ -444,11 +444,11 @@ What passes between the functions:
 
 | Command | Code | What it does |
 |---|---|---|
-| `/watchlist` | [`renderWatchlists`](../internal/app/commands.go#L440) | Lists the sectors and companies in force. |
-| `/watchlist add <sector> <ticker or name>` | [`companyFrom`](../internal/app/commands.go#L384) → [`Prefs.AddCompany`](../config/prefs.go#L108) → [`Save`](../config/prefs.go#L194) | Follows a company. A bare ticker gets its name from the SEC index. |
+| `/watchlist` | [`renderWatchlists`](../internal/app/commands.go#L448) | Lists the sectors and companies in force. |
+| `/watchlist add <sector> <ticker or name>` | [`companyFrom`](../internal/app/commands.go#L392) → [`Prefs.AddCompany`](../config/prefs.go#L108) → [`Save`](../config/prefs.go#L194) | Follows a company. A bare ticker gets its name from the SEC index. |
 | `/watchlist remove <sector> <term>` | [`Prefs.RemoveCompany`](../config/prefs.go#L138) | Stops following one. |
-| `/watchlist edits` / `reset` | [`renderEdits`](../internal/app/commands.go#L488) / [`Prefs.ResetEdits`](../config/prefs.go#L166) | Shows or drops the changes made from Telegram. |
-| `/sources` / `/sources on\|off <id>` | [`renderSources`](../internal/app/commands.go#L508) / [`Prefs.SwitchFeed`](../config/prefs.go#L174) | Lists the feeds, or switches one. |
+| `/watchlist edits` / `reset` | [`renderEdits`](../internal/app/commands.go#L496) / [`Prefs.ResetEdits`](../config/prefs.go#L166) | Shows or drops the changes made from Telegram. |
+| `/sources` / `/sources on\|off <id>` | [`renderSources`](../internal/app/commands.go#L516) / [`Prefs.SwitchFeed`](../config/prefs.go#L174) | Lists the feeds, or switches one. |
 
 **Links:** the next **2** reads the lists in force, for prices, filings, matching, sections and the "already followed" checks.
 
@@ -456,7 +456,7 @@ What passes between the functions:
 
 ## 10. The other commands
 
-They all arrive through [`Bot.Poll`](../internal/telegram/updates.go#L77) → [`HandleMessage`](../internal/app/commands.go#L70). It ignores commands from any chat the owner hasn't allowed, routes on the command, and sends any error back with secrets scrubbed out.
+They all arrive through [`Bot.Poll`](../internal/telegram/updates.go#L77) → [`HandleMessage`](../internal/app/commands.go#L72). It ignores commands from any chat the owner hasn't allowed, routes on the command, and sends any error back with secrets scrubbed out.
 
 Most commands are quick and are handled in turn. `/analyse` and `/industry` take minutes. Once they know what to look at, they run as background jobs ([jobs.go](../internal/app/jobs.go)), side by side, and the bot keeps reading messages. `/now` also runs in the background ([`detach`](../internal/app/jobs.go)), and its brief runs alone:
 
@@ -471,18 +471,19 @@ A brief takes its turn through [`hold`](../internal/app/jobs.go): it waits for t
 
 | Command | Code | What it does |
 |---|---|---|
-| `/start` | [`handleStart`](../internal/app/commands.go#L227) | Registers the chat as the owner's, once. |
+| `/start` | [`handleStart`](../internal/app/commands.go#L235) | Registers the chat as the owner's, once. |
 | `/help` | `helpText` in [commands.go](../internal/app/commands.go) | What the bot can do. |
-| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L319) | When the next brief is due, in both time zones. |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L845) → [`Runs.Summary`](../internal/history/runs.go#L138) | What recent briefs found, placed, moved and cost (`runs.json`). |
+| `/schedule` | [`handleSchedule`](../internal/app/commands.go#L327) | When the next brief is due, in both time zones. |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L853) → [`Runs.Summary`](../internal/history/runs.go#L138) | What recent briefs found, placed, moved and cost (`runs.json`). |
 | `/usage` (or `/credits`) | [`handleUsage`](../internal/app/usage.go#L51) → [`planNow`](../internal/app/usage.go#L62), [`Search.Usage`](../internal/search/search.go#L302) | What is left of the Claude plan, and of the month's Tavily credits. For the plan it shows how much of each window is used and when it resets. The reading comes from the last call if that was under five minutes ago. Otherwise it makes a one-word Haiku call through [`CheckLimits`](../internal/relay/answer.go#L304). Any command chat may ask. |
-| `/clear` | [`handleClear`](../internal/app/commands.go#L276) → [`ClearChat`](../internal/app/commands.go#L283) → [`SweepMessages`](../internal/telegram/client.go#L218) | Deletes the bot's messages among the last 300 ids. Telegram only allows deleting messages less than 48 hours old. |
+| `/clear` | [`handleClear`](../internal/app/commands.go#L284) → [`ClearChat`](../internal/app/commands.go#L291) → [`SweepMessages`](../internal/telegram/client.go#L218) | Deletes the bot's messages among the last 300 ids. Telegram only allows deleting messages less than 48 hours old. |
+| `/code` | [`handleCode`](../internal/app/code.go) → [`sprites.Client`](../internal/sprites/sprites.go) | Turns on Remote Control on the Sprite the code is worked on from, through the Sprites API, so a session can be started from the Claude app. It wakes the Sprite, starts its `remote-control` service and waits until Remote Control says it's connected. `/code stop` stops the service and the Sprite goes back to sleep. The owner's chat only. Needs `SPRITES_TOKEN`. Runs in the background ([`detach`](../internal/app/jobs.go)), since a start can take most of a minute. |
 
 ---
 
 ## 11. Failure alerts
 
-**Entry point:** [`reportFailure`](../internal/app/app.go#L1086), called by [`RunScheduler`](../internal/app/app.go#L827) when a scheduled brief fails.
+**Entry point:** [`reportFailure`](../internal/app/app.go#L1099), called by [`RunScheduler`](../internal/app/app.go#L840) when a scheduled brief fails.
 
 **What it does:** sends the owner the error, with secrets scrubbed out, and says when the next attempt is. It never retries, because a retry would spend the plan on the same error. The closer look and the channel report their own failures to the owner ([`shareBrief`](../internal/app/channel.go#L127), [`shareIdeas`](../internal/app/channel.go#L170)).
 
@@ -524,7 +525,7 @@ Which model answers each stage (`DefaultModels` in [answer.go](../internal/relay
 
 ## 13. Run cache
 
-**Entry point:** [`Cache.Start`](../internal/runcache/runcache.go#L99)`(ctx, kind, subject)`, called by [`brief`](../internal/app/app.go#L425), [`handleAnalyse`](../internal/app/commands.go#L589), [`handleIndustry`](../internal/app/industry.go#L22) and [`sendIdeas`](../internal/app/ideas.go#L88).
+**Entry point:** [`Cache.Start`](../internal/runcache/runcache.go#L99)`(ctx, kind, subject)`, called by [`brief`](../internal/app/app.go#L438), [`handleAnalyse`](../internal/app/commands.go#L597), [`handleIndustry`](../internal/app/industry.go#L22) and [`sendIdeas`](../internal/app/ideas.go#L88).
 
 **What it does:** keeps the **latest** run of each kind in `data/cache/<kind>/`, where the kind is `brief`, `analysis`, `recommendations` or `industry`. It holds each step's data as JSON ([`Save`](../internal/runcache/runcache.go#L201)), the messages sent, the model calls, and `run.json` ([`Finish`](../internal/runcache/runcache.go#L246)). A run writes under `data/cache/.running/` and moves into its kind's folder when it finishes. If two runs of one kind overlap, the one that finished last is kept. Each compares its end time with the `run.json` of the run already kept. Secrets are scrubbed out. `scripts/sync-cache-from-fly.sh` brings it down from Fly. A change to the brief, analysis or closer look should start from it, rather than from a new run.
 
@@ -532,7 +533,7 @@ Which model answers each stage (`DefaultModels` in [answer.go](../internal/relay
 
 ## 14. Secret scrubbing
 
-**Entry point:** [`logging.New`](../internal/logging/scrub.go#L35) wraps the log handler at start-up. [`logging.Scrub`](../internal/logging/scrub.go#L47) cleans the error text sent to the chat ([`HandleMessage`](../internal/app/commands.go#L70), [`reportFailure`](../internal/app/app.go#L1086), the channel failures).
+**Entry point:** [`logging.New`](../internal/logging/scrub.go#L35) wraps the log handler at start-up. [`logging.Scrub`](../internal/logging/scrub.go#L47) cleans the error text sent to the chat ([`HandleMessage`](../internal/app/commands.go#L72), [`reportFailure`](../internal/app/app.go#L1099), the channel failures).
 
 **What it does:** replaces every credential in the settings with `[redacted]`. This is needed because `net/http` puts request addresses into its error messages, and those addresses contain the bot token and API keys.
 
@@ -544,11 +545,11 @@ All in [cmd/market-watch/main.go](../cmd/market-watch/main.go).
 
 | Flag | Code | What it does |
 |---|---|---|
-| (none) | [`run`](../cmd/market-watch/main.go#L73) → [`Serve`](../internal/app/app.go#L858) | The service (1). |
+| (none) | [`run`](../cmd/market-watch/main.go#L73) → [`Serve`](../internal/app/app.go#L871) | The service (1). |
 | `--check` | [`runCheck`](../cmd/market-watch/main.go#L229) | Checks each part without spending anything. It covers Telegram, the owner's chat, the channel, the feeds, Tavily (through its free usage call), one Massive session plus `history_missing_days`, Nasdaq's forecasts and listings, the next brief's time, and the Claude Code version and login. It never asks a model. The deploy script runs it on Fly. |
-| `--once` | [`SendReport`](../internal/app/app.go#L393) | Sends one brief plus the reactions to the owner, then exits. **Calls models.** |
-| `--once --share` | [`Publish`](../internal/app/app.go#L409) | The same, but also to the channel, with the closer look straight after. **Calls models.** |
-| `--clear` | [`runClear`](../cmd/market-watch/main.go#L195) → [`ClearChat`](../internal/app/commands.go#L283) | Deletes the bot's earlier messages. |
+| `--once` | [`SendReport`](../internal/app/app.go#L406) | Sends one brief plus the reactions to the owner, then exits. **Calls models.** |
+| `--once --share` | [`Publish`](../internal/app/app.go#L422) | The same, but also to the channel, with the closer look straight after. **Calls models.** |
+| `--clear` | [`runClear`](../cmd/market-watch/main.go#L195) → [`ClearChat`](../internal/app/commands.go#L291) | Deletes the bot's earlier messages. |
 | `--fold` | [`runFold`](../cmd/market-watch/main.go#L151) → [`config.Fold`](../config/fold.go#L29) | Writes the Telegram changes in `data/prefs.yaml` into `config/companies.yaml` and `config/sources.yaml`, changing only the lines it must. It needs no credentials. |
 | `--mcp-accounts <CIK>` | [`runAccountTools`](../cmd/market-watch/main.go#L346) → [`mcp.Serve`](../internal/mcp/mcp.go#L55) | Serves one company's account tools to Claude Code on standard input and output. Claude Code starts it for an analysis call; nobody runs it by hand. `--tools-log` names a file for each call. |
 
@@ -561,7 +562,8 @@ All in [cmd/market-watch/main.go](../cmd/market-watch/main.go).
 | [fly-deploy.sh](../scripts/fly-deploy.sh) | Creates the app and volume if they are missing. Copies the secrets from `.env`, printing only their names. Runs `fly deploy`, then runs `--check` on the machine as the app's user. Without `.env`, as on the Sprite, it only deploys an app that already exists, keeping its secrets, and then checks. | 15 (`--check`) |
 | [sync-from-fly.sh](../scripts/sync-from-fly.sh) | Copies `prefs.yaml`, `covered.json`, `runs.json`, `candidates.json`, `scorecard.json` and `terms.json` from Fly into `./data`. It backs up what they replace to `data/.backup/<time>/`, and leaves alone any file Fly doesn't have. Then it runs `--fold`. | 9, 15 (`--fold`) |
 | [sync-cache-from-fly.sh](../scripts/sync-cache-from-fly.sh) | Copies the latest `brief`, `analysis` and/or `recommendations` run cache from Fly into `data/cache/`. | 13 |
-| [sprite.sh](../scripts/sprite.sh) | `setup` builds the Sprite the code is worked on from: flyctl, the repository, the git identity and a test run. `push` and `pull` carry HANDOVER.md and the memory notes, which are not in git, between it and this PC. See "The Sprite" in the runbook. | |
+| [sprite.sh](../scripts/sprite.sh) | `setup` builds the Sprite the code is worked on from: flyctl, the repository, the git identity, the Remote Control service and a test run. `push` and `pull` carry HANDOVER.md and the memory notes, which are not in git, between it and this PC. See "The Sprite" in the runbook. | |
+| [remote-control.sh](../scripts/remote-control.sh) | Runs on the Sprite as its `remote-control` service, which `/code` starts. Starts Claude Code's Remote Control server in the repository. Stops the service after two hours with no session activity, so the Sprite can sleep. | 10 (`/code`) |
 
 ---
 

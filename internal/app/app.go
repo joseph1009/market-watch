@@ -32,6 +32,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/runcache"
 	"github.com/joseph1009/market-watch/internal/search"
 	"github.com/joseph1009/market-watch/internal/sec"
+	"github.com/joseph1009/market-watch/internal/sprites"
 	"github.com/joseph1009/market-watch/internal/telegram"
 	"github.com/joseph1009/market-watch/internal/terms"
 	"github.com/joseph1009/market-watch/internal/triage"
@@ -100,6 +101,10 @@ type App struct {
 	pageStore *pages.Store
 
 	MarketStore *market.Store
+
+	// Code starts and stops Remote Control on the Sprite the code is worked
+	// on from, for /code. Disabled without a Sprites token.
+	Code *sprites.Client
 
 	// Runs records what each brief cost and did, so the numbers that only ever
 	// reached a log can be read back with /stats.
@@ -236,6 +241,14 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		Search: &search.Client{
 			APIKey: cfg.TavilyAPIKey,
 			HTTP:   &http.Client{Timeout: 30 * time.Second},
+		},
+		// A start streams the service's output until Remote Control says it
+		// is connected, which can take most of a minute on a sleeping Sprite.
+		Code: &sprites.Client{
+			Token:   cfg.SpritesToken,
+			Sprite:  cfg.CodeSprite,
+			Service: "remote-control",
+			HTTP:    &http.Client{Timeout: 90 * time.Second},
 		},
 		Quotes: &prices.Client{
 			APIKey: cfg.FinnhubAPIKey,
