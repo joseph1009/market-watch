@@ -260,6 +260,39 @@ func TestDualCurrencyFilingKeepsTheReportingCurrency(t *testing.T) {
 	}
 }
 
+// A company that changed currency has more figures in the old one. Nebius,
+// which was Yandex, filed years of roubles before it reported in dollars, and
+// counting every figure put its analysis in roubles. The latest filing decides.
+func TestTheLatestFilingDecidesTheCurrency(t *testing.T) {
+	period := func(unit string, vals ...string) string {
+		return `"` + unit + `":[` + strings.Join(vals, ",") + `]`
+	}
+	rub := []string{
+		row("2023-01-01", "2023-12-31", 800000, "20-F", "2024-04-30"),
+		row("2022-01-01", "2022-12-31", 521000, "20-F", "2023-04-28"),
+		row("2021-01-01", "2021-12-31", 356000, "20-F", "2022-04-29"),
+		row("2020-01-01", "2020-12-31", 218000, "20-F", "2021-04-30"),
+	}
+	usd := []string{
+		row("2025-01-01", "2025-12-31", 600, "20-F", "2026-04-29"),
+		row("2024-01-01", "2024-12-31", 117, "20-F", "2026-04-29"),
+	}
+	c := conceptServer(t, map[string]string{
+		"Revenue": `{"units":{` + period("RUB", rub...) + `,` + period("USD", usd...) + `}}`,
+	})
+
+	snap, err := c.Fetch(context.Background(), "test", 5)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if snap.Currency != "USD" {
+		t.Errorf("Currency = %q, want USD, the latest filing's", snap.Currency)
+	}
+	if got := snap.Years[0].Figure("revenue"); !got.Known || got.Amount != 600 {
+		t.Errorf("latest revenue = %+v, want 600 dollars", got)
+	}
+}
+
 // Earnings per share and earnings per American share are both filed, in
 // different currencies. Taking the wrong one put 1.36 dollars in a column of
 // Taiwan dollars, beside figures forty times larger.

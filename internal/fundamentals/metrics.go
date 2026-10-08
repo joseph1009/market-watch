@@ -307,7 +307,7 @@ func (c *Client) Fetch(ctx context.Context, ticker string, years int) (Snapshot,
 	snap.obs, snap.years = byKey, years
 	snap.build()
 	if len(snap.Years) == 0 && len(snap.Balance.Figures) == 0 {
-		return Snapshot{}, fmt.Errorf("%s files with the SEC but reports no figures this reads", snap.Ticker)
+		return Snapshot{}, fmt.Errorf("%s %w", snap.Ticker, ErrNoFigures)
 	}
 	return snap, nil
 }
@@ -542,14 +542,34 @@ func formRank(form string) int {
 // translation beside the statutory yen, say -- so the currency is the one most
 // of the figures use, and everything in another unit is then left out rather
 // than added to it.
+//
+// Only the latest filing's figures vote. A company that changed currency has
+// more figures in the old one: Nebius, which was Yandex, filed fourteen years
+// in roubles before it reported in dollars, and counting them all put its
+// 2025 analysis in roubles (8 October 2026).
 func reportingCurrency(byKey map[string][]Observation) string {
+	var latest time.Time
+	for key, obs := range byKey {
+		if key == "sharesOutstanding" || key == "epsDiluted" {
+			continue
+		}
+		for _, o := range obs {
+			if monetary(o.Unit) && o.Filed.After(latest) {
+				latest = o.Filed
+			}
+		}
+	}
+	// Within a month of it: one filing's figures, tagged concept by concept,
+	// can carry slightly different dates.
+	since := latest.AddDate(0, -1, 0)
+
 	counts := map[string]int{}
 	for key, obs := range byKey {
 		if key == "sharesOutstanding" || key == "epsDiluted" {
 			continue
 		}
 		for _, o := range obs {
-			if monetary(o.Unit) {
+			if monetary(o.Unit) && !o.Filed.Before(since) {
 				counts[o.Unit]++
 			}
 		}

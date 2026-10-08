@@ -121,11 +121,12 @@ allowed for the scan ran out.
 
 [`collectFilings`](../internal/app/filings.go#L25) runs next, so that filings
 are treated like any other news rather than added at the end. It calls
-[`sec.Client.Collect`](../internal/sec/sec.go#L107). That looks each watchlist
-ticker up in EDGAR's ticker index and reads its recent filings. It keeps only
-the 8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L270)),
+[`sec.Client.Collect`](../internal/sec/sec.go#L115). That looks each watchlist
+ticker up in EDGAR's ticker index and reads its recent filings. The index is
+loaded once and kept, but a failed load is tried again two minutes later. It keeps only
+the 8-K item codes that matter ([`materialCodes`](../internal/sec/sec.go#L278)),
 and turns each filing into a `model.Article` with
-[`Filing.article`](../internal/sec/sec.go#L173).
+[`Filing.article`](../internal/sec/sec.go#L181).
 
 [`collectSearch`](../internal/app/search.go#L26) runs next, for the same
 reason. [`search.Queries`](../internal/search/queries.go#L56) builds the
@@ -573,10 +574,10 @@ sender is allowed and then routes on the command:
 | `/start` | [`handleStart`](../internal/app/commands.go#L235) | Registers the chat as the owner's, once |
 | `/now` | [`handleNow`](../internal/app/commands.go#L255) | A brief for the owner only, which waits for `/share`. Runs in the background, alone |
 | `/share` | [`handleShare`](../internal/app/channel.go#L196) | Posts whatever arrived last to the channel |
-| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L597) | Writes up a company (see below) |
+| `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L611) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L22) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
-| `/stats` | [`handleStats`](../internal/app/commands.go#L853) | What recent runs found and did |
+| `/stats` | [`handleStats`](../internal/app/commands.go#L867) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L338) | Follow a company or stop following it; list or drop the changes made here |
 | `/sources` | [`handleSources`](../internal/app/commands.go#L421) | Turn a feed on or off |
@@ -615,21 +616,22 @@ Otherwise Telegram would reopen the reply box every time the chat is opened,
 until the question was answered. An answer that doesn't look like a ticker gets
 the question again. `/analyse NVDA` still works in one line.
 
-[`handleAnalyse`](../internal/app/commands.go#L597) runs within its own time
+[`handleAnalyse`](../internal/app/commands.go#L611) runs within its own time
 limit, so it doesn't inherit whatever time the caller had left. It does the
 following.
 
 1. [`fundamentals.Client.Fetch`](../internal/fundamentals/metrics.go#L256)
    looks the ticker up in EDGAR. It reads five years of XBRL figures through
-   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L135) and builds a
+   [`xbrl.Client.Concept`](../internal/fundamentals/xbrl.go#L139) and builds a
    `Snapshot`. It handles both US GAAP and IFRS tag names
    ([`metrics.go`](../internal/fundamentals/metrics.go#L59)), and picks the
-   currency the filer reports in. It prefers later filings over earlier ones
+   currency the filer reports in, by its latest filing, so a company that
+   changed currency is read in the new one. It prefers later filings over earlier ones
    that were restated ([`supersedes`](../internal/fundamentals/metrics.go#L520)).
    It builds the current year so far beside the full years
-   ([`buildYTD`](../internal/fundamentals/metrics.go#L628)), using only
+   ([`buildYTD`](../internal/fundamentals/metrics.go#L648)), using only
    interim periods that end after the latest annual report.
-2. [`quoteFor`](../internal/app/commands.go#L863) adds the share price, so the
+2. [`quoteFor`](../internal/app/commands.go#L877) adds the share price, so the
    filed figures can become multiples.
 3. Three optional reads come next.
    - [`AddBusiness`](../internal/fundamentals/business.go#L39) takes the
@@ -1272,7 +1274,7 @@ reach: five points a year, scaled to the time passed.
 `Client.Fetch` builds a `Snapshot`. The `concept` tables map each figure to its
 US GAAP and IFRS tag names. It also has `buildYears`, `buildBalance` and
 `buildYTD`. `supersedes` prefers a later filing to an earlier one that was
-restated. `reportingCurrency` picks the currency the filer reports in.
+restated. `reportingCurrency` picks the currency the filer reports in, by the latest filing's figures.
 `Balance.CashPot` adds cash to short-term investments only where both are of
 one date, so no figure mixes two balance sheets.
 

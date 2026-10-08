@@ -86,7 +86,6 @@ func TestRoutineItemsAreIgnored(t *testing.T) {
 func TestCollectReturnsOnlyMaterialRecentFilings(t *testing.T) {
 	c, _ := newStub(t)
 	c.tickers = map[string]company{"AAPL": {CIK: 320193, Name: "Apple Inc."}}
-	c.once.Do(func() {}) // the index is pre-seeded; do not fetch it
 
 	since := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
 	articles, errs := c.Collect(context.Background(), []string{"AAPL"}, since)
@@ -107,7 +106,6 @@ func TestCollectReturnsOnlyMaterialRecentFilings(t *testing.T) {
 func TestUnknownTickersAreSkippedNotFailed(t *testing.T) {
 	c, _ := newStub(t)
 	c.tickers = map[string]company{"AAPL": {CIK: 320193, Name: "Apple Inc."}}
-	c.once.Do(func() {})
 
 	articles, errs := c.Collect(context.Background(), []string{"NOTREAL"}, time.Time{})
 	if len(errs) != 0 {
@@ -167,5 +165,40 @@ func TestSubmissionsDecodeAcceptsAQuotedCIK(t *testing.T) {
 	}
 	if got[0].Company != "Riot Platforms" {
 		t.Errorf("Company = %q", got[0].Company)
+	}
+}
+
+// On 8 October 2026 SEC answered one request for the index with a 404. The
+// failure was kept for the life of the process, so the brief went without
+// filings and every /analyse was refused until a restart. A failure now stands
+// for indexRetry, and the next request after it tries again.
+func TestAFailedIndexIsTriedAgainLater(t *testing.T) {
+	var asked int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		if asked == 1 {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(tickerIndexBody))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{HTTP: srv.Client(), UserAgent: "test contact@example.com", TickerIndexURL: srv.URL}
+	ctx := context.Background()
+
+	if _, err := c.tickerIndex(ctx); err == nil {
+		t.Fatal("the 404 was not reported")
+	}
+	if _, err := c.tickerIndex(ctx); err == nil || asked != 1 {
+		t.Errorf("asked SEC %d times straight after a failure, want 1, and the failure again", asked)
+	}
+
+	c.failedAt = time.Now().Add(-indexRetry)
+	index, err := c.tickerIndex(ctx)
+	if err != nil || index["NVDA"].CIK != 1045810 {
+		t.Fatalf("after the wait: %v, %v; want the index", index, err)
+	}
+	if _, err := c.tickerIndex(ctx); err != nil || asked != 2 {
+		t.Errorf("asked SEC %d times once it loaded, want 2", asked)
 	}
 }

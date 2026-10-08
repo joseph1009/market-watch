@@ -43,6 +43,10 @@ const (
 // bank reports no gross profit.
 var ErrNotReported = errors.New("concept not reported by this filer")
 
+// ErrNoFigures is a company that files with the SEC but reports none of the
+// figures this reads: a fund, say, or a shell company.
+var ErrNoFigures = errors.New("files with the SEC but reports no figures this reads")
+
 // Observation is one reported value for one period.
 type Observation struct {
 	Start  time.Time // zero for a balance-sheet item, which is a point in time

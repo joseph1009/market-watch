@@ -576,14 +576,30 @@ func (a *App) analyseWhich(ctx context.Context, msg telegram.Message, args []str
 			fmt.Sprintf("%s is not a ticker. Send one such as NVDA or BRK.B, or any command to stop.", escape(args[0])),
 			"Ticker, e.g. NVDA")
 	}
+	// Only a ticker SEC doesn't list is refused here. Any other failure, such
+	// as the index being out of reach, lets the analysis go ahead and try
+	// again itself.
 	if _, _, err := a.Accounts.Lookup.LookupCIK(ctx, ticker); errors.Is(err, sec.ErrNoFiler) {
-		return "", a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker))
+		return "", a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker, err))
 	}
 	return ticker, nil
 }
 
-// cannotRead is the reply for a ticker whose filings can't be read.
-func cannotRead(ticker string) string {
+// cannotRead is the reply for a ticker whose filings can't be read. Only a
+// ticker SEC doesn't list is the ticker's fault: any other failure is SEC
+// being out of reach, and on 8 October 2026 telling the owner NBIS might be
+// wrong sent them looking for a mistake that was not theirs.
+func cannotRead(ticker string, err error) string {
+	if errors.Is(err, fundamentals.ErrNoFigures) {
+		return fmt.Sprintf(
+			"%s files with the SEC, but its filings have no revenue, profit or balance sheet figures I can read. Funds and shell companies are the usual case.",
+			escape(ticker))
+	}
+	if !errors.Is(err, sec.ErrNoFiler) {
+		return fmt.Sprintf(
+			"I couldn't reach the SEC to read %s just now. That's usually brief: try again in a few minutes.",
+			escape(ticker))
+	}
 	return fmt.Sprintf(
 		"I could not read %s. Either it does not file with the SEC — foreign listings and private companies mostly do not — or the ticker is wrong.",
 		escape(ticker))
@@ -612,7 +628,7 @@ func (a *App) handleAnalyse(ctx context.Context, msg telegram.Message, ticker st
 	if err != nil {
 		a.Log.Warn("accounts", "ticker", ticker, "error", err)
 		cached.Fail(err)
-		return a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker))
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, cannotRead(ticker, err))
 	}
 
 	// The analysis is a run of its own, so its requests and replies -- the

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,7 @@ import (
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/ideas"
 	"github.com/joseph1009/market-watch/internal/model"
+	"github.com/joseph1009/market-watch/internal/sec"
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
@@ -111,5 +114,23 @@ func TestAnAnalysisVerdictGoesOnTheScorecard(t *testing.T) {
 	a.recordAnalysis(snap, verdict)
 	if len(card.All()) != 2 {
 		t.Errorf("a verdict given again the next day was not recorded")
+	}
+}
+
+// On 8 October 2026 SEC could not be reached, and /analyse NBIS was answered
+// as though the ticker might be wrong. Each failure now says what it was.
+func TestCannotReadSaysWhatWentWrong(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("%w for ticker %q", sec.ErrNoFiler, "XYZ"), "the ticker is wrong"},
+		{fmt.Errorf("NBIS %w", fundamentals.ErrNoFigures), "figures I can read"},
+		{errors.New("load SEC ticker index: http 404 Not Found"), "couldn't reach the SEC"},
+	}
+	for _, c := range cases {
+		if got := cannotRead("NBIS", c.err); !strings.Contains(got, c.want) {
+			t.Errorf("cannotRead(%v) = %q, want %q", c.err, got, c.want)
+		}
 	}
 }

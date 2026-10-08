@@ -84,11 +84,19 @@ type Client struct {
 
 	// tickers caches the ticker-to-CIK index for the process lifetime. It is a
 	// ~1MB file that changes rarely, and refetching it per run would be the
-	// largest request we make.
-	once    sync.Once
-	tickers map[string]company
-	initErr error
+	// largest request we make. A failure is not kept that way: SEC answered
+	// one request with a 404 on 8 October 2026, and the index, cached as
+	// failed, left that day's brief without filings and every /analyse
+	// refused until a restart. It is tried again once indexRetry has passed.
+	mu       sync.Mutex
+	tickers  map[string]company
+	failed   error
+	failedAt time.Time
 }
+
+// indexRetry is how long a failed load of the ticker index stands before the
+// next request tries again: long enough not to hammer SEC while it is down.
+const indexRetry = 2 * time.Minute
 
 type company struct {
 	CIK  int
@@ -286,38 +294,46 @@ func filingURL(cik int, accession, primary string) string {
 	return fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%d/%s/%s", cik, bare, primary)
 }
 
-// tickerIndex maps symbols to CIKs, fetched once per process.
+// tickerIndex maps symbols to CIKs, fetched once per process once it loads.
 func (c *Client) tickerIndex(ctx context.Context) (map[string]company, error) {
-	c.once.Do(func() {
-		// The file is a JSON object keyed by row number, not an array.
-		var raw map[string]struct {
-			CIK    int    `json:"cik_str"`
-			Ticker string `json:"ticker"`
-			Title  string `json:"title"`
-		}
-		if err := c.getJSON(ctx, c.tickerIndexURL(), &raw); err != nil {
-			c.initErr = fmt.Errorf("load SEC ticker index: %w", err)
-			return
-		}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.tickers != nil {
+		return c.tickers, nil
+	}
+	if c.failed != nil && time.Since(c.failedAt) < indexRetry {
+		return nil, c.failed
+	}
 
-		// In row order, so the first ticker seen for a company is its main
-		// one.
-		keys := make([]int, 0, len(raw))
-		for k := range raw {
-			if n, err := strconv.Atoi(k); err == nil {
-				keys = append(keys, n)
-			}
+	// The file is a JSON object keyed by row number, not an array.
+	var raw map[string]struct {
+		CIK    int    `json:"cik_str"`
+		Ticker string `json:"ticker"`
+		Title  string `json:"title"`
+	}
+	if err := c.getJSON(ctx, c.tickerIndexURL(), &raw); err != nil {
+		c.failed, c.failedAt = fmt.Errorf("load SEC ticker index: %w", err), time.Now()
+		return nil, c.failed
+	}
+	c.failed = nil
+
+	// In row order, so the first ticker seen for a company is its main one.
+	keys := make([]int, 0, len(raw))
+	for k := range raw {
+		if n, err := strconv.Atoi(k); err == nil {
+			keys = append(keys, n)
 		}
-		sort.Ints(keys)
-		c.tickers = make(map[string]company, len(raw))
-		seen := make(map[int]bool, len(raw))
-		for _, k := range keys {
-			row := raw[strconv.Itoa(k)]
-			c.tickers[strings.ToUpper(row.Ticker)] = company{CIK: row.CIK, Name: row.Title, Main: !seen[row.CIK]}
-			seen[row.CIK] = true
-		}
-	})
-	return c.tickers, c.initErr
+	}
+	sort.Ints(keys)
+	tickers := make(map[string]company, len(raw))
+	seen := make(map[int]bool, len(raw))
+	for _, k := range keys {
+		row := raw[strconv.Itoa(k)]
+		tickers[strings.ToUpper(row.Ticker)] = company{CIK: row.CIK, Name: row.Title, Main: !seen[row.CIK]}
+		seen[row.CIK] = true
+	}
+	c.tickers = tickers
+	return c.tickers, nil
 }
 
 func (c *Client) getJSON(ctx context.Context, url string, into any) error {
