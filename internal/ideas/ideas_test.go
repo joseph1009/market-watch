@@ -366,3 +366,66 @@ CHECKED: Reuters [1] and the company's 8-K agree.`}
 		t.Errorf("MU = %q, %q", got[1].Confidence, got[1].Checked)
 	}
 }
+
+// A BUY BELOW is a BUY waiting for a price. It needs one, under today's and
+// within MaxBelow of it: without one it is a HOLD, one a quarter down is a
+// fall rather than a pullback and a HOLD too, and one at or above today's
+// price is a plain BUY. A company BUY is closed to may still wait for a
+// lower price.
+func TestABuyBelowWaitsForAPrice(t *testing.T) {
+	at := func(sym string, last float64) model.Idea {
+		return model.Idea{Name: sym, Ticker: sym, Exchange: "US", Kind: model.IdeaTheme, Accounts: true,
+			Trading: &model.Trading{Last: last, Currency: "USD"}}
+	}
+	closed := at("DEAR", 50)
+	closed.BuyClosed = "it is dearer than its comparison on every measure"
+	ideas := []model.Idea{at("DIP", 50), at("NONE", 50), at("FAR", 50), at("NOW", 50), closed, at("BIG", 1100)}
+	c := &fakeCompleter{reply: `=== DIP
+VERDICT: BUY BELOW
+CONFIDENCE: medium
+ENTRY: 46.50 -- 18 times next year's expected earnings, its five-year median
+=== NONE
+VERDICT: BUY BELOW
+CONFIDENCE: medium
+=== FAR
+VERDICT: BUY BELOW
+CONFIDENCE: medium
+ENTRY: 30 -- where it was a year ago
+=== NOW
+VERDICT: BUY BELOW
+CONFIDENCE: medium
+ENTRY: 55 -- the theme's median multiple
+=== DEAR
+VERDICT: BUY BELOW
+CONFIDENCE: low
+ENTRY: US$45.00, where the multiple meets the theme's
+=== BIG
+VERDICT: Buy below US$1,046.20
+CONFIDENCE: medium`}
+	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), ideas, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]model.Idea{}
+	for _, g := range got {
+		by[g.Ticker] = g
+	}
+	if d := by["DIP"]; d.Verdict != model.BuyBelow || d.Entry != 46.5 || d.EntryWhy != "18 times next year's expected earnings, its five-year median" || !d.Shown() {
+		t.Errorf("a pullback = %+v", d)
+	}
+	if d := by["NONE"]; d.Verdict != model.Hold || !strings.Contains(d.Overruled, "no price") {
+		t.Errorf("no price = %+v", d)
+	}
+	if d := by["FAR"]; d.Verdict != model.Hold || !strings.Contains(d.Overruled, "40% under") {
+		t.Errorf("a price 40%% down = %+v", d)
+	}
+	if d := by["NOW"]; d.Verdict != model.Buy || d.Entry != 0 {
+		t.Errorf("a price above today's = %+v", d)
+	}
+	if d := by["DEAR"]; d.Verdict != model.BuyBelow || d.Entry != 45 || d.EntryWhy != "where the multiple meets the theme's" {
+		t.Errorf("BUY closed, waiting for a price = %+v", d)
+	}
+	if d := by["BIG"]; d.Verdict != model.BuyBelow || d.Entry != 1046.2 {
+		t.Errorf("the price in the verdict line = %+v", d)
+	}
+}

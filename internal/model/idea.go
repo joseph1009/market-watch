@@ -57,14 +57,20 @@ type Idea struct {
 	// pick is not repeated -- "BUY on 6 Oct" -- where this one differs.
 	Before string
 
-	// The verdict, as written: BUY, HOLD or SELL over the stated horizon, with a
-	// confidence, the case in a sentence or two, the figures that decide it,
-	// and the one thing most likely to prove it wrong.
+	// The verdict, as written: BUY, BUY BELOW, HOLD or SELL over the stated
+	// horizon, with a confidence, the case in a sentence or two, the figures
+	// that decide it, and the one thing most likely to prove it wrong.
 	Verdict    string
 	Confidence string
 	Case       string
 	Numbers    string
 	Risk       string
+
+	// Entry is the price a BUY BELOW waits for, in the currency the share
+	// trades in, and EntryWhy why that price: where the valuation would leave
+	// room, or where the share last found buyers.
+	Entry    float64
+	EntryWhy string
 
 	// Value is a theme pick's price set against its theme and its own
 	// history, as the verdict weighs it.
@@ -97,11 +103,34 @@ const (
 	IdeaReaction = "reaction"
 )
 
-// Shown reports whether the verdict belongs in the section: a BUY or a SELL.
-// A HOLD on a pick says the research found nothing to act on, and on a
-// reaction that the move matched the news; neither is a recommendation.
+// Shown reports whether the verdict belongs in the section: a BUY, a BUY
+// BELOW or a SELL. A HOLD on a pick says the research found nothing to act
+// on, and on a reaction that the move matched the news; neither is a
+// recommendation.
 func (i Idea) Shown() bool {
-	return i.Verdict == Buy || i.Verdict == Sell
+	return i.Verdict == Buy || i.Verdict == BuyBelow || i.Verdict == Sell
+}
+
+// Last is the share's last price, in the currency it trades in, or zero
+// where none was read.
+func (i Idea) Last() float64 {
+	switch {
+	case i.Trading != nil && i.Trading.Last > 0:
+		return i.Trading.Last
+	case i.Quote != nil:
+		return i.Quote.Price
+	}
+	return 0
+}
+
+// Below is how far under the last price a BUY BELOW's entry is, as a
+// fraction: 0.08 for a price 8% down. Zero where either is missing.
+func (i Idea) Below() float64 {
+	last := i.Last()
+	if last <= 0 || i.Entry <= 0 {
+		return 0
+	}
+	return 1 - i.Entry/last
 }
 
 // Symbol is how the idea is written for a reader: "000660.KS", "RMBS".
@@ -116,9 +145,13 @@ func (i Idea) Symbol() string {
 	}
 }
 
-// The verdicts an idea may carry.
+// The verdicts an idea may carry. A BUY BELOW is a BUY that waits for a
+// price: the business would earn one, but today's price leaves no room, and
+// at Entry it would. It is how "buy on a pullback" and "buy if it falls to"
+// are both written, and it is scored from the first close at or under Entry.
 const (
-	Buy  = "BUY"
-	Hold = "HOLD"
-	Sell = "SELL"
+	Buy      = "BUY"
+	BuyBelow = "BUY BELOW"
+	Hold     = "HOLD"
+	Sell     = "SELL"
 )

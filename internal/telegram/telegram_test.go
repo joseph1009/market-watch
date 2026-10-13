@@ -1551,3 +1551,31 @@ func TestMarkdownLinksBecomeLinks(t *testing.T) {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
 }
+
+// A BUY BELOW says what it asks for: on a pullback within a tenth of the
+// last price, and otherwise if it falls to its price, with how far that is
+// and why that price. The HOLDs a week looked at are named in one line.
+func TestABuyBelowSaysItsPrice(t *testing.T) {
+	idea := func(sym string, entry float64) model.Idea {
+		return model.Idea{Name: sym + " Inc", Ticker: sym, Exchange: "US", Kind: model.IdeaTheme, Theme: "Tankers", Accounts: true,
+			Verdict: model.BuyBelow, Confidence: "medium", Entry: entry, EntryWhy: "its five-year median multiple",
+			Trading: &model.Trading{Last: 50, Currency: "USD"}}
+	}
+	picks := Picks{
+		Themes: []ThemeView{{Name: "Tankers", Ideas: []model.Idea{idea("DIP", 46.5), idea("FAR", 40)}}},
+		Passed: []model.Idea{{Name: "Scorpio Tankers", Ticker: "STNG", Exchange: "US"}, {Name: "TORM", Ticker: "TRMD", Exchange: "US"}},
+	}
+	out := strings.Join(RenderPicks(picks, nil, IdeasOptions{}, time.UTC), "\n")
+	for _, want := range []string{
+		"🟡 <b>DIP Inc</b>",
+		"<b>BUY ON A PULLBACK</b> to $46.50, 7% under the last price · medium confidence",
+		"<b>BUY IF IT FALLS</b> to $40.00, 20% under the last price",
+		"<i>Why that price:</i> its five-year median multiple",
+		"<i>Also looked at, with no clear edge either way:</i> Scorpio Tankers",
+		"a BUY on a pullback, or if it falls to a price, means the same from that price",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+}

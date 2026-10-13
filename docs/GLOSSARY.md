@@ -98,7 +98,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 ## Verdicts and the scorecard
 
-**Verdict: BUY, HOLD, SELL.** BUY means the share should beat SPY by at least 5 points over 12 months, in US dollars. SELL means it should trail SPY by at least that much. HOLD is anything in between. The closer look does not show HOLDs.
+**Verdict: BUY, BUY BELOW, HOLD, SELL.** BUY means the share should beat SPY by at least 5 points over 12 months, in US dollars. SELL means it should trail SPY by at least that much. HOLD means it should land within 5 points of SPY. BUY BELOW is a BUY that waits for a price, no more than 25% under the last one: shown as "buy on a pullback" within 10% of it and "buy if it falls to" further down. The closer look does not write up HOLDs; the week's theme HOLDs are named in one line.
 
 **Confidence.** High, medium or low. The model gives it. The code caps it at low when no accounts were read. That covers every Singapore company, and anything that does not file with the SEC.
 
@@ -112,7 +112,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 - case: the argument;
 - risk: the single biggest risk.
 
-**Scorecard.** Every BUY and SELL shown, and every `/analyse` verdict, with how each has done against SPY ([scorecard.go](../internal/ideas/scorecard.go)). It is kept in `scorecard.json`. It was wiped clean on 27 September 2026, so it starts from the run of 28 September.
+**Scorecard.** Every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict, with how each has done against SPY ([scorecard.go](../internal/ideas/scorecard.go)). It is kept in `scorecard.json`. It was wiped clean on 27 September 2026, so it starts from the run of 28 September.
 
 **Entry.** The price a verdict is measured from. It is the opening price of the next session after the verdict, for the share and for SPY alike. Using a later price would let the verdict see the future.
 

@@ -87,8 +87,12 @@ func TestTheWeeksThemesRunOnceAWeek(t *testing.T) {
 			t.Errorf("the week's picks are missing %q:\n%s", want, owner)
 		}
 	}
-	if strings.Contains(owner, "Fluence") || strings.Contains(owner, "Grid batteries") {
-		t.Errorf("a HOLD, or a theme with nothing shown, was shown:\n%s", owner)
+	// A HOLD is not written up, only named in the line of those looked at.
+	if !strings.Contains(owner, "<i>Also looked at, with no clear edge either way:</i> Fluence") {
+		t.Errorf("the HOLD is not named in the line of those looked at:\n%s", owner)
+	}
+	if strings.Contains(owner, "<b>Fluence</b>") || strings.Contains(owner, "Grid batteries") {
+		t.Errorf("a HOLD was written up, or a theme with nothing shown was shown:\n%s", owner)
 	}
 	if sorts != 1 || scouts != 1 || research != 2 {
 		t.Errorf("calls: %d sorts, %d scouts, %d research", sorts, scouts, research)

@@ -64,6 +64,7 @@ type week struct {
 	views   []telegram.ThemeView
 	earlier []telegram.EarlierPick
 	shown   []model.Idea
+	passed  []model.Idea
 	charts  map[string]string
 	run     ideas.ThemeRun
 }
@@ -184,6 +185,9 @@ func (a *App) runThemes(ctx context.Context, listings []market.Listing, f follow
 	var keep []model.Idea
 	for _, j := range judged {
 		if !j.Shown() {
+			if j.Verdict == model.Hold {
+				w.passed = append(w.passed, j)
+			}
 			continue
 		}
 		if prev, ok := last[j.Symbol()]; ok && prev.Verdict == j.Verdict {
@@ -547,6 +551,7 @@ func (a *App) earlierPicks(ctx context.Context, panel *market.Panel, recent []id
 		called, ok := ideas.Called(r, path, bench, rates)
 		out = append(out, telegram.EarlierPick{
 			Name: r.Name, Symbol: r.Symbol, Verdict: r.Verdict, Theme: r.Theme, At: r.At,
+			Trigger: r.Trigger, Currency: r.Currency,
 			Ahead: 100 * called, Priced: ok,
 		})
 	}

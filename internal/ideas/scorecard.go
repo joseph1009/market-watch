@@ -50,6 +50,11 @@ const Clearly = 0.05
 // year is the stretch a verdict is a call on.
 const year = 365 * 24 * time.Hour
 
+// TriggerWindow is how long a BUY BELOW waits for its price. One whose share
+// has not closed at or under it in that time has lapsed: it is counted as
+// such, and never scored, since nobody following it bought.
+const TriggerWindow = 90 * 24 * time.Hour
+
 // Where a verdict came from: the closer look that started from the day's
 // news (every verdict before the weekly themes), the weekly themes found from
 // the market's numbers, the daily reactions to news, and /analyse.
@@ -99,6 +104,11 @@ type Record struct {
 	EntryAt        time.Time `json:"entry_at,omitempty"`
 	EntryBenchmark float64   `json:"entry_benchmark,omitempty"`
 	EntryFX        float64   `json:"entry_fx,omitempty"`
+
+	// Trigger is the price a BUY BELOW waits for, in the share's currency.
+	// Its entry is the first close at or under it, and the index's close
+	// that day, rather than the next open: see settle.
+	Trigger float64 `json:"trigger,omitempty"`
 }
 
 // source is Source with the empty value spelled out.
@@ -155,6 +165,37 @@ func (p Path) after(t time.Time) (Session, bool) {
 				s.Open = s.Close
 			}
 			return s, true
+		}
+	}
+	return Session{}, false
+}
+
+// reached is the first session after t, and within TriggerWindow of it,
+// that closed at or under price: the first close a reader waiting for that
+// price could have bought at. The chart sources give no day's low, so a
+// share that only dipped under it during a session has not reached it.
+func (p Path) reached(t time.Time, price float64) (Session, bool) {
+	for _, s := range p {
+		if !s.Opened.After(t) || s.Close <= 0 {
+			continue
+		}
+		if s.Opened.Sub(t) > TriggerWindow {
+			break
+		}
+		if s.Close <= price {
+			return s, true
+		}
+	}
+	return Session{}, false
+}
+
+// upTo is the last session with a close that opened by t: the index's close
+// on the day a share reached its price, or, for a share whose session opens
+// before New York's, the day before.
+func (p Path) upTo(t time.Time) (Session, bool) {
+	for i := len(p) - 1; i >= 0; i-- {
+		if !p[i].Opened.After(t) && p[i].Close > 0 {
+			return p[i], true
 		}
 	}
 	return Session{}, false
@@ -223,6 +264,9 @@ func NewRecord(idea model.Idea, chart string, at time.Time) (Record, bool) {
 	}
 	if idea.Trading != nil && idea.Trading.Last > 0 {
 		r.Price, r.Currency = idea.Trading.Last, idea.Trading.Currency
+	}
+	if idea.Verdict == model.BuyBelow {
+		r.Trigger = idea.Entry
 	}
 	if chart == "" || r.Verdict == "" {
 		return Record{}, false
@@ -363,9 +407,25 @@ func (s *Scorecard) Settle(paths map[string]Path, bench Path, rates Rates) error
 }
 
 // settle is a record with its entry, from its own path and the index's, or
-// false while the session after it has not happened.
+// false while the session after it has not happened. A BUY BELOW's entry is
+// the first close at or under its price, and false until there is one.
 func settle(r Record, path, bench Path, rates Rates) (Record, bool) {
 	if r.Entry > 0 && r.EntryBenchmark > 0 {
+		return r, true
+	}
+	if r.Verdict == model.BuyBelow {
+		share, ok := path.reached(r.At, r.Trigger)
+		if !ok {
+			return r, false
+		}
+		index, ok := bench.upTo(share.Opened)
+		if !ok {
+			return r, false
+		}
+		r.Entry, r.EntryAt, r.EntryBenchmark = share.Close, share.Opened, index.Close
+		if !r.dollar() {
+			r.EntryFX = rates.on(r.Currency, share.Opened)
+		}
 		return r, true
 	}
 	share, ok := path.after(r.At)
@@ -420,11 +480,11 @@ func (s scored) called() float64 {
 // SELL trailing it, by at least Clearly a year, pro rata. A verdict is scored
 // long before its twelve months are up, and a month in, holding it to the
 // full five points would call most good calls wrong. A HOLD has no direction
-// to be right about.
+// to be right about. A BUY BELOW that reached its price is a BUY from there.
 func (s scored) right() (bool, bool) {
 	need := Clearly * math.Min(float64(s.age)/float64(year), 1)
 	switch s.Verdict {
-	case model.Buy:
+	case model.Buy, model.BuyBelow:
 		return s.ahead() >= need, true
 	case model.Sell:
 		return s.ahead() <= -need, true
@@ -479,13 +539,30 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 
 	index, indexOK := bench.last()
 	var judged []scored
-	young, unpriced := 0, 0
+	young, unpriced, waiting, lapsed := 0, 0, 0, 0
 	for _, r := range s.records {
 		if now.Sub(r.At) < MinAge {
 			young++
 			continue
 		}
 		entry, ok := settle(r, paths[r.Chart], bench, rates)
+		// A BUY BELOW is a call from the day its price came, and is scored
+		// from then, once that is a week ago.
+		since := r.At
+		if r.Verdict == model.BuyBelow {
+			switch {
+			case !ok && now.Sub(r.At) > TriggerWindow:
+				lapsed++
+				continue
+			case !ok:
+				waiting++
+				continue
+			case now.Sub(entry.EntryAt) < MinAge:
+				young++
+				continue
+			}
+			since = entry.EntryAt
+		}
 		current, have := paths[r.Chart].last()
 		if !ok || !have || !indexOK || entry.Entry <= 0 || entry.EntryBenchmark <= 0 {
 			unpriced++
@@ -496,7 +573,7 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 			unpriced++
 			continue
 		}
-		judged = append(judged, scored{Record: entry, gain: gain, index: index.Close/entry.EntryBenchmark - 1, age: now.Sub(r.At)})
+		judged = append(judged, scored{Record: entry, gain: gain, index: index.Close/entry.EntryBenchmark - 1, age: now.Sub(since)})
 	}
 
 	fmt.Fprintf(&b, "%d verdicts since %s. ", len(s.records), s.records[0].At.In(where).Format("2 Jan"))
@@ -514,8 +591,15 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		}
 		b.WriteString(".\n")
 	}
+	if waiting+lapsed > 0 {
+		fmt.Fprintf(&b, "%d %s for %s price", waiting, plural(waiting, "BUY BELOW is waiting", "BUY BELOWs are waiting"), plural(waiting, "its", "their"))
+		if lapsed > 0 {
+			fmt.Fprintf(&b, ", and %d lapsed after three months without reaching %s", lapsed, plural(lapsed, "it", "theirs"))
+		}
+		b.WriteString(".\n")
+	}
 
-	for _, v := range []string{model.Buy, model.Hold, model.Sell} {
+	for _, v := range []string{model.Buy, model.BuyBelow, model.Hold, model.Sell} {
 		var group []scored
 		for _, j := range judged {
 			if j.Verdict == v {
@@ -538,6 +622,8 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		switch v {
 		case model.Buy:
 			fmt.Fprintf(&b, "%d on course to beat the S&amp;P 500 by %s (%d%%), ", rights, clearly(), percentOf(rights, len(group)))
+		case model.BuyBelow:
+			fmt.Fprintf(&b, "%d on course to beat the S&amp;P 500 by %s since reaching %s price (%d%%), ", rights, clearly(), plural(len(group), "its", "their"), percentOf(rights, len(group)))
 		case model.Sell:
 			fmt.Fprintf(&b, "%d on course to trail it by %s (%d%%), ", rights, clearly(), percentOf(rights, len(group)))
 		}
@@ -573,7 +659,7 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		}
 	}
 
-	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
+	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
 		clearly(), Clearly*100/12)
 	return b.String()
 }

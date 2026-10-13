@@ -128,7 +128,7 @@ func (a *App) sendIdeas(ctx context.Context, lk look) *outgoing {
 	if weekly {
 		w := a.runThemes(ctx, listings, following, backdrop)
 		if w.ran {
-			picks.Themes, picks.Earlier = w.views, w.earlier
+			picks.Themes, picks.Earlier, picks.Passed = w.views, w.earlier, w.passed
 			shown = append(shown, w.shown...)
 			for k, v := range w.charts {
 				charts[k] = v

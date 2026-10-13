@@ -485,13 +485,19 @@ Then it does the following.
    Opus with web search, three companies a call, two calls at a time, with the
    market backdrop shown above them. It checks the claim each case rests on in
    two independent sources, and names them in a CHECKED line. Each company gets
-   a BUY, HOLD or SELL, with its case, what is coming, the lever it depends on,
-   two to four numbers and the biggest risk. A theme pick also gets its price
+   a BUY, BUY BELOW, HOLD or SELL, with its case, what is coming, the lever it
+   depends on, two to four numbers and the biggest risk. A BUY BELOW is a BUY
+   that waits for a price, with an ENTRY line: the price, in the share's own
+   currency, and why that price. A theme pick also gets its price
    against its theme and its own history. A reaction gets what changed, how the
-   share moved, and whether the move was justified. `hold` then applies the two
-   rules that belong to the code. A BUY that the valuation rules out becomes a
-   HOLD. A verdict without accounts, or whose case rests on "one source only",
-   gets low confidence at most. HOLDs are not shown (`Idea.Shown`).
+   share moved, and whether the move was justified. `hold` then applies the
+   rules that belong to the code. A BUY BELOW without a price, or with one more
+   than 25% under the last price (`MaxBelow`), becomes a HOLD; one at or above
+   the last price becomes a BUY. A BUY that the valuation rules out becomes a
+   HOLD, though a BUY BELOW stays open to it. A verdict without accounts, or
+   whose case rests on "one source only", gets low confidence at most. HOLDs
+   are not written up (`Idea.Shown`); a week's theme HOLDs are named in one
+   line, "Also looked at, with no clear edge either way".
 5. **The layout.** [`telegram.RenderPicks`](../internal/telegram/ideas.go) lays
    them out. First come the themes, each with its numbers, what the research
    found, and a popular or early label. Then the reactions, then the earlier
@@ -1262,7 +1268,11 @@ code's rules.
 **[scorecard.go](../internal/ideas/scorecard.go)** has `Record` and
 `Scorecard.Add`. `Due` says which verdicts are old enough to grade.
 `Currencies` says whose exchange rates they need. `Settle` writes down each
-verdict's entry price, the first open after it, from a `Path` of sessions.
+verdict's entry price, the first open after it, from a `Path` of sessions. A
+BUY BELOW's entry is instead the first close at or under its `Trigger`, and
+the index's close that day; the chart sources give no day's low. One not
+reached within `TriggerWindow` (90 days) has lapsed, and is counted but never
+scored.
 `Summary` measures each one against the S&P 500 in US dollars from that entry.
 It splits the BUYs and SELLs by confidence and by how the company was found
 (`Source`). `MinAge` is a week. `Clearly` is the margin a BUY or SELL must
@@ -1272,7 +1282,9 @@ reach: five points a year, scaled to the time passed.
 
 **[metrics.go](../internal/fundamentals/metrics.go)** reads the accounts.
 `Client.Fetch` builds a `Snapshot`. The `concept` tables map each figure to its
-US GAAP and IFRS tag names. It also has `buildYears`, `buildBalance` and
+US GAAP and IFRS tag names. Revenue is a `total`: where two of its tags give
+one period in the same filing, the larger is kept, since a landlord's revenue
+from contracts with customers leaves out its rent. It also has `buildYears`, `buildBalance` and
 `buildYTD`. `supersedes` prefers a later filing to an earlier one that was
 restated. `reportingCurrency` picks the currency the filer reports in, by the latest filing's figures.
 `Balance.CashPot` adds cash to short-term investments only where both are of

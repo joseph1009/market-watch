@@ -279,3 +279,53 @@ func TestAnEmptyScorecardSaysWhenItStarts(t *testing.T) {
 		t.Errorf("summary = %q", text)
 	}
 }
+
+// A BUY BELOW is measured from the first close at or under its price, against
+// the index's close that day. Until then it is waiting, and three months on
+// without it, lapsed; neither is scored.
+func TestABuyBelowIsScoredFromItsPrice(t *testing.T) {
+	path := t.TempDir() + "/scorecard.json"
+	s, err := LoadScorecard(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	then := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	now := then.Add(30 * 24 * time.Hour)
+	if err := s.Add(
+		Record{At: then, Name: "Dipper", Symbol: "DIP", Chart: "DIP", Verdict: model.BuyBelow, Price: 100, Trigger: 90},
+		Record{At: then, Name: "Waiter", Symbol: "WAIT", Chart: "WAIT", Verdict: model.BuyBelow, Price: 100, Trigger: 50},
+		Record{At: now.Add(-100 * 24 * time.Hour), Name: "Lapsed", Symbol: "OLD", Chart: "OLD", Verdict: model.BuyBelow, Price: 100, Trigger: 50},
+	); err != nil {
+		t.Fatal(err)
+	}
+	// It dipped under 90 during the 5th only to close at 92, and closed at
+	// 89.50 on the 8th, when the index closed at 505. By the 30th the share
+	// is at 99, up 10.6%, and the index at 525, up 4.0%.
+	paths := map[string]Path{
+		"DIP":  {day(1, 100, 100), day(5, 95, 92), day(8, 91, 89.5), day(30, 100, 99)},
+		"WAIT": {day(1, 100, 100), day(30, 80, 81)},
+	}
+	bench := Path{day(1, 500, 500), day(5, 500, 498), day(8, 500, 505), day(30, 520, 525)}
+
+	if err := s.Settle(paths, bench, nil); err != nil {
+		t.Fatal(err)
+	}
+	r := s.All()[0]
+	if r.Entry != 89.5 || r.EntryBenchmark != 505 || r.EntryAt.Day() != 8 {
+		t.Errorf("entry = %v at %v against %v, want 89.50 on the 8th against 505", r.Entry, r.EntryAt, r.EntryBenchmark)
+	}
+	if s.All()[1].Entry != 0 {
+		t.Errorf("a price never reached was settled: %+v", s.All()[1])
+	}
+
+	text := s.Summary(now, paths, bench, nil, time.UTC)
+	for _, want := range []string{
+		"1 BUY BELOW is waiting for its price, and 1 lapsed after three months without reaching it.",
+		"<b>BUY BELOW</b>, 1 scored: 1 on course to beat the S&amp;P 500 by 5 points since reaching its price (100%), on average 6.7 points ahead of it",
+		"A BUY BELOW is a BUY that waits for a lower price",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary is missing %q:\n%s", want, text)
+		}
+	}
+}

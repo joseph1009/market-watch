@@ -394,6 +394,9 @@ func PicksDoc(p Picks, cited []model.Article, opts IdeasOptions, now time.Time, 
 		}
 		doc.Parts = append(doc.Parts, sec)
 	}
+	if line := passedLine(p.Passed); line != "" && weekly {
+		doc.Parts = append(doc.Parts, pages.Section{ID: "passed", Title: "Looked at, no clear edge", Lead: line})
+	}
 
 	if len(p.Reactions) > 0 {
 		const lead = "Shares that moved several times their usual on the last session, where the move and the news do not fit."
@@ -408,10 +411,13 @@ func PicksDoc(p Picks, cited []model.Article, opts IdeasOptions, now time.Time, 
 		t := pages.Table{Head: []string{"Company", "", "Verdict", "On", "Since"}, Align: "lllrr"}
 		for _, e := range p.Earlier {
 			since := "<i>not yet traded</i>"
-			if e.Priced {
+			switch {
+			case e.Priced:
 				since = fmt.Sprintf("<b>%+.1f</b> points", e.Ahead)
+			case e.Verdict == model.BuyBelow:
+				since = "<i>waiting for its price</i>"
 			}
-			t.Rows = append(t.Rows, []string{escape(e.Name), flaggedSymbol(e.Symbol), "<b>" + escape(e.Verdict) + "</b>",
+			t.Rows = append(t.Rows, []string{escape(e.Name), flaggedSymbol(e.Symbol), "<b>" + escape(e.label()) + "</b>",
 				e.At.In(where).Format("2 Jan"), since})
 		}
 		t.Note = "<i>Points the way each verdict called it, against the S&amp;P 500, since the first open after it. A pick is not written up again for eight weeks unless its verdict changes.</i>"
@@ -437,7 +443,7 @@ func glance(ideas []model.Idea) pages.Table {
 			move = escape(idea.Quote.Move())
 		}
 		t.Rows = append(t.Rows, []string{"<b>" + escape(idea.Name) + "</b>", flagged(idea.Symbol(), idea.Exchange),
-			"<b>" + escape(idea.Verdict) + "</b>", escape(idea.Confidence), escape(why), move})
+			verdictLabel(idea), escape(idea.Confidence), escape(why), move})
 	}
 	return t
 }
@@ -445,8 +451,11 @@ func glance(ideas []model.Idea) pages.Table {
 // ideaCard is one company: its verdict, its price and moves, and its case a
 // labelled part at a time.
 func ideaCard(idea model.Idea, cited []model.Article) pages.Card {
-	card := pages.Card{ID: anchorID(idea.Symbol()), Tone: strings.ToLower(idea.Verdict), Badge: idea.Verdict,
+	card := pages.Card{ID: anchorID(idea.Symbol()), Tone: tone(idea.Verdict), Badge: idea.Verdict,
 		Title: idea.Name, Code: idea.Symbol()}
+	if idea.Verdict == model.BuyBelow && idea.Entry > 0 {
+		card.Meta = append(card.Meta, fmt.Sprintf("buy at %s, %.0f%% under the last price", priceIn(idea.Entry, ideaUnit(idea)), 100*idea.Below()))
+	}
 	if idea.Confidence != "" {
 		card.Meta = append(card.Meta, idea.Confidence+" confidence")
 	}
@@ -473,6 +482,7 @@ func ideaCard(idea model.Idea, cited []model.Article) pages.Card {
 		pages.Field{Label: "The move", Body: escape(idea.Moved)},
 		pages.Field{Label: "Justified?", Body: linkCitations(escape(idea.Reaction), cited)},
 		pages.Field{Label: "The price", Body: escape(idea.Value)},
+		pages.Field{Label: "Why that price", Body: escape(entryWhy(idea))},
 		pages.Field{Label: "Warning signs", Body: escape(strings.Join(idea.Flags, "; "))},
 		pages.Field{Label: "The case", Body: linkCitations(escape(idea.Case), cited)},
 		pages.Field{Label: "Catalyst", Body: linkCitations(escape(idea.Catalyst), cited)},
@@ -493,6 +503,22 @@ func ideaCard(idea model.Idea, cited []model.Article) pages.Card {
 		card.Parts = append(card.Parts, pages.Sources{Title: "The stories behind it", Links: links})
 	}
 	return card
+}
+
+// tone is a verdict's colour on a page: a BUY BELOW is a BUY's.
+func tone(verdict string) string {
+	if verdict == model.BuyBelow {
+		return "buy"
+	}
+	return strings.ToLower(verdict)
+}
+
+// entryWhy is why a BUY BELOW waits for its price, and empty for any other.
+func entryWhy(idea model.Idea) string {
+	if idea.Verdict != model.BuyBelow {
+		return ""
+	}
+	return idea.EntryWhy
 }
 
 // numberItems are the figures a verdict rests on, which the prompt asks for

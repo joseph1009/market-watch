@@ -142,7 +142,7 @@ func tally(ideas []model.Idea) string {
 	if len(ideas) == 1 {
 		line = "<b>1 company</b>"
 	}
-	for _, v := range []string{model.Buy, model.Hold, model.Sell} {
+	for _, v := range []string{model.Buy, model.BuyBelow, model.Hold, model.Sell} {
 		if n[v] > 0 {
 			line += fmt.Sprintf(" · %s %d %s", verdictMarks[v], n[v], v)
 		}
@@ -160,7 +160,7 @@ func pickLines(idea model.Idea) string {
 	if s := idea.Symbol(); s != "" {
 		head += " " + flagged(s, idea.Exchange)
 	}
-	verdict := "<b>" + escape(idea.Verdict) + "</b>"
+	verdict := verdictLabel(idea)
 	if idea.Confidence != "" {
 		verdict += " · " + escape(idea.Confidence) + " confidence"
 	}

@@ -184,7 +184,7 @@ What passes between the functions:
 **What it does:**
 - **Once a week** (only on the scheduled run's first look of the week), up to 10 companies from the weekly themes (3a).
 - **Every day**, up to 3 shares that moved far beyond their usual on the news (3b).
-- Each company gets a BUY, HOLD or SELL verdict (3c). Only BUYs and SELLs are shown, and only for companies the watchlists don't follow. A day with none sends nothing.
+- Each company gets a BUY, BUY BELOW, HOLD or SELL verdict (3c). A BUY BELOW is a BUY that waits for a price: "buy on a pullback" within 10% of the last price, "buy if it falls to" further down, never more than 25%. Only BUYs, BUY BELOWs and SELLs are written up, and only for companies the watchlists don't follow; the week's theme HOLDs are named in one line. A day with none sends nothing.
 
 **Files:** [ideas.go](../internal/app/ideas.go), [themes.go](../internal/app/themes.go), [reactions.go](../internal/app/reactions.go), [marketdata.go](../internal/app/marketdata.go), [research.go](../internal/app/research.go), [channel.go](../internal/app/channel.go), [internal/ideas](../internal/ideas/), [internal/market](../internal/market/), [internal/telegram/ideas.go](../internal/telegram/ideas.go)
 
@@ -202,7 +202,7 @@ What passes between the functions:
 | 8 | [`ThemeLog.Add`](../internal/ideas/themelog.go#L61) | Writes the week to `themes.json` however it went, so it runs once a week. |
 | 9 | [`telegram.RenderPicks`](../internal/telegram/ideas.go#L94) → [`send`](../internal/app/pages.go#L39) | Lays out and sends to the owner the themes with their picks, then the reactions, then the earlier picks. With pages on, it sends one line for each pick ([`PicksSummary`](../internal/telegram/summary.go#L98)) and a button to the cases (see 8b). The message ids are added to `LastBrief`, so they are cleared along with the brief. |
 | 10 | [`sendIdeas`](../internal/app/ideas.go#L88) | Returns a copy laid out with `ForChannel`, headed by [`channelNote`](../internal/telegram/ideas.go#L35), the warning that must stay. The daily run posts it with the brief ([`shareBrief`](../internal/app/channel.go#L127), see 8). |
-| 11 | [`recordVerdicts`](../internal/app/ideas.go#L419) | Writes every BUY and SELL shown to the scorecard (see 5). |
+| 11 | [`recordVerdicts`](../internal/app/ideas.go#L419) | Writes every BUY, BUY BELOW and SELL shown to the scorecard (see 5), a BUY BELOW with its price. |
 
 **Links:**
 - Reads **2** (the brief's articles) and **4** (the bars).
@@ -234,7 +234,7 @@ What passes between the functions:
 | 13 | [`factsFor`](../internal/app/ideas.go#L281) | See **3c**. |
 | 14 | [`value`](../internal/app/themes.go#L371) | Reads the accounts of up to 8 top members per theme ([`readAccounts`](../internal/app/themes.go#L466)) to get the theme's medians. Compares each candidate's [`Multiples`](../internal/fundamentals/multiples.go#L68) with the theme and with its own five year ends ([`pastMultiples`](../internal/app/themes.go#L504)), adds [`WarningSigns`](../internal/ideas/valuation.go#L188), and sets [`BuyClosed`](../internal/ideas/valuation.go#L109). |
 | 15 | [`judge`](../internal/app/ideas.go#L231) | See **3c**. |
-| 16 | [`best`](../internal/app/ideas.go#L550) | Keeps only BUYs and SELLs. Drops any with the same verdict as in the last 8 weeks. Keeps at most 10 (`PicksShown`), the most confident first. |
+| 16 | [`best`](../internal/app/ideas.go#L550) | Keeps only BUYs, BUY BELOWs and SELLs. Drops any with the same verdict as in the last 8 weeks. Keeps at most 10 (`PicksShown`), the most confident first. |
 | 17 | [`earlierPicks`](../internal/app/themes.go#L528) → [`panelPath`](../internal/app/marketdata.go#L183), [`ideas.Called`](../internal/ideas/scorecard.go#L438) | The last 8 weeks' picks, with how each has done against SPY. |
 
 ### 3b. Daily reactions
@@ -297,8 +297,9 @@ What passes between the functions:
 ## 5. Scorecard
 
 **What it does:**
-- Records every BUY and SELL shown, and every `/analyse` verdict.
+- Records every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict.
 - Grades each against the S&P 500 (SPY) in US dollars once it is a week old. Both the share and SPY are measured from the first open after the verdict.
+- A BUY BELOW is measured from the first close at or under its price, against SPY's close that day, and graded once that is a week old. Until then it is waiting; after 90 days without it, lapsed. Neither is graded.
 - A BUY is right if it beats SPY by at least 5 points a year, scaled to the time passed (`Clearly`). A SELL is right if it trails SPY by as much.
 - It is stored in `data/scorecard.json`, and **held in memory** while the service runs.
 

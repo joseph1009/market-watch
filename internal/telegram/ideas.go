@@ -28,7 +28,7 @@ type IdeasOptions struct {
 // both, because this is the only place a channel reader will see them. If it
 // goes, the closer look goes back to the owner only. See docs/RUNBOOK.md.
 const (
-	verdictMeaning = "BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over 12 months."
+	verdictMeaning = "BUY and SELL mean it expects the share to beat or trail the S&amp;P 500 by at least 5 percentage points over 12 months; a BUY on a pullback, or if it falls to a price, means the same from that price."
 
 	ownerNote = "<i>Companies found from market data and the news, " + verdictMeaning + "</i>"
 
@@ -58,6 +58,11 @@ type EarlierPick struct {
 	Name, Symbol, Verdict, Theme string
 	At                           time.Time
 
+	// Trigger is a BUY BELOW's price, in Currency: until the share closes
+	// there it is waiting, and has nothing to be priced against.
+	Trigger  float64
+	Currency string
+
 	// Ahead is how far it has gone the way its verdict said, against the
 	// index, in percentage points, where Priced.
 	Ahead  float64
@@ -65,11 +70,14 @@ type EarlierPick struct {
 }
 
 // Picks is one closer look: the week's themes on the day they run, the
-// day's reactions, and on the themes' day the earlier picks.
+// day's reactions, and on the themes' day the earlier picks. Passed are the
+// theme picks judged a HOLD: not written up, but named in a line, so the
+// reader can see what was looked at and found no edge either way.
 type Picks struct {
 	Themes    []ThemeView
 	Reactions []model.Idea
 	Earlier   []EarlierPick
+	Passed    []model.Idea
 }
 
 // Empty reports whether there is nothing to show.
@@ -136,6 +144,9 @@ func RenderPicks(p Picks, cited []model.Article, opts IdeasOptions, where *time.
 		}
 		segs = append(segs, segment{blocks: blocks})
 	}
+	if line := passedLine(p.Passed); line != "" && weekly {
+		segs = append(segs, segment{blocks: []string{divider + "\n" + line}})
+	}
 
 	if len(p.Reactions) > 0 {
 		var blocks []string
@@ -155,10 +166,13 @@ func RenderPicks(p Picks, cited []model.Article, opts IdeasOptions, where *time.
 	if len(p.Earlier) > 0 {
 		lines := []string{divider + "\n<b>Earlier picks</b>"}
 		for _, e := range p.Earlier {
-			line := fmt.Sprintf("• %s %s · %s on %s", escape(e.Name), flaggedSymbol(e.Symbol), escape(e.Verdict), e.At.In(where).Format("2 Jan"))
-			if e.Priced {
+			line := fmt.Sprintf("• %s %s · %s on %s", escape(e.Name), flaggedSymbol(e.Symbol), escape(e.label()), e.At.In(where).Format("2 Jan"))
+			switch {
+			case e.Priced:
 				line += fmt.Sprintf(" · %+.1f points the way called", e.Ahead)
-			} else {
+			case e.Verdict == model.BuyBelow:
+				line += " · waiting for its price"
+			default:
 				line += " · not yet traded since"
 			}
 			lines = append(lines, line)
@@ -169,13 +183,72 @@ func RenderPicks(p Picks, cited []model.Article, opts IdeasOptions, where *time.
 	return pack(segs)
 }
 
+// label is the verdict with a BUY BELOW's price: "BUY BELOW $41.50".
+func (e EarlierPick) label() string {
+	if e.Verdict == model.BuyBelow && e.Trigger > 0 {
+		return e.Verdict + " " + priceIn(e.Trigger, unitOr(e.Currency))
+	}
+	return e.Verdict
+}
+
+// passedLine names the picks judged a HOLD, in one line, or is empty.
+func passedLine(passed []model.Idea) string {
+	var names []string
+	for _, idea := range passed {
+		names = append(names, escape(idea.Name)+" "+flaggedSymbol(idea.Symbol()))
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "<i>Also looked at, with no clear edge either way:</i> " + strings.Join(names, ", ") + "."
+}
+
 // companyRule separates one company from the next: shorter than the divider
 // between groups, so the two breaks can be told apart.
 const companyRule = "─────"
 
 // verdictMarks lead each company's first line, so a reader scrolling twenty
-// of them can find the BUYs and SELLs without reading.
-var verdictMarks = map[string]string{model.Buy: "🟢", model.Sell: "🔴", model.Hold: "⚪"}
+// of them can find the BUYs and SELLs without reading. A BUY BELOW is amber:
+// a BUY, but not at today's price.
+var verdictMarks = map[string]string{model.Buy: "🟢", model.BuyBelow: "🟡", model.Sell: "🔴", model.Hold: "⚪"}
+
+// pullback is how far under the last price a BUY BELOW reads as "buy on a
+// pullback". Further down it reads as a price to wait for: "buy if it falls
+// to".
+const pullback = 0.10
+
+// verdictLabel is the verdict as a reader sees it, in HTML with the verdict
+// in bold. A BUY BELOW says what it asks for, with its price and how far that
+// is under the last one: "BUY ON A PULLBACK to $41.50, 7% under the last
+// price".
+func verdictLabel(idea model.Idea) string {
+	if idea.Verdict != model.BuyBelow || idea.Entry <= 0 {
+		return "<b>" + escape(idea.Verdict) + "</b>"
+	}
+	words := "BUY IF IT FALLS"
+	if idea.Below() <= pullback {
+		words = "BUY ON A PULLBACK"
+	}
+	return fmt.Sprintf("<b>%s</b> to %s, %.0f%% under the last price", words, escape(priceIn(idea.Entry, ideaUnit(idea))), 100*idea.Below())
+}
+
+// ideaUnit is the currency the share trades in.
+func ideaUnit(idea model.Idea) string {
+	switch {
+	case idea.Trading != nil && idea.Trading.Currency != "":
+		return idea.Trading.Currency
+	case idea.Quote != nil:
+		return idea.Quote.Unit()
+	}
+	return "USD"
+}
+
+func unitOr(currency string) string {
+	if currency == "" {
+		return "USD"
+	}
+	return currency
+}
 
 // renderIdea lays out one company, each part of its verdict a paragraph of
 // its own. Run together as one block, twenty of them read as a wall of text,
@@ -196,7 +269,7 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 		head.WriteString(" · " + escape(idea.Quote.Move()) + " last session")
 	}
 
-	head.WriteString("\n<b>" + escape(idea.Verdict) + "</b>")
+	head.WriteString("\n" + verdictLabel(idea))
 	if idea.Confidence != "" {
 		head.WriteString(" · " + escape(idea.Confidence) + " confidence")
 	}
@@ -245,6 +318,9 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 
 	if idea.Value != "" {
 		parts = append(parts, "<i>The price:</i> "+escape(idea.Value))
+	}
+	if idea.Verdict == model.BuyBelow && idea.EntryWhy != "" {
+		parts = append(parts, "<i>Why that price:</i> "+escape(idea.EntryWhy))
 	}
 	if len(idea.Flags) > 0 {
 		parts = append(parts, "<i>Warning signs:</i> "+escape(strings.Join(idea.Flags, "; ")))

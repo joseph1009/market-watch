@@ -3,7 +3,9 @@ package ideas
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,11 @@ const (
 	// DefaultJudgeConcurrency runs two batches at a time, without asking the
 	// plan for four Opus calls at once.
 	DefaultJudgeConcurrency = 2
+
+	// MaxBelow is how far under today's price a BUY BELOW may wait. Further
+	// down, the share would have to fall by a quarter first, which is a
+	// different call from a pullback: that one is a HOLD.
+	MaxBelow = 0.25
 )
 
 // verdictsPrompt governs the verdicts. Its text lives in config/prompts.md.
@@ -46,8 +53,8 @@ var verdictsPrompt = config.Prompt("verdicts.system")
 // expectations where they were read. backdrop is the market's commodities and
 // rates, written once above them all.
 //
-// An idea the reply skips, or answers with something other than BUY, HOLD or
-// SELL, is dropped rather than shown without one: the section is verdicts, and
+// An idea the reply skips, or answers with something other than BUY, BUY
+// BELOW, HOLD or SELL, is dropped rather than shown without one: the section is verdicts, and
 // a company listed without one would read as an oversight. A batch that fails
 // costs its own companies; the error says how many batches that was, and the
 // rest are returned.
@@ -124,6 +131,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		idea.Value = v.value
 		idea.Catalyst, idea.Sensitivity = v.catalyst, v.sensitivity
 		idea.Checked = v.checked
+		idea.Entry, idea.EntryWhy = v.entry, v.entryWhy
 		out = append(out, hold(idea))
 	}
 	if failed > 0 {
@@ -132,11 +140,29 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 	return out, usage, nil
 }
 
-// hold applies the rules the model is told but may not bend. A BUY the
-// valuation has closed is a HOLD, and says why; a verdict without accounts is
-// low confidence at most, since the numbers that would justify more were
-// never read; and so is one whose case was found in one source only.
+// hold applies the rules the model is told but may not bend. A BUY BELOW
+// needs a price under today's and within MaxBelow of it: without one it is a
+// HOLD, and at or above today's price it is a plain BUY. A BUY the valuation
+// has closed is a HOLD, and says why; a BUY BELOW is not, since waiting for a
+// lower price is the answer to a price that leaves no room. A verdict without
+// accounts is low confidence at most, since the numbers that would justify
+// more were never read; and so is one whose case was found in one source only.
 func hold(idea model.Idea) model.Idea {
+	if idea.Verdict == model.BuyBelow {
+		switch below := idea.Below(); {
+		case idea.Entry <= 0:
+			idea.Verdict = model.Hold
+			idea.Overruled = "BUY BELOW turned to HOLD: it gave no price to buy at"
+		case idea.Last() <= 0:
+			idea.Verdict = model.Hold
+			idea.Overruled = "BUY BELOW turned to HOLD: there is no price today to set its price against"
+		case below <= 0:
+			idea.Verdict, idea.Entry, idea.EntryWhy = model.Buy, 0, ""
+		case below > MaxBelow:
+			idea.Verdict = model.Hold
+			idea.Overruled = fmt.Sprintf("BUY BELOW turned to HOLD: its price is %.0f%% under today's, a fall rather than a pullback", 100*below)
+		}
+	}
 	if idea.Verdict == model.Buy && idea.BuyClosed != "" {
 		idea.Verdict = model.Hold
 		idea.Overruled = "BUY turned to HOLD: " + idea.BuyClosed
@@ -272,6 +298,8 @@ type verdict struct {
 	verdict, confidence, theCase, numbers, risk string
 	changed, moved, reaction, value             string
 	catalyst, sensitivity, checked              string
+	entryLine, entryWhy                         string
+	entry                                       float64
 }
 
 // parseVerdicts reads the reply's blocks, keyed by the symbol each opens with.
@@ -306,6 +334,7 @@ func parseVerdicts(text string) map[string]verdict {
 		{"CATALYST:", func(v *verdict) *string { return &v.catalyst }},
 		{"SENSITIVITY:", func(v *verdict) *string { return &v.sensitivity }},
 		{"CHECKED:", func(v *verdict) *string { return &v.checked }},
+		{"ENTRY:", func(v *verdict) *string { return &v.entryLine }},
 	}
 
 	for _, raw := range strings.Split(text, "\n") {
@@ -335,6 +364,12 @@ func parseVerdicts(text string) map[string]verdict {
 	flush()
 
 	for k, v := range out {
+		// "BUY BELOW 41.50" puts the price in the verdict; ENTRY says it
+		// properly, and wins where both do.
+		if v.entryLine == "" && strings.HasPrefix(strings.ToUpper(v.verdict), "BUY BELOW") {
+			v.entryLine = strings.TrimSpace(v.verdict[len("BUY BELOW"):])
+		}
+		v.entry, v.entryWhy = parseEntry(v.entryLine)
 		v.verdict = normaliseVerdict(v.verdict)
 		v.confidence = normaliseConfidence(v.confidence)
 		// Asked for "none" where the facts have no sensitivity figures,
@@ -353,12 +388,36 @@ func parseVerdicts(text string) map[string]verdict {
 
 func normaliseVerdict(s string) string {
 	s = strings.ToUpper(strings.Trim(strings.TrimSpace(s), ".*"))
+	s = strings.Join(strings.Fields(strings.ReplaceAll(s, "-", " ")), " ")
+	if strings.HasPrefix(s, model.BuyBelow) || strings.HasPrefix(s, "BUY ON A PULLBACK") || strings.HasPrefix(s, "BUY ON PULLBACK") {
+		return model.BuyBelow
+	}
 	for _, v := range []string{model.Buy, model.Hold, model.Sell} {
 		if s == v {
 			return v
 		}
 	}
 	return ""
+}
+
+// entryPrice is the first number in a line, with its thousands separators.
+var entryPrice = regexp.MustCompile(`[0-9][0-9,]*(\.[0-9]+)?`)
+
+// parseEntry reads ENTRY: the price to buy at, as a number in the share's
+// own currency, then why that price -- "41.50 -- the five-year median of 18
+// times earnings". A currency in front of the number is passed over. Zero
+// where there is no number.
+func parseEntry(line string) (float64, string) {
+	at := entryPrice.FindStringIndex(line)
+	if at == nil {
+		return 0, ""
+	}
+	n, err := strconv.ParseFloat(strings.ReplaceAll(line[at[0]:at[1]], ",", ""), 64)
+	if err != nil || n <= 0 {
+		return 0, ""
+	}
+	why := strings.TrimLeft(line[at[1]:], " -–—:;,.")
+	return n, strings.TrimSpace(why)
 }
 
 func normaliseConfidence(s string) string {

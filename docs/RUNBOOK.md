@@ -35,7 +35,7 @@ analysis makes one, and so does `/industry`.
 | `themes` | Once a week, sorts the market's 150 leaders into the themes driving them | `themes.system` | Opus | `MODEL_THEMES` | `THEME:`, `DRIVER:`, `MEMBERS:` blocks |
 | `scout` | Once a week, finds industries whose business is growing before their shares have caught up, **with web search** | `scout.system` | Opus | `MODEL_SCOUT` | `THEME:`, `DRIVER:`, `EVIDENCE:`, `MEMBERS:` blocks |
 | `research` | Once a week for each theme, finds the part the market hasn't paid for and the companies in it, **with web search** | `research.system` | Opus | `MODEL_RESEARCH` | `DRIVING:`, `PRICED IN:`, `THE VALUE:`, then `name\|ticker\|exchange\|buy or sell\|why` |
-| `verdicts` | Gives each company BUY, HOLD or SELL from the facts gathered for it, three companies a call. It checks each case in two independent sources, **with web search** | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `CHECKED:`, `RISK:` |
+| `verdicts` | Gives each company BUY, BUY BELOW, HOLD or SELL from the facts gathered for it, three companies a call. It checks each case in two independent sources, **with web search** | `verdicts.system` | Opus | `MODEL_VERDICTS` | `=== symbol` blocks of `VERDICT:`, `CONFIDENCE:`, `ENTRY:` (a BUY BELOW's price), `VALUE:` or `CHANGED:`/`MOVE:`/`REACTION:`, `CASE:`, `NUMBERS:`, `CHECKED:`, `RISK:` |
 | `analysis` | Writes up one company for `/analyse`. It searches for the last fortnight's news and the company's plans itself, **with web search** | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with headings in capitals |
 | `industry` | Explains an industry for `/industry`: how it fits together, where it is heading, and companies to look into, **with web search** | `industry.system` | Opus | `MODEL_INDUSTRY` | `### ` sub-headings over bullets, then `COMPANIES BY PART` and `part\|name\|ticker\|exchange\|why` |
 | `terms` | Checks a term the brief or an analysis listed twice before it is linked in every report: a real term, with search words that find the right meaning | `terms.check` | Opus | `MODEL_TERMS` | Lines of `- term \| search words`, only those that pass |
@@ -352,8 +352,9 @@ never adds more just to reach a number.
    - A company whose accounts could not be read gets low confidence at most.
      None of Singapore's can be read.
 
-   HOLDs are not shown. A company given the same verdict in the last eight
-   weeks is not written up again.
+   HOLDs are not written up; the week's theme HOLDs are named in one line. A
+   company given the same verdict in the last eight weeks is not written up
+   again.
 
 The message ends with **the earlier picks**. Each pick from the last eight
 weeks is listed with how far it has moved the way it was called, against the
@@ -382,7 +383,8 @@ A company with no SEC filings is judged on its price and trading alone, and
 the message says so.
 
 **Verdicts** (`verdicts`, Opus with web search, three companies a call, two
-calls at once) give BUY, HOLD or SELL over twelve months, with a confidence.
+calls at once) give BUY, BUY BELOW, HOLD or SELL over twelve months, with a
+confidence. A BUY BELOW is a BUY at a lower price, which it names and grounds.
 Each verdict gives the case, what is coming, the lever in the accounts it
 depends on, the two to four numbers that decide it, and the biggest risk. It
 checks the claim its case rests on in two independent sources. A theme pick
