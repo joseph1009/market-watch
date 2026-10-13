@@ -40,7 +40,7 @@ const helpText = `<b>📊 Market Watch</b>
 /share — post the latest brief or analysis to the channel
 /scorecard — how past buy, hold and sell verdicts have done
 /clear — remove the bot's earlier messages from this chat
-/code — turn on Remote Control on the Sprite, to work on the code from the Claude app (/code stop turns it off)
+/code — turn on Remote Control on the Sprite, to work on the code from the Claude app (/code stop turns it off, /code update updates Claude Code there)
 /help — this message
 
 The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
@@ -61,7 +61,7 @@ func BotCommands() []telegram.Command {
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
 		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
-		{Command: "code", Description: "Turn Remote Control on the Sprite on, or off with /code stop"},
+		{Command: "code", Description: "Remote Control on the Sprite: /code, /code stop, /code update"},
 		{Command: "help", Description: "What I can do"},
 	}
 }

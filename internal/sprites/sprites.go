@@ -6,13 +6,14 @@
 // running service keeps a Sprite awake, and billed, so it is off until /code
 // starts it, and it stops itself after a quiet spell (scripts/remote-control.sh).
 //
-// Only three calls of the Sprites API are used: a service's state, start and
-// stop. Starting wakes the Sprite if it is asleep. See "The Sprite" in
-// docs/RUNBOOK.md.
+// Four calls of the Sprites API are used: a service's state, start and stop,
+// and running one command, which /code update uses to update Claude Code.
+// Each wakes the Sprite if it is asleep. See "The Sprite" in docs/RUNBOOK.md.
 package sprites
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,7 +55,7 @@ type State struct {
 
 // State reads whether the service is running.
 func (c *Client) State(ctx context.Context) (State, error) {
-	resp, err := c.call(ctx, http.MethodGet, "", nil)
+	resp, err := c.call(ctx, http.MethodGet, c.service(""), nil)
 	if err != nil {
 		return State{}, err
 	}
@@ -81,7 +82,7 @@ func (c *Client) State(ctx context.Context) (State, error) {
 // is already running is left as it is, and says nothing.
 func (c *Client) Start(ctx context.Context, ready string) (bool, error) {
 	q := url.Values{"duration": {fmt.Sprint(int(readyWait.Seconds()))}}
-	resp, err := c.call(ctx, http.MethodPost, "/start", q)
+	resp, err := c.call(ctx, http.MethodPost, c.service("/start"), q)
 	if err != nil {
 		return false, err
 	}
@@ -125,7 +126,7 @@ func (c *Client) Start(ctx context.Context, ready string) (bool, error) {
 // Stop stops the service, after which the Sprite goes back to sleep. It
 // reports whether the service was running.
 func (c *Client) Stop(ctx context.Context) (bool, error) {
-	resp, err := c.call(ctx, http.MethodPost, "/stop", nil)
+	resp, err := c.call(ctx, http.MethodPost, c.service("/stop"), nil)
 	var status *statusError
 	if errors.As(err, &status) && status.code == http.StatusConflict {
 		return false, nil // "service is not running"
@@ -138,6 +139,39 @@ func (c *Client) Stop(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// Exec runs one command on the Sprite, as its own user in its home folder,
+// and returns what it printed, standard output and error together, and its
+// exit status. It waits for the command to finish, or for ctx.
+func (c *Client) Exec(ctx context.Context, args ...string) (string, int, error) {
+	resp, err := c.call(ctx, http.MethodPost, "/exec", url.Values{"cmd": args})
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", 0, fmt.Errorf("sprites: read the command's output: %w", err)
+	}
+	return execResult(body)
+}
+
+// execResult reads an exec reply. Its output comes in pieces, each led by
+// byte 1 for standard output or 2 for standard error, and it ends with byte 3
+// and the exit status. A reply without that ending was cut short.
+func execResult(body []byte) (string, int, error) {
+	n := len(body)
+	if n < 2 || body[n-2] != 3 {
+		return "", 0, errors.New("sprites: the command's output ended before its exit status")
+	}
+	out := bytes.Map(func(r rune) rune {
+		if r == 1 || r == 2 {
+			return -1
+		}
+		return r
+	}, body[:n-2])
+	return string(out), int(body[n-1]), nil
+}
+
 // statusError is a reply other than success.
 type statusError struct {
 	code int
@@ -148,9 +182,14 @@ func (e *statusError) Error() string {
 	return fmt.Sprintf("sprites: http %d: %s", e.code, e.body)
 }
 
-// call sends one request about the service. A reply other than success is
-// returned as an error, with the start of its body.
-func (c *Client) call(ctx context.Context, method, action string, query url.Values) (*http.Response, error) {
+// service is the path of the service, and of an action on it.
+func (c *Client) service(action string) string {
+	return "/services/" + url.PathEscape(c.Service) + action
+}
+
+// call sends one request about the Sprite, to path under it. A reply other
+// than success is returned as an error, with the start of its body.
+func (c *Client) call(ctx context.Context, method, path string, query url.Values) (*http.Response, error) {
 	if !c.Enabled() {
 		return nil, errors.New("sprites: no SPRITES_TOKEN")
 	}
@@ -158,8 +197,7 @@ func (c *Client) call(ctx context.Context, method, action string, query url.Valu
 	if base == "" {
 		base = baseURL
 	}
-	addr := fmt.Sprintf("%s/v1/sprites/%s/services/%s%s",
-		strings.TrimRight(base, "/"), url.PathEscape(c.Sprite), url.PathEscape(c.Service), action)
+	addr := fmt.Sprintf("%s/v1/sprites/%s%s", strings.TrimRight(base, "/"), url.PathEscape(c.Sprite), path)
 	if len(query) > 0 {
 		addr += "?" + query.Encode()
 	}

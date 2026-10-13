@@ -99,6 +99,11 @@ setup() {
   # the folder, and whether to turn Remote Control on. The service has no
   # terminal, so both answers are written into Claude Code's settings.
   echo "== Remote Control"
+  # The Sprite image links claude to a copy of its own, which `claude update`
+  # downloads beside but never replaces. Handing the link to Claude Code's
+  # installer lets each /code start on the newest version.
+  on 'case "$(readlink ~/.local/bin/claude)" in */claude/versions/*) ;; *)
+    b="$(readlink -f ~/.local/bin/claude)" && rm -f ~/.local/bin/claude && "$b" install >/dev/null ;; esac'
   on "python3 -c 'import json, os
 p = os.path.expanduser(\"~/.claude.json\")
 d = json.load(open(p)) if os.path.exists(p) else {}

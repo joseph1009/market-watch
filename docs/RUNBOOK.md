@@ -892,6 +892,20 @@ sprite exec -s market-watch-dev -- tail /.sprite/logs/services/remote-control.lo
 ```
 
 To change the two hours, set `IDLE_MINUTES` in the service's environment.
+
+**To update Claude Code there,** send `/code update`, for instance when a new
+model comes out. The bot runs `claude update` on the Sprite and tells you
+when it's done, from which version to which. A Remote Control already running
+keeps the version it started with. If it's on, the bot says so: send
+`/code stop` and then `/code` to restart it, which ends any open session.
+Asking Claude to update itself in a session works too, but needs the same
+restart.
+
+Updates need `claude` on the Sprite to be Claude Code's own install, a link
+into `~/.local/share/claude/versions/`. The Sprite image links it to a bundled
+copy instead, which updates never replace, so the setup script swaps the
+link. Check it with `sprite exec -s market-watch-dev -- claude --version`.
+
 The first run of Remote Control asks two questions in a terminal: whether to
 trust the folder, and whether to turn Remote Control on. The service has no
 terminal, so the setup script writes both answers into Claude Code's settings.

@@ -583,7 +583,7 @@ sender is allowed and then routes on the command:
 | `/sources` | [`handleSources`](../internal/app/commands.go#L421) | Turn a feed on or off |
 | `/schedule` | [`handleSchedule`](../internal/app/commands.go#L327) | When the next brief is due |
 | `/clear` | [`handleClear`](../internal/app/commands.go#L284) | Delete the bot's earlier messages |
-| `/code` | [`handleCode`](../internal/app/code.go) | Turns Remote Control on the Sprite on or off, through the Sprites API ([sprites](../internal/sprites/sprites.go)), so the code can be worked on from the Claude app. The owner's chat only |
+| `/code` | [`handleCode`](../internal/app/code.go) | Turns Remote Control on the Sprite on or off, through the Sprites API ([sprites](../internal/sprites/sprites.go)), so the code can be worked on from the Claude app. `/code update` updates Claude Code there. The owner's chat only |
 
 Most commands answer at once, so they are handled in turn. `/analyse` and
 `/industry` take minutes, so once they know what to look at they run in the

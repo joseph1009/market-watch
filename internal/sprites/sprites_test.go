@@ -127,3 +127,42 @@ func TestNoTokenIsDisabled(t *testing.T) {
 		t.Error("a client without a token should be disabled")
 	}
 }
+
+// The bytes the API sent on 13 October 2026 for
+// bash -c 'echo out; echo err 1>&2; exit 3': each piece of output led by 1
+// (standard output) or 2 (standard error), and 3 and the status at the end.
+func TestExecReadsOutputAndStatus(t *testing.T) {
+	var cmd []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/sprites/dev/exec" {
+			http.NotFound(w, r)
+			return
+		}
+		cmd = r.URL.Query()["cmd"]
+		_, _ = w.Write([]byte("\x02err\n\x01out\n\x03\x03"))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{Token: "secret", Sprite: "dev", Service: "remote-control", BaseURL: srv.URL, HTTP: srv.Client()}
+
+	out, code, err := c.Exec(context.Background(), "bash", "-lc", "claude update")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "err\nout\n" || code != 3 {
+		t.Errorf("Exec = %q, %d; want %q, 3", out, code, "err\nout\n")
+	}
+	if strings.Join(cmd, "|") != "bash|-lc|claude update" {
+		t.Errorf("the command sent was %q", cmd)
+	}
+}
+
+// A reply cut off before its exit status is an error, not a success with
+// whatever output arrived.
+func TestExecCutShortIsAnError(t *testing.T) {
+	if _, _, err := execResult([]byte("\x01downloading")); err == nil {
+		t.Error("no error for output without an exit status")
+	}
+	if out, code, err := execResult([]byte("\x03\x00")); err != nil || out != "" || code != 0 {
+		t.Errorf("silent success = %q, %d, %v", out, code, err)
+	}
+}

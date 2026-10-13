@@ -243,12 +243,13 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			HTTP:   &http.Client{Timeout: 30 * time.Second},
 		},
 		// A start streams the service's output until Remote Control says it
-		// is connected, which can take most of a minute on a sleeping Sprite.
+		// is connected, which can take most of a minute on a sleeping Sprite,
+		// and /code update waits on a download, bounded by its own deadline.
 		Code: &sprites.Client{
 			Token:   cfg.SpritesToken,
 			Sprite:  cfg.CodeSprite,
 			Service: "remote-control",
-			HTTP:    &http.Client{Timeout: 90 * time.Second},
+			HTTP:    &http.Client{Timeout: 5 * time.Minute},
 		},
 		Quotes: &prices.Client{
 			APIKey: cfg.FinnhubAPIKey,

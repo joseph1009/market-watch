@@ -4,20 +4,27 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/joseph1009/market-watch/internal/telegram"
 )
 
-// remoteReady is what Remote Control prints once it is connected and the
-// Sprite shows in the Claude app.
-const remoteReady = "Ready"
+// remoteReady is the tick Remote Control prints once it is connected and the
+// Sprite shows in the Claude app: "·✔︎· Ready" until version 2.1.251 at least,
+// and "·✔︎· Connected" by 2.1.296. The word changed, so the tick is what is
+// matched.
+const remoteReady = "✔"
+
+// claudeUpdateWait is how long /code update may take. A new version is a
+// download of about 250 MB.
+const claudeUpdateWait = 4 * time.Minute
 
 // openTheApp says where the session is found once Remote Control is on.
 const openTheApp = "Open the Code tab in the Claude app and pick market-watch."
 
 // handleCode answers /code: it starts Remote Control on the Sprite the code is
 // worked on from, so a session can be started from the Claude app on a phone,
-// and /code stop turns it off. A running Remote Control keeps the Sprite awake
+// /code stop turns it off, and /code update updates Claude Code there. A running Remote Control keeps the Sprite awake
 // and billed, so it is off until asked for, and it turns itself off after two
 // quiet hours (scripts/remote-control.sh). The owner's chat only: a session
 // there can change the code and deploy it.
@@ -40,8 +47,10 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 			return a.Bot.SendMessage(ctx, chat, "Remote Control was already off.")
 		}
 		return a.Bot.SendMessage(ctx, chat, "Remote Control is off. The Sprite goes back to sleep in about 30 seconds.")
+	case "update":
+		return a.updateClaude(ctx, chat)
 	default:
-		return a.Bot.SendMessage(ctx, chat, "Send /code to turn on Remote Control on the Sprite, or /code stop to turn it off.")
+		return a.Bot.SendMessage(ctx, chat, "Send /code to turn on Remote Control on the Sprite, /code stop to turn it off, or /code update to update Claude Code there.")
 	}
 
 	state, err := a.Code.State(ctx)
@@ -68,4 +77,67 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	}
 	return a.Bot.SendMessage(ctx, chat, "Remote Control is on. "+openTheApp+
 		"\n\nIt turns itself off after two quiet hours, or send /code stop.")
+}
+
+// updateClaude updates Claude Code on the Sprite and says when it is done,
+// from which version to which. A Remote Control already running keeps the
+// version it started with, so the reply says when it needs a restart. It is
+// not restarted here: that would end a session that may be mid-task.
+func (a *App) updateClaude(ctx context.Context, chat int64) error {
+	if err := a.Bot.SendMessage(ctx, chat, "Updating Claude Code on the Sprite. I'll tell you when it's done."); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, claudeUpdateWait)
+	defer cancel()
+
+	before, err := a.claudeVersion(ctx)
+	if err != nil {
+		return err
+	}
+	out, code, err := a.Code.Exec(ctx, "bash", "-lc", "claude update")
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("claude update exited with status %d: %s", code, lastLine(out))
+	}
+	after, err := a.claudeVersion(ctx)
+	if err != nil {
+		return err
+	}
+	a.Log.Info("claude code updated", "from", before, "to", after)
+	if after == before {
+		return a.Bot.SendMessage(ctx, chat, "Claude Code on the Sprite is already the newest version, "+after+".")
+	}
+
+	reply := fmt.Sprintf("Claude Code on the Sprite is updated, from %s to %s.", before, after)
+	state, err := a.Code.State(ctx)
+	switch {
+	case err != nil:
+		reply += " If Remote Control is on, send /code stop and then /code to start it on the new version."
+	case state.Running:
+		reply += fmt.Sprintf(" Remote Control is still running %s. Send /code stop and then /code to start it on %s. That ends any session open in the app.", before, after)
+	default:
+		reply += " The next /code starts on it."
+	}
+	return a.Bot.SendMessage(ctx, chat, reply)
+}
+
+// claudeVersion is the version of Claude Code on the Sprite, as "2.1.296".
+func (a *App) claudeVersion(ctx context.Context) (string, error) {
+	out, code, err := a.Code.Exec(ctx, "bash", "-lc", "claude --version")
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("claude --version exited with status %d: %s", code, lastLine(out))
+	}
+	v, _, _ := strings.Cut(strings.TrimSpace(out), " ")
+	return v, nil
+}
+
+// lastLine is the last line of a command's output that says anything.
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
