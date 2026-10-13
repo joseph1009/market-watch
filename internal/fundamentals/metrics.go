@@ -50,6 +50,16 @@ func refs(taxonomy string, tags []string) []tagRef {
 type concept struct {
 	key  string
 	refs []tagRef
+
+	// total marks a line whose tags can be a whole and its parts: where two
+	// of them give one period in the same filing, the larger is the whole.
+	total bool
+}
+
+// totalOf marks a concept as a total.
+func totalOf(c concept) concept {
+	c.total = true
+	return c
 }
 
 func both(key string, us, international []tagRef) concept {
@@ -57,10 +67,14 @@ func both(key string, us, international []tagRef) concept {
 }
 
 var incomeConcepts = []concept{
-	both("revenue",
+	// A total: a landlord's revenue from contracts with customers leaves out
+	// its rent, which accounting files as lease income, so American Tower's
+	// read US$211m a quarter against the US$2.75bn it reports under Revenues
+	// (2026-10-12).
+	totalOf(both("revenue",
 		usGAAP("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet",
 			"RevenueFromContractWithCustomerIncludingAssessedTax"),
-		ifrs("Revenue", "RevenueFromContractsWithCustomers")),
+		ifrs("Revenue", "RevenueFromContractsWithCustomers"))),
 	both("grossProfit", usGAAP("GrossProfit"), ifrs("GrossProfit")),
 	both("operatingIncome",
 		usGAAP("OperatingIncomeLoss"),
@@ -459,7 +473,8 @@ func (y Year) FreeCashFlow() Value {
 // stale years, and the last four years read as "not reported". Capital spending
 // moved the same way in 2020. Where two tags cover one period, the more
 // recently filed value wins, which is also how a restatement supersedes the
-// figure it replaces.
+// figure it replaces. For a total, two tags giving one period in the same
+// filing are a whole and a part, and the larger is kept.
 func (c *Client) series(ctx context.Context, cik int, con concept) ([]Observation, error) {
 	merged := map[string]Observation{}
 	for i, ref := range con.refs {
@@ -480,8 +495,14 @@ func (c *Client) series(ctx context.Context, cik int, con concept) ([]Observatio
 			// entry picked between them arbitrarily, and when the dollar copy
 			// won, the currency filter then dropped the year entirely.
 			key := o.Unit + "|" + o.Start.Format(time.DateOnly) + "|" + o.End.Format(time.DateOnly)
-			if prior, seen := merged[key]; seen && !supersedes(o, prior) {
-				continue
+			if prior, seen := merged[key]; seen {
+				if con.total && sameFiling(o, prior) {
+					if o.Value <= prior.Value {
+						continue
+					}
+				} else if !supersedes(o, prior) {
+					continue
+				}
 			}
 			merged[key] = o
 		}
@@ -522,6 +543,11 @@ func supersedes(o, prior Observation) bool {
 		return r > pr
 	}
 	return o.Filed.After(prior.Filed)
+}
+
+// sameFiling reports whether two figures came from one filing.
+func sameFiling(a, b Observation) bool {
+	return a.Form == b.Form && a.Filed.Equal(b.Filed)
 }
 
 // formRank orders the filings a figure can appear in by authority.

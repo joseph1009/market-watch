@@ -211,6 +211,29 @@ func TestFetchMergesYearsAcrossATagChange(t *testing.T) {
 	}
 }
 
+// A landlord files its rent as lease income, outside revenue from contracts
+// with customers, and both tags in one filing. American Tower read as
+// US$211m a quarter against the US$2.75bn it reported (2026-10-12): the
+// revenue line keeps the whole, not the part.
+func TestRevenueTakesTheWholeOverAPart(t *testing.T) {
+	c := conceptServer(t, map[string]string{
+		"RevenueFromContractWithCustomerExcludingAssessedTax": annualJSON(
+			row("2025-01-01", "2025-12-31", 843, "10-K", "2026-02-25"),
+		),
+		"Revenues": annualJSON(
+			row("2025-01-01", "2025-12-31", 10984, "10-K", "2026-02-25"),
+		),
+	})
+
+	snap, err := c.Fetch(context.Background(), "test", 5)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got := snap.Years[0].Figure("revenue"); !got.Known || got.Amount != 10984 {
+		t.Errorf("revenue = %+v, want 10984, the whole of it", got)
+	}
+}
+
 func TestAddAndLessStayUnknownWhenALineIsMissing(t *testing.T) {
 	if got := Add(known(5), Value{}); got.Known {
 		t.Errorf("Add with a missing side = %+v, want unknown", got)
