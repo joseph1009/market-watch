@@ -189,3 +189,27 @@
   words: ["share-based pay"]
 - url: "https://www.google.com/search?q=uprate+nuclear+power+meaning"
   words: ["uprate"]
+
+# Learned from the reports, 13 Oct 2026: each links to a search for its meaning.
+- url: "https://www.google.com/search?q=2-year+Treasury+yield+government+bonds+meaning"
+  words: ["2-year Treasury yield"]
+- url: "https://www.google.com/search?q=52-week+high+stock+prices+meaning"
+  words: ["52-week high"]
+- url: "https://www.google.com/search?q=Brent+crude+oil+price+benchmark+meaning"
+  words: ["Brent crude"]
+- url: "https://www.google.com/search?q=core+CPI+inflation+measures+meaning"
+  words: ["core CPI"]
+- url: "https://www.google.com/search?q=Fed+minutes+Federal+Reserve+meeting+minutes+meaning"
+  words: ["Fed minutes"]
+- url: "https://www.google.com/search?q=futures+futures+contracts+trading+meaning"
+  words: ["futures"]
+- url: "https://www.google.com/search?q=inference+AI+computing+meaning"
+  words: ["inference"]
+- url: "https://www.google.com/search?q=liquidations+crypto+trading+meaning"
+  words: ["liquidations"]
+- url: "https://www.google.com/search?q=LNG+liquefied+natural+gas+meaning"
+  words: ["LNG"]
+- url: "https://www.google.com/search?q=options+stock+trading+meaning"
+  words: ["options"]
+- url: "https://www.google.com/search?q=refining+margin+oil+refining+meaning"
+  words: ["refining margin"]
