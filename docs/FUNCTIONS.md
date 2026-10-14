@@ -301,6 +301,7 @@ What passes between the functions:
 - Grades each against the S&P 500 (SPY) in US dollars once it is a week old. Both the share and SPY are measured from the first open after the verdict.
 - A BUY BELOW is measured from the first close at or under its price, against SPY's close that day, and graded once that is a week old. Until then it is waiting; after 90 days without it, lapsed. Neither is graded.
 - A BUY is right if it beats SPY by at least 5 points a year, scaled to the time passed (`Clearly`). A SELL is right if it trails SPY by as much.
+- `/scorecard` sends the totals, then every call by name, a line each: grouped BUY, BUY BELOW, SELL, HOLD, best first, with the share's move, the S&P 500's, the points the way called, and ✅ on course or ❌ not. Calls under a week old show their move unscored; BUY BELOWs waiting or lapsed, and any not priced, are listed apart. The list runs over as many messages as it needs, never splitting a line.
 - It is stored in `data/scorecard.json`, and **held in memory** while the service runs.
 
 **Files:** [internal/ideas/scorecard.go](../internal/ideas/scorecard.go), [internal/app/ideas.go](../internal/app/ideas.go), [internal/app/commands.go](../internal/app/commands.go)

@@ -84,8 +84,8 @@ func TestTheScorecardMeasuresEachVerdictAgainstTheIndex(t *testing.T) {
 	}
 
 	due := s.Due(now, 0)
-	if strings.Join(due, ",") != "FAL,LOS,WIN" {
-		t.Errorf("due = %v, want the three a week old, newest first, and not the fresh one", due)
+	if strings.Join(due, ",") != "NEW,FAL,LOS,WIN" {
+		t.Errorf("due = %v, want all four newest first, the fresh one to show its move unscored", due)
 	}
 
 	// Each opened at 100 the day of the verdict, whatever it closed at the
@@ -97,7 +97,7 @@ func TestTheScorecardMeasuresEachVerdictAgainstTheIndex(t *testing.T) {
 		"FAL": {day(1, 100, 98), day(30, 91, 90)},
 	}
 	bench := Path{day(1, 500, 502), day(30, 548, 550)}
-	text := s.Summary(now, paths, bench, nil, time.UTC)
+	text := summaryText(s, now, paths, bench, nil, time.UTC)
 	for _, want := range []string{
 		"4 verdicts since 1 Sep",
 		"3 are a week old or more",
@@ -105,8 +105,10 @@ func TestTheScorecardMeasuresEachVerdictAgainstTheIndex(t *testing.T) {
 		// +20 and -5 points against the index.
 		"<b>BUY</b>, 2 scored: 1 on course to beat the S&amp;P 500 by 5 points (50%), on average 7.5 points ahead of it",
 		"<b>SELL</b>, 1 scored: 1 on course to trail it by 5 points (100%), on average 20.0 points behind it",
-		"Winner <code>WIN</code>, BUY on 1 Sep: +30.0%, against +10.0% for the index",
-		"Faller <code>FAL</code>, SELL on 1 Sep: -10.0%",
+		// Each call by name, best first within its verdict.
+		"✅ <b>WIN</b> Winner · 1 Sep, old look · +30.0% vs +10.0% · <b>+20.0</b>\n❌ <b>LOS</b> Loser · 1 Sep, old look · +5.0% vs +10.0% · <b>-5.0</b>",
+		"<b>SELL</b>\n✅ <b>FAL</b> Faller · 1 Sep, old look · -10.0% vs +10.0% · <b>+20.0</b>",
+		"<b>Under a week old</b>, not scored yet\n🆕 <b>NEW</b> Fresh · 30 Sep, old look · BUY",
 		"the next session's open",
 	} {
 		if !strings.Contains(text, want) {
@@ -142,9 +144,9 @@ func TestAVerdictBeforeTheOpenIsMeasuredFromTheOpen(t *testing.T) {
 	bench := Path{aug31(500, 500), day(1, 500, 501), day(29, 505, 505)}
 	now := given.Add(30 * 24 * time.Hour)
 
-	text := s.Summary(now, paths, bench, nil, time.UTC)
+	text := summaryText(s, now, paths, bench, nil, time.UTC)
 	// From the open at 110, +10%; from the close at 100 it would have read +21%.
-	if !strings.Contains(text, "Gapper <code>GAP</code>, BUY on 1 Sep: +10.0%, against +1.0% for the index") {
+	if !strings.Contains(text, "<b>GAP</b> Gapper · 1 Sep, old look · +10.0% vs +1.0%") {
 		t.Errorf("not measured from the open:\n%s", text)
 	}
 
@@ -161,7 +163,7 @@ func TestAVerdictBeforeTheOpenIsMeasuredFromTheOpen(t *testing.T) {
 	if s.All()[0].Entry != 110 {
 		t.Errorf("the entry was not saved: %+v", s.All()[0])
 	}
-	text = s.Summary(now, map[string]Path{"GAP": {day(29, 118, 121)}}, Path{day(29, 505, 505)}, nil, time.UTC)
+	text = summaryText(s, now, map[string]Path{"GAP": {day(29, 118, 121)}}, Path{day(29, 505, 505)}, nil, time.UTC)
 	if !strings.Contains(text, "+10.0%") {
 		t.Errorf("a settled verdict lost its entry when the history no longer reached it:\n%s", text)
 	}
@@ -175,7 +177,7 @@ func TestAVerdictWithNoSessionSinceIsNotScored(t *testing.T) {
 	_ = s.Add(Record{At: given, Name: "Halted", Symbol: "HLT", Chart: "HLT", Verdict: model.Buy})
 	before := day(1, 10, 10)
 	before.Opened = before.Opened.AddDate(0, 0, -1)
-	text := s.Summary(given.Add(10*24*time.Hour), map[string]Path{"HLT": {before}},
+	text := summaryText(s, given.Add(10*24*time.Hour), map[string]Path{"HLT": {before}},
 		Path{before, day(8, 500, 505)}, nil, time.UTC)
 	if !strings.Contains(text, "1 could not be priced") {
 		t.Errorf("summary = %s", text)
@@ -220,14 +222,14 @@ func TestASharePricedAbroadIsScoredInDollars(t *testing.T) {
 		"0700.HK":   {asia(1, 490, 500), asia(2, 500, 505), asia(30, 590, 600)},
 	}
 	bench := Path{day(1, 500, 500), day(30, 500, 500)}
-	text := s.Summary(now, paths, bench, rates, time.UTC)
+	text := summaryText(s, now, paths, bench, rates, time.UTC)
 	for _, want := range []string{
 		"2 are a week old or more",
 		"1 could not be priced in dollars today",
 		// -1% for Advantest and +10% for SK Hynix, against a flat index.
 		"<b>BUY</b>, 2 scored: 1 on course to beat the S&amp;P 500 by 5 points (50%), on average 4.5 points ahead of it",
-		"SK Hynix <code>000660.KS</code>, BUY on 1 Sep: +10.0% in US dollars",
-		"Advantest <code>6857.T</code>, BUY on 1 Sep: -1.0% in US dollars",
+		"<b>000660.KS</b> SK Hynix · 1 Sep, old look · +10.0% in US$ vs +0.0%",
+		"<b>6857.T</b> Advantest · 1 Sep, old look · -1.0% in US$ vs +0.0%",
 		"Shares listed abroad are counted in US dollars",
 	} {
 		if !strings.Contains(text, want) {
@@ -254,7 +256,7 @@ func TestTheScorecardSplitsCallsByConfidenceAndSource(t *testing.T) {
 		"D": {day(1, 100, 100), day(30, 100, 100)},
 	}
 	bench := Path{day(1, 500, 500), day(30, 550, 550)}
-	text := s.Summary(then.Add(30*24*time.Hour), paths, bench, nil, time.UTC)
+	text := summaryText(s, then.Add(30*24*time.Hour), paths, bench, nil, time.UTC)
 	for _, want := range []string{
 		"<b>By confidence</b>, BUYs and SELLs together",
 		"• high: 2 of 2 on course (100%), on average +15.0 points the way called",
@@ -275,7 +277,7 @@ func TestTheScorecardSplitsCallsByConfidenceAndSource(t *testing.T) {
 
 func TestAnEmptyScorecardSaysWhenItStarts(t *testing.T) {
 	s, _ := LoadScorecard(t.TempDir() + "/none.json")
-	if text := s.Summary(time.Now(), nil, nil, nil, time.UTC); !strings.Contains(text, "No verdicts yet") {
+	if text := summaryText(s, time.Now(), nil, nil, nil, time.UTC); !strings.Contains(text, "No verdicts yet") {
 		t.Errorf("summary = %q", text)
 	}
 }
@@ -318,7 +320,7 @@ func TestABuyBelowIsScoredFromItsPrice(t *testing.T) {
 		t.Errorf("a price never reached was settled: %+v", s.All()[1])
 	}
 
-	text := s.Summary(now, paths, bench, nil, time.UTC)
+	text := summaryText(s, now, paths, bench, nil, time.UTC)
 	for _, want := range []string{
 		"1 BUY BELOW is waiting for its price, and 1 lapsed after three months without reaching it.",
 		"<b>BUY BELOW</b>, 1 scored: 1 on course to beat the S&amp;P 500 by 5 points since reaching its price (100%), on average 6.7 points ahead of it",
@@ -328,4 +330,9 @@ func TestABuyBelowIsScoredFromItsPrice(t *testing.T) {
 			t.Errorf("summary is missing %q:\n%s", want, text)
 		}
 	}
+}
+
+// summaryText is the scorecard's messages as one text, for looking in.
+func summaryText(s *Scorecard, now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) string {
+	return strings.Join(s.Summary(now, paths, bench, rates, where), "\n")
 }

@@ -499,8 +499,12 @@ func (a *App) handleScorecard(ctx context.Context, msg telegram.Message) error {
 		}
 	}
 
-	text := a.Scorecard.Summary(a.now(), paths, bench, rates, a.Cfg.DisplayLocation)
-	return a.Bot.SendMessage(ctx, msg.Chat.ID, text)
+	for _, text := range a.Scorecard.Summary(a.now(), paths, bench, rates, a.Cfg.DisplayLocation) {
+		if err := a.Bot.SendMessage(ctx, msg.Chat.ID, text); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // dollarRates reads what each currency is worth in US dollars, day by day over

@@ -346,8 +346,9 @@ func (s *Scorecard) All() []Record {
 	return append([]Record(nil), s.records...)
 }
 
-// Due returns the charts that need a current price to score what is old
-// enough, newest verdicts first, at most limit of them. The benchmark is not
+// Due returns the charts that need a current price, newest verdicts first,
+// at most limit of them: those old enough to score, and the newer ones, whose
+// move so far the list of calls shows unscored. The benchmark is not
 // included; the caller always needs it.
 func (s *Scorecard) Due(now time.Time, limit int) []string {
 	s.mu.Lock()
@@ -356,7 +357,7 @@ func (s *Scorecard) Due(now time.Time, limit int) []string {
 	seen := map[string]bool{}
 	for i := len(s.records) - 1; i >= 0; i-- {
 		r := s.records[i]
-		if now.Sub(r.At) < MinAge || seen[r.Chart] {
+		if seen[r.Chart] {
 			continue
 		}
 		seen[r.Chart] = true
@@ -523,10 +524,14 @@ func (s *Scorecard) Since(source string, since time.Time) []Record {
 	return out
 }
 
-// Summary reads the record back for /scorecard. paths are each chart's
-// sessions, bench the index fund's, and rates the exchange rates of the
-// currencies Currencies names.
-func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) string {
+// Summary reads the record back for /scorecard, as the messages to send in
+// turn. The first gives the totals: how each kind of verdict has done, and
+// the calls split by confidence and by how the company was found. The rest
+// list every verdict by name, a line each, grouped by verdict and best first
+// within each group, since totals alone do not say which calls are working.
+// paths are each chart's sessions, bench the index fund's, and rates the
+// exchange rates of the currencies Currencies names.
+func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var b strings.Builder
@@ -534,53 +539,53 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 
 	if len(s.records) == 0 {
 		b.WriteString("No verdicts yet. They start with the next brief's \"worth a closer look\".")
-		return b.String()
+		return []string{b.String()}
 	}
 
 	index, indexOK := bench.last()
 	var judged []scored
+	var calls []call
 	young, unpriced, waiting, lapsed := 0, 0, 0, 0
 	for _, r := range s.records {
-		if now.Sub(r.At) < MinAge {
-			young++
-			continue
+		entry, settled := settle(r, paths[r.Chart], bench, rates)
+		current, have := paths[r.Chart].last()
+		c := call{scored: scored{Record: entry}, last: current.Close}
+		if settled && have && indexOK && entry.Entry > 0 && entry.EntryBenchmark > 0 {
+			if gain, ok := r.gain(entry, current.Close, rates); ok {
+				c.gain, c.index, c.priced = gain, index.Close/entry.EntryBenchmark-1, true
+			}
 		}
-		entry, ok := settle(r, paths[r.Chart], bench, rates)
 		// A BUY BELOW is a call from the day its price came, and is scored
 		// from then, once that is a week ago.
 		since := r.At
-		if r.Verdict == model.BuyBelow {
-			switch {
-			case !ok && now.Sub(r.At) > TriggerWindow:
-				lapsed++
-				continue
-			case !ok:
-				waiting++
-				continue
-			case now.Sub(entry.EntryAt) < MinAge:
-				young++
-				continue
-			}
+		if r.Verdict == model.BuyBelow && settled {
 			since = entry.EntryAt
 		}
-		current, have := paths[r.Chart].last()
-		if !ok || !have || !indexOK || entry.Entry <= 0 || entry.EntryBenchmark <= 0 {
+		c.age = now.Sub(since)
+		switch {
+		case r.Verdict == model.BuyBelow && !settled && now.Sub(r.At) > TriggerWindow:
+			c.state = callLapsed
+			lapsed++
+		case r.Verdict == model.BuyBelow && !settled:
+			c.state = callWaiting
+			waiting++
+		case c.age < MinAge:
+			c.state = callYoung
+			young++
+		case !c.priced:
+			c.state = callUnpriced
 			unpriced++
-			continue
+		default:
+			c.state = callScored
+			judged = append(judged, c.scored)
 		}
-		gain, ok := r.gain(entry, current.Close, rates)
-		if !ok {
-			unpriced++
-			continue
-		}
-		judged = append(judged, scored{Record: entry, gain: gain, index: index.Close/entry.EntryBenchmark - 1, age: now.Sub(since)})
+		calls = append(calls, c)
 	}
 
 	fmt.Fprintf(&b, "%d verdicts since %s. ", len(s.records), s.records[0].At.In(where).Format("2 Jan"))
 	switch {
 	case len(judged) == 0 && young > 0:
-		fmt.Fprintf(&b, "None is a week old yet, so there is nothing to score: a verdict is judged once it has had a week.")
-		return b.String()
+		b.WriteString("None is a week old yet, so there is nothing to score: a verdict is judged once it has had a week. How each has moved so far is below.\n")
 	default:
 		fmt.Fprintf(&b, "%d are a week old or more and scored here", len(judged))
 		if young > 0 {
@@ -639,29 +644,173 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 	b.WriteString(breakdown("By how the company was found", judged, func(j scored) string { return j.source() },
 		[]string{SourceTheme, SourceReaction, SourceAnalysis, SourceNews}, sourceNames))
 
-	if len(judged) > 0 {
-		sort.Slice(judged, func(i, j int) bool { return judged[i].ahead() > judged[j].ahead() })
-		b.WriteString("\n\n<b>Best and worst so far</b>")
-		shown := map[int]bool{}
-		for _, i := range []int{0, len(judged) - 1} {
-			if shown[i] {
-				continue
-			}
-			shown[i] = true
-			j := judged[i]
-			inDollars := ""
-			if !j.dollar() {
-				inDollars = " in US dollars"
-			}
-			fmt.Fprintf(&b, "\n• %s <code>%s</code>, %s on %s: %s%s, against %s for the index",
-				telegram.Escape(j.Name), telegram.Escape(j.Symbol), j.Verdict,
-				j.At.In(where).Format("2 Jan"), signed(j.gain), inDollars, signed(j.index))
-		}
-	}
-
 	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
 		clearly(), Clearly*100/12)
-	return b.String()
+
+	return append([]string{b.String()}, callMessages(calls, where)...)
+}
+
+// call is one verdict as the list of calls shows it: scored, or why not.
+type call struct {
+	scored
+	state  int
+	priced bool
+	last   float64 // the share's latest close, in its own currency
+}
+
+// Why a verdict is or is not scored.
+const (
+	callScored = iota
+	callYoung
+	callWaiting
+	callLapsed
+	callUnpriced
+)
+
+// callMessages lists every verdict on a line of its own: those scored by
+// verdict, best first, then those too new to score, the BUY BELOWs waiting
+// for their price or lapsed, and those that could not be priced. A line is
+// never split across two messages.
+func callMessages(calls []call, where *time.Location) []string {
+	lines := []string{"<b>📋 Each call</b>\n<i>Its share's move since the call, against the S&amp;P 500's, then the points it has gone the way it called: ✅ on course to the 5-point mark, ❌ not.</i>"}
+	group := func(title string, keep func(call) bool, order func(a, b call) bool, line func(call) string) {
+		var in []call
+		for _, c := range calls {
+			if keep(c) {
+				in = append(in, c)
+			}
+		}
+		if len(in) == 0 {
+			return
+		}
+		if order != nil {
+			sort.SliceStable(in, func(i, j int) bool { return order(in[i], in[j]) })
+		}
+		lines = append(lines, "\n"+title)
+		for _, c := range in {
+			lines = append(lines, line(c))
+		}
+	}
+	best := func(a, b call) bool { return a.called() > b.called() }
+	newest := func(a, b call) bool { return a.At.After(b.At) }
+	scoredAs := func(v string) func(call) bool {
+		return func(c call) bool { return c.state == callScored && c.Verdict == v }
+	}
+
+	group("<b>BUY</b>", scoredAs(model.Buy), best, func(c call) string { return c.scoredLine(where) })
+	group("<b>BUY BELOW</b>, from the day it reached its price", scoredAs(model.BuyBelow), best, func(c call) string { return c.scoredLine(where) })
+	group("<b>SELL</b>", scoredAs(model.Sell), best, func(c call) string { return c.scoredLine(where) })
+	group("<b>HOLD</b>, points against the index", scoredAs(model.Hold), best, func(c call) string { return c.scoredLine(where) })
+	group("<b>Under a week old</b>, not scored yet", func(c call) bool { return c.state == callYoung }, newest, func(c call) string {
+		line := "🆕 " + c.who(where) + " · " + c.Verdict
+		if c.priced {
+			line += " · " + c.moves()
+		}
+		return line
+	})
+	group("<b>BUY BELOW, waiting for its price</b>", func(c call) bool { return c.state == callWaiting }, newest, func(c call) string {
+		line := "🟡 " + c.who(where) + " · at " + c.money(c.Trigger)
+		if c.last > 0 {
+			line += fmt.Sprintf(", last %s", c.money(c.last))
+		}
+		return line
+	})
+	group("<b>BUY BELOW, lapsed</b>: not reached in three months", func(c call) bool { return c.state == callLapsed }, newest, func(c call) string {
+		line := "⚫ " + c.who(where) + " · at " + c.money(c.Trigger)
+		if c.last > 0 {
+			line += fmt.Sprintf(", last %s", c.money(c.last))
+		}
+		return line
+	})
+	group("<b>Not priced today</b>", func(c call) bool { return c.state == callUnpriced }, newest, func(c call) string {
+		return "❔ " + c.who(where) + " · " + c.Verdict
+	})
+
+	var out []string
+	var cur strings.Builder
+	for _, line := range lines {
+		if cur.Len() > 0 && !telegram.Fits(cur.String()+"\n"+line) {
+			out = append(out, cur.String())
+			cur.Reset()
+			line = strings.TrimPrefix(line, "\n")
+		}
+		if cur.Len() > 0 {
+			cur.WriteString("\n")
+		}
+		cur.WriteString(line)
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+// scoredLine is a scored verdict: its mark, who and when, its moves, and the
+// points it has gone the way it called, or for a HOLD, against the index.
+func (c call) scoredLine(where *time.Location) string {
+	mark := "⚪"
+	if right, directed := c.right(); directed {
+		mark = "❌"
+		if right {
+			mark = "✅"
+		}
+	}
+	line := mark + " " + c.who(where)
+	if c.Verdict == model.BuyBelow {
+		line += fmt.Sprintf(" · from %s on %s", c.money(c.Entry), c.EntryAt.In(where).Format("2 Jan"))
+	}
+	return line + " · " + c.moves() + " · <b>" + tenths(100*c.called()) + "</b>"
+}
+
+// tenths writes points to one decimal with their sign, and a figure that
+// rounds to nothing as "0.0" rather than "-0.0".
+func tenths(p float64) string {
+	if math.Round(p*10) == 0 {
+		return "0.0"
+	}
+	return fmt.Sprintf("%+.1f", p)
+}
+
+// who is the share and when it was called, and how it was found: "<b>TXG</b>
+// 10x Genomics · 5 Oct, weekly".
+func (c call) who(where *time.Location) string {
+	return fmt.Sprintf("<b>%s</b> %s · %s, %s", telegram.Escape(c.Symbol), telegram.Escape(clipName(c.Name, 24)),
+		c.At.In(where).Format("2 Jan"), sourceShort[c.source()])
+}
+
+// moves is the share's move and the index's: "-21.8% vs +0.8%", the share's
+// in US dollars where it is priced in another currency.
+func (c call) moves() string {
+	inDollars := ""
+	if !c.dollar() {
+		inDollars = " in US$"
+	}
+	return fmt.Sprintf("%s%s vs %s", signed(c.gain), inDollars, signed(c.index))
+}
+
+// money is a price in the share's own currency: "$46.50", "1.23 SGD".
+func (c call) money(v float64) string {
+	if c.dollar() {
+		return fmt.Sprintf("$%.2f", v)
+	}
+	return fmt.Sprintf("%.2f %s", v, c.Currency)
+}
+
+// sourceShort says in a word how a verdict's company was found.
+var sourceShort = map[string]string{
+	SourceTheme:    "weekly",
+	SourceReaction: "reaction",
+	SourceAnalysis: "/analyse",
+	SourceNews:     "old look",
+}
+
+// clipName cuts a company's name to n runes, where it is longer.
+func clipName(name string, n int) string {
+	rs := []rune(strings.TrimSpace(name))
+	if len(rs) <= n {
+		return string(rs)
+	}
+	return strings.TrimSpace(string(rs[:n-1])) + "…"
 }
 
 // sourceNames say how each source found its companies, for the breakdown.

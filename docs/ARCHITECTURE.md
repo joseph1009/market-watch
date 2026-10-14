@@ -1275,7 +1275,10 @@ reached within `TriggerWindow` (90 days) has lapsed, and is counted but never
 scored.
 `Summary` measures each one against the S&P 500 in US dollars from that entry.
 It splits the BUYs and SELLs by confidence and by how the company was found
-(`Source`). `MinAge` is a week. `Clearly` is the margin a BUY or SELL must
+(`Source`), then lists every call by name (`callMessages`), so what is working
+can be seen ticker by ticker. It returns the messages to send in turn. `Due`
+names every chart, the newest verdicts' too, since the list shows how a call
+under a week old has moved, unscored. `MinAge` is a week. `Clearly` is the margin a BUY or SELL must
 reach: five points a year, scaled to the time passed.
 
 ### internal/fundamentals
