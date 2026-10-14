@@ -24,18 +24,19 @@ const Opus = "claude-opus-5-5"
 // names and the themes were Sonnet and Haiku before, chosen for speed over a
 // lot of text. MODEL_<STAGE> still puts any stage on another model.
 var DefaultModels = map[string]string{
-	Triage:   Opus,
-	Review:   Opus,
-	Names:    Opus,
-	Brief:    Opus,
-	Themes:   Opus,
-	Scout:    Opus,
-	Research: Opus,
-	Verdicts: Opus,
-	Analysis: Opus,
-	Industry: Opus,
-	Terms:    Opus,
-	Release:  Opus,
+	Triage:    Opus,
+	Review:    Opus,
+	Names:     Opus,
+	Brief:     Opus,
+	Themes:    Opus,
+	Scout:     Opus,
+	Research:  Opus,
+	Verdicts:  Opus,
+	Backcheck: Opus,
+	Analysis:  Opus,
+	Industry:  Opus,
+	Terms:     Opus,
+	Release:   Opus,
 }
 
 // quickStages answer without extended thinking. Rating a headline or naming the
@@ -63,8 +64,9 @@ const noThinking = `{"alwaysThinkingEnabled":false}`
 // on one article, and it now checks its case in a second, independent
 // source; and an analysis looks for the last fortnight's news itself, so
 // nothing important is missed. /industry searches for an industry's shape,
-// which no feed carries.
-var webStages = map[string]bool{Scout: true, Research: true, Review: true, Verdicts: true, Analysis: true, Industry: true}
+// which no feed carries. The back-check searches for what moved a share
+// after a call (2026-10-14).
+var webStages = map[string]bool{Scout: true, Research: true, Review: true, Verdicts: true, Backcheck: true, Analysis: true, Industry: true}
 
 // webTools are the tools a web stage is given, and pre-approved for, since a
 // headless call has nobody to ask.

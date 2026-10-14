@@ -235,7 +235,16 @@ func (a *App) judge(ctx context.Context, list []model.Idea, sheets []sheet, cite
 	}
 	cached := runcache.From(ctx)
 	cached.Save("facts", factsView(list, sheets))
-	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop)
+	// The verdicts are weighed against the record of calls like them, and
+	// each sees the calls made on its company before.
+	record := ""
+	if a.Scorecard != nil {
+		record = a.Scorecard.RecordNote()
+		for i := range list {
+			list[i].Past = a.Scorecard.CompanyNote(list[i].Symbol())
+		}
+	}
+	judged, usage, err := a.Judge.Judge(ctx, list, facts, cited, backdrop, record)
 	if err != nil {
 		a.Log.Warn("some verdicts are missing", "error", err)
 	}
@@ -342,7 +351,8 @@ func (a *App) ideaFacts(ctx context.Context, idea model.Idea) (model.Idea, sheet
 				a.addRelease(ctx, &snap, analysisReleaseRunes)
 				a.addPeers(ctx, &snap)
 				idea.Accounts = true
-				return idea, sheet{chart: chart, facts: snap.Table() + snap.SensitivityFacts(), snap: &snap, expect: expect}
+				facts := snap.Table() + snap.SensitivityFacts() + a.resultsFacts(ctx, idea.Ticker, chart)
+				return idea, sheet{chart: chart, facts: facts, snap: &snap, expect: expect}
 			}
 			a.Log.Info("no accounts for an idea", "ticker", idea.Ticker, "error", err)
 		}
@@ -442,6 +452,40 @@ func (a *App) recordVerdicts(ctx context.Context, shown []model.Idea, charts map
 	a.Log.Info("verdicts recorded", "count", len(records), "of", len(shown))
 }
 
+// resultsReach is how far back a verdict is shown the share's results: two
+// years, as far as the daily prices go, about eight announcements.
+const resultsReach = 2 * 365 * 24 * time.Hour
+
+// resultsFacts is how the share took its results over the last two years,
+// for the verdict to set today's news against, or nothing where the dates or
+// the prices could not be read.
+func (a *App) resultsFacts(ctx context.Context, ticker, chart string) string {
+	if a.Filings == nil || chart == "" {
+		return ""
+	}
+	dates, err := a.Filings.ResultsDates(ctx, ticker, a.now().Add(-resultsReach))
+	if err != nil || len(dates) == 0 {
+		return ""
+	}
+	return ideas.ResultsFacts(ideas.ResultsMoves(dates, a.pathFor(ctx, chart), a.benchPath(ctx)))
+}
+
+// benchPath is the index fund's sessions, read once an hour at most: every
+// company the closer look judges is set against it, sixteen of them at once
+// on a Monday.
+func (a *App) benchPath(ctx context.Context) ideas.Path {
+	a.bench.mu.Lock()
+	defer a.bench.mu.Unlock()
+	if len(a.bench.path) > 0 && a.now().Sub(a.bench.at) < time.Hour {
+		return a.bench.path
+	}
+	p := a.pathFor(ctx, ideas.Benchmark)
+	if len(p) > 0 {
+		a.bench.path, a.bench.at = p, a.now()
+	}
+	return p
+}
+
 // pathFor is a chart's sessions as the scorecard reads them, or nil.
 func (a *App) pathFor(ctx context.Context, chart string) ideas.Path {
 	if a.Market == nil {
@@ -470,16 +514,51 @@ func (a *App) handleScorecard(ctx context.Context, msg telegram.Message) error {
 	if a.Scorecard == nil {
 		return a.Bot.SendMessage(ctx, msg.Chat.ID, "The scorecard is not kept on this install.")
 	}
-
-	due := a.Scorecard.Due(a.now(), scorecardSymbols)
-	if len(due) > 0 {
-		if err := a.Bot.SendMessage(ctx, msg.Chat.ID, "Pricing past verdicts — a moment."); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	paths, bench, rates, err := a.priceVerdicts(ctx, msg.Chat.ID)
+	if err != nil {
+		return err
+	}
+	for _, text := range a.Scorecard.Summary(a.now(), paths, bench, rates, a.Cfg.DisplayLocation) {
+		if err := a.Bot.SendMessage(ctx, msg.Chat.ID, text); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+// handleBackcheck says what the back-check found moved each call going the
+// wrong way. It is apart from /scorecard, which only tags each miss with its
+// cause, so the scorecard stays short to read.
+func (a *App) handleBackcheck(ctx context.Context, msg telegram.Message) error {
+	if a.Scorecard == nil {
+		return a.Bot.SendMessage(ctx, msg.Chat.ID, "The scorecard is not kept on this install.")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
+	paths, bench, rates, err := a.priceVerdicts(ctx, msg.Chat.ID)
+	if err != nil {
+		return err
+	}
+	for _, text := range a.Scorecard.Backchecks(a.now(), paths, bench, rates, a.Cfg.DisplayLocation) {
+		if err := a.Bot.SendMessage(ctx, msg.Chat.ID, text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// priceVerdicts reads the prices /scorecard and /backcheck measure the
+// verdicts with, saying so in the chat first since it takes a moment, and
+// writes down each verdict's entry and how it stands.
+func (a *App) priceVerdicts(ctx context.Context, chat int64) (map[string]ideas.Path, ideas.Path, ideas.Rates, error) {
+	due := a.Scorecard.Due(a.now(), scorecardSymbols)
+	if len(due) > 0 {
+		if err := a.Bot.SendMessage(ctx, chat, "Pricing past verdicts — a moment."); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 
 	paths := map[string]ideas.Path{}
 	for _, chart := range due {
@@ -497,14 +576,13 @@ func (a *App) handleScorecard(ctx context.Context, msg telegram.Message) error {
 		if err := a.Scorecard.Settle(paths, bench, rates); err != nil {
 			a.Log.Warn("could not save the verdicts' entries", "error", err)
 		}
-	}
-
-	for _, text := range a.Scorecard.Summary(a.now(), paths, bench, rates, a.Cfg.DisplayLocation) {
-		if err := a.Bot.SendMessage(ctx, msg.Chat.ID, text); err != nil {
-			return err
+		// How each stands is written down too: the verdicts read it as
+		// their record, and the back-check picks its misses from it.
+		if err := a.Scorecard.Refresh(a.now(), paths, bench, rates); err != nil {
+			a.Log.Warn("could not save how the verdicts stand", "error", err)
 		}
 	}
-	return nil
+	return paths, bench, rates, nil
 }
 
 // dollarRates reads what each currency is worth in US dollars, day by day over

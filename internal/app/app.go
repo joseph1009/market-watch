@@ -133,6 +133,7 @@ type App struct {
 	Scout      *ideas.Scout
 	Researcher *ideas.Researcher
 	Judge      *ideas.Judge
+	Backcheck  *ideas.Backcheck
 	Themes     *ideas.ThemeLog
 	Scorecard  *ideas.Scorecard
 
@@ -176,6 +177,14 @@ type App struct {
 
 	// work is /analyse and /industry running in the background. See jobs.go.
 	work jobs
+
+	// bench is the index fund's sessions, read once an hour at most. See
+	// benchPath.
+	bench struct {
+		mu   sync.Mutex
+		path ideas.Path
+		at   time.Time
+	}
 
 	// sending keeps a report sent as several messages together, so two
 	// reports finishing at once do not interleave in the chat.
@@ -363,6 +372,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 			Verifier:  &discover.FIGI{HTTP: &http.Client{Timeout: 30 * time.Second}},
 		}
 		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts), Now: a.now}
+		a.Backcheck = &ideas.Backcheck{Completer: rel.Plain(relay.Backcheck)}
 		themes, err := ideas.LoadThemeLog(filepath.Join(cfg.DataDir, "themes.json"))
 		if err != nil {
 			return nil, err

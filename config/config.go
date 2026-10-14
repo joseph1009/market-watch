@@ -347,18 +347,19 @@ func Load() (*Config, error) {
 
 // stageModelVars are the variables that override a stage's model.
 var stageModelVars = map[string]string{
-	"triage":   "MODEL_TRIAGE",
-	"review":   "MODEL_REVIEW",
-	"brief":    "MODEL_BRIEF",
-	"names":    "MODEL_NAMES",
-	"themes":   "MODEL_THEMES",
-	"scout":    "MODEL_SCOUT",
-	"research": "MODEL_RESEARCH",
-	"verdicts": "MODEL_VERDICTS",
-	"analysis": "MODEL_ANALYSIS",
-	"industry": "MODEL_INDUSTRY",
-	"terms":    "MODEL_TERMS",
-	"release":  "MODEL_RELEASE",
+	"triage":    "MODEL_TRIAGE",
+	"review":    "MODEL_REVIEW",
+	"brief":     "MODEL_BRIEF",
+	"names":     "MODEL_NAMES",
+	"themes":    "MODEL_THEMES",
+	"scout":     "MODEL_SCOUT",
+	"research":  "MODEL_RESEARCH",
+	"verdicts":  "MODEL_VERDICTS",
+	"backcheck": "MODEL_BACKCHECK",
+	"analysis":  "MODEL_ANALYSIS",
+	"industry":  "MODEL_INDUSTRY",
+	"terms":     "MODEL_TERMS",
+	"release":   "MODEL_RELEASE",
 }
 
 // secretVars are the environment variables that hold credentials. Any of them

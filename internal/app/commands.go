@@ -39,6 +39,7 @@ const helpText = `<b>📊 Market Watch</b>
 /usage — how much of the Claude plan and the search credits is left
 /share — post the latest brief or analysis to the channel
 /scorecard — how past buy, hold and sell verdicts have done
+/backcheck — why the calls going the wrong way went that way
 /clear — remove the bot's earlier messages from this chat
 /code — turn on Remote Control on the Sprite, to work on the code from the Claude app (/code stop turns it off, /code update updates Claude Code there)
 /help — this message
@@ -60,6 +61,7 @@ func BotCommands() []telegram.Command {
 		{Command: "usage", Description: "How much of the Claude plan and the search credits is left"},
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
 		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
+		{Command: "backcheck", Description: "Why the calls going the wrong way went that way"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
 		{Command: "code", Description: "Remote Control on the Sprite: /code, /code stop, /code update"},
 		{Command: "help", Description: "What I can do"},
@@ -149,6 +151,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleShare(ctx, msg)
 	case "scorecard":
 		err = a.handleScorecard(ctx, msg)
+	case "backcheck":
+		err = a.handleBackcheck(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
 	case "code":

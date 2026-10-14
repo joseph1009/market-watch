@@ -84,14 +84,15 @@ func Prompt(id string) string {
 // with the writing section, so they all follow the same plain style. The
 // owner found the reports stiff and in need of a second read (2026-10-02).
 var readerFacing = map[string]bool{
-	"brief.system":    true,
-	"discover.system": true,
-	"themes.system":   true,
-	"scout.system":    true,
-	"research.system": true,
-	"verdicts.system": true,
-	"analysis.system": true,
-	"industry.system": true,
+	"brief.system":     true,
+	"discover.system":  true,
+	"themes.system":    true,
+	"scout.system":     true,
+	"research.system":  true,
+	"verdicts.system":  true,
+	"backcheck.system": true,
+	"analysis.system":  true,
+	"industry.system":  true,
 }
 
 // RenderPrompt fills a section's {{.Fields}} from data.
@@ -120,7 +121,8 @@ var required = map[string][]string{
 	"themes.system":    {"{{.Max}}", "THEME:", "DRIVER:", "MEMBERS:"},
 	"scout.system":     {"{{.Max}}", "THEME:", "DRIVER:", "EVIDENCE:", "MEMBERS:", "ticker:exchange"},
 	"research.system":  {"{{.Max}}", "DRIVING:", "PRICED IN:", "THE VALUE:", "name|ticker|exchange|buy or sell|"},
-	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "VALUE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
+	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "ENTRY:", "TRACK:", "NOW:", "WAIT:", "CHOSE:", "VALUE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
+	"backcheck.system": {"=== <the key exactly as given>", "CAUSE:", "KNOWABLE:", "WHY:", "LESSON:", "market, sector, news after, misjudged or too early"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers", "THE VERDICT", "VERDICT:", "CONFIDENCE:", "IN SHORT", "SOURCES"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 	"analysis.tools":   {"find_concepts", "read_concept", "compute", "{{.Lookups}}"},

@@ -336,3 +336,20 @@ func TestABuyBelowIsScoredFromItsPrice(t *testing.T) {
 func summaryText(s *Scorecard, now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) string {
 	return strings.Join(s.Summary(now, paths, bench, rates, where), "\n")
 }
+
+// A share is named as a reader says it: the registered name without its
+// legal ending, out of capitals, and not at all where it is the symbol.
+func TestAShareIsNamedPlainly(t *testing.T) {
+	for _, c := range []struct{ symbol, name, want string }{
+		{"MU", "MICRON TECHNOLOGY INC", "<b>MU</b> Micron Technology"},
+		{"UBER", "Uber Technologies, Inc", "<b>UBER</b> Uber Technologies"},
+		{"AAON", "AAON", "<b>AAON</b>"},
+		{"NBIS", "Nebius Group N.V.", "<b>NBIS</b> Nebius Group"},
+		{"GEN", "Gen Digital", "<b>GEN</b> Gen Digital"},
+		{"AXTI", "AXT", "<b>AXTI</b> AXT"},
+	} {
+		if got := shareLabel(c.symbol, c.name); got != c.want {
+			t.Errorf("shareLabel(%q, %q) = %q, want %q", c.symbol, c.name, got, c.want)
+		}
+	}
+}

@@ -86,6 +86,10 @@ func (a *App) runThemes(ctx context.Context, listings []market.Listing, f follow
 		return w
 	}
 
+	// The calls going the wrong way are checked first, so the week's
+	// verdicts are made knowing what the back-check found.
+	a.backcheck(ctx, panel)
+
 	stocks := market.Measure(panel, listings)
 	bench := market.MeasureSeries(panel.Get(market.Benchmark), market.Listing{Symbol: market.Benchmark})
 	pool := append(append([]market.Stock{}, stocks...), a.singaporeStocks(ctx)...)

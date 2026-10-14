@@ -37,7 +37,7 @@ Companion documents:
 | 3b | [Daily reactions](#3b-daily-reactions) | Every closer look | [`runReactions`](../internal/app/reactions.go#L68) |
 | 3c | [Facts and verdicts](#3c-facts-and-verdicts) | Called by 3a and 3b | [`factsFor`](../internal/app/ideas.go#L281) → [`judge`](../internal/app/ideas.go#L231) |
 | 4 | [Market history](#4-market-history) | A background loop, and before each closer look | [`RunMarket`](../internal/app/marketdata.go#L54), [`topUpMarket`](../internal/app/marketdata.go#L89) |
-| 5 | [Scorecard](#5-scorecard) | Verdicts shown, `/analyse`, `/scorecard` | [`recordVerdicts`](../internal/app/ideas.go#L419), [`recordAnalysis`](../internal/app/commands.go#L832), [`handleScorecard`](../internal/app/ideas.go#L469) |
+| 5 | [Scorecard](#5-scorecard) | Verdicts shown, `/analyse`, `/scorecard`, `/backcheck` | [`recordVerdicts`](../internal/app/ideas.go#L419), [`recordAnalysis`](../internal/app/commands.go#L832), [`handleScorecard`](../internal/app/ideas.go#L469), [`handleBackcheck`](../internal/app/ideas.go) |
 | 6 | [`/analyse`](#6-analyse) | Owner's command | [`handleAnalyse`](../internal/app/commands.go#L611) |
 | 6b | [`/industry`](#6b-industry) | Owner's command | [`handleIndustry`](../internal/app/industry.go#L22) |
 | 7 | [`/now`](#7-now) | Owner's command | [`handleNow`](../internal/app/commands.go#L255) |
@@ -300,6 +300,7 @@ What passes between the functions:
 - Records every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict.
 - Grades each against the S&P 500 (SPY) in US dollars once it is a week old. Both the share and SPY are measured from the first open after the verdict.
 - A BUY BELOW is measured from the first close at or under its price, against SPY's close that day, and graded once that is a week old. Until then it is waiting; after 90 days without it, lapsed. Neither is graded.
+- **The back-check**, once a week before the week's verdicts: up to nine calls going the wrong way (two weeks in or more, worst first) are given to Opus with web search, which says what moved each: the whole market, its sector, news after the call, a misjudged case, or too early to say, and whether it was there to be seen. Each finding goes on the record, tags its miss in `/scorecard`, is set out in full by `/backcheck` (its own command, so the scorecard stays short), and goes back to the verdicts: the record of calls like theirs, the lessons from the misjudged ones, and each company's earlier calls.
 - A BUY is right if it beats SPY by at least 5 points a year, scaled to the time passed (`Clearly`). A SELL is right if it trails SPY by as much.
 - `/scorecard` sends the totals, then every call by name, a line each: grouped BUY, BUY BELOW, SELL, HOLD, best first, with the share's move, the S&P 500's, the points the way called, and ✅ on course or ❌ not. Calls under a week old show their move unscored; BUY BELOWs waiting or lapsed, and any not priced, are listed apart. The list runs over as many messages as it needs, never splitting a line.
 - It is stored in `data/scorecard.json`, and **held in memory** while the service runs.

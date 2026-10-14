@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/joseph1009/market-watch/internal/model"
 	"github.com/joseph1009/market-watch/internal/telegram"
@@ -109,7 +110,76 @@ type Record struct {
 	// Its entry is the first close at or under it, and the index's close
 	// that day, rather than the next open: see settle.
 	Trigger float64 `json:"trigger,omitempty"`
+
+	// Case, Risk and Catalyst are the verdict's own words, kept so a call
+	// that goes wrong can be checked against what it said. Empty on the
+	// records from before 14 October 2026.
+	Case     string `json:"case,omitempty"`
+	Risk     string `json:"risk,omitempty"`
+	Catalyst string `json:"catalyst,omitempty"`
+
+	// Standing is how the call stood when it was last priced, and Review
+	// what the back-check found where it was going the wrong way.
+	Standing *Standing `json:"standing,omitempty"`
+	Review   *Review   `json:"review,omitempty"`
 }
+
+// Standing is how a scored call stood on a day: the points it had gone the
+// way it called, as a fraction, and whether that was on course. Directed is
+// false for a HOLD, which calls no way.
+type Standing struct {
+	At       time.Time `json:"at"`
+	Called   float64   `json:"called"`
+	OnCourse bool      `json:"on_course"`
+	Directed bool      `json:"directed"`
+}
+
+// Review is what the back-check found when a call was going the wrong way:
+// what moved the share (Cause, one of the Cause constants), whether that
+// was there to be seen when the call was made, why in a few sentences, and
+// what to weigh next time, where the call was misjudged. Called is where the
+// call stood when it was checked, so a later check can tell it has worsened.
+type Review struct {
+	At       time.Time `json:"at"`
+	Called   float64   `json:"called"`
+	Cause    string    `json:"cause"`
+	Knowable bool      `json:"knowable"`
+	Why      string    `json:"why"`
+	Lesson   string    `json:"lesson,omitempty"`
+}
+
+// What moved a share against its call, as the back-check names it.
+const (
+	CauseMarket    = "market"     // the whole market moved
+	CauseSector    = "sector"     // its industry moved, and it with it
+	CauseNews      = "news after" // news nobody had when the call was made
+	CauseMisjudged = "misjudged"  // the case was wrong on what was known
+	CauseEarly     = "too early"  // nothing yet says the case is wrong
+)
+
+// causeWords say a cause in the words /scorecard shows.
+var causeWords = map[string]string{
+	CauseMarket:    "market-wide",
+	CauseSector:    "its sector",
+	CauseNews:      "news after the call",
+	CauseMisjudged: "misjudged",
+	CauseEarly:     "too early to say",
+}
+
+// Key names a record for the back-check: its symbol and the minute it was
+// given, since a share can be called more than once.
+func (r Record) Key() string {
+	return r.Symbol + " " + r.At.UTC().Format("2006-01-02T15:04")
+}
+
+// BackcheckAge is how long a call has before a miss is checked: younger, a
+// share going the wrong way is mostly the weeks' noise. A call checked once
+// is checked again RecheckAfter later, where it has gone Clearly further the
+// wrong way since.
+const (
+	BackcheckAge = 14 * 24 * time.Hour
+	RecheckAfter = 28 * 24 * time.Hour
+)
 
 // source is Source with the empty value spelled out.
 func (r Record) source() string {
@@ -268,6 +338,7 @@ func NewRecord(idea model.Idea, chart string, at time.Time) (Record, bool) {
 	if idea.Verdict == model.BuyBelow {
 		r.Trigger = idea.Entry
 	}
+	r.Case, r.Risk, r.Catalyst = idea.Case, idea.Risk, idea.Catalyst
 	if chart == "" || r.Verdict == "" {
 		return Record{}, false
 	}
@@ -542,41 +613,21 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		return []string{b.String()}
 	}
 
-	index, indexOK := bench.last()
 	var judged []scored
 	var calls []call
 	young, unpriced, waiting, lapsed := 0, 0, 0, 0
 	for _, r := range s.records {
-		entry, settled := settle(r, paths[r.Chart], bench, rates)
-		current, have := paths[r.Chart].last()
-		c := call{scored: scored{Record: entry}, last: current.Close}
-		if settled && have && indexOK && entry.Entry > 0 && entry.EntryBenchmark > 0 {
-			if gain, ok := r.gain(entry, current.Close, rates); ok {
-				c.gain, c.index, c.priced = gain, index.Close/entry.EntryBenchmark-1, true
-			}
-		}
-		// A BUY BELOW is a call from the day its price came, and is scored
-		// from then, once that is a week ago.
-		since := r.At
-		if r.Verdict == model.BuyBelow && settled {
-			since = entry.EntryAt
-		}
-		c.age = now.Sub(since)
-		switch {
-		case r.Verdict == model.BuyBelow && !settled && now.Sub(r.At) > TriggerWindow:
-			c.state = callLapsed
+		c := assess(r, now, paths[r.Chart], bench, rates)
+		switch c.state {
+		case callLapsed:
 			lapsed++
-		case r.Verdict == model.BuyBelow && !settled:
-			c.state = callWaiting
+		case callWaiting:
 			waiting++
-		case c.age < MinAge:
-			c.state = callYoung
+		case callYoung:
 			young++
-		case !c.priced:
-			c.state = callUnpriced
+		case callUnpriced:
 			unpriced++
 		default:
-			c.state = callScored
 			judged = append(judged, c.scored)
 		}
 		calls = append(calls, c)
@@ -643,11 +694,347 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		[]string{"high", "medium", "low"}, nil))
 	b.WriteString(breakdown("By how the company was found", judged, func(j scored) string { return j.source() },
 		[]string{SourceTheme, SourceReaction, SourceAnalysis, SourceNews}, sourceNames))
+	// What moved the misses is /backcheck's to say; here, where to find it.
+	if line := causeTally(calls); line != "" {
+		b.WriteString("\n\n" + line + " Send /backcheck for each one.")
+	}
 
 	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
 		clearly(), Clearly*100/12)
 
 	return append([]string{b.String()}, callMessages(calls, where)...)
+}
+
+// assess is one record set against its prices: its entry, its moves since
+// and whether, and why not, it is scored. A BUY BELOW is a call from the day
+// its price came, and is scored from then, once that is a week ago.
+func assess(r Record, now time.Time, path, bench Path, rates Rates) call {
+	index, indexOK := bench.last()
+	entry, settled := settle(r, path, bench, rates)
+	current, have := path.last()
+	c := call{scored: scored{Record: entry}, last: current.Close}
+	if settled && have && indexOK && entry.Entry > 0 && entry.EntryBenchmark > 0 {
+		if gain, ok := r.gain(entry, current.Close, rates); ok {
+			c.gain, c.index, c.priced = gain, index.Close/entry.EntryBenchmark-1, true
+		}
+	}
+	since := r.At
+	if r.Verdict == model.BuyBelow && settled {
+		since = entry.EntryAt
+	}
+	c.age = now.Sub(since)
+	switch {
+	case r.Verdict == model.BuyBelow && !settled && now.Sub(r.At) > TriggerWindow:
+		c.state = callLapsed
+	case r.Verdict == model.BuyBelow && !settled:
+		c.state = callWaiting
+	case c.age < MinAge:
+		c.state = callYoung
+	case !c.priced:
+		c.state = callUnpriced
+	default:
+		c.state = callScored
+	}
+	return c
+}
+
+// Refresh writes down how each scored call stands, from the same prices
+// Summary reads, and saves. The record the verdicts are shown of their own
+// calls, and the back-check's choice of misses, read it without pricing every
+// share again. A call whose prices were not given keeps what it had.
+func (s *Scorecard) Refresh(now time.Time, paths map[string]Path, bench Path, rates Rates) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for i, r := range s.records {
+		path, ok := paths[r.Chart]
+		if !ok {
+			continue
+		}
+		c := assess(r, now, path, bench, rates)
+		if c.state != callScored {
+			continue
+		}
+		right, directed := c.right()
+		s.records[i].Standing = &Standing{At: now, Called: c.called(), OnCourse: right && directed, Directed: directed}
+		if r.Verdict == model.BuyBelow && r.Entry == 0 {
+			s.records[i].Entry, s.records[i].EntryAt, s.records[i].EntryBenchmark, s.records[i].EntryFX = c.Entry, c.EntryAt, c.EntryBenchmark, c.EntryFX
+		}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return s.save()
+}
+
+// Misses are the calls going the wrong way that the back-check should look
+// at, the worst first, at most max of them: a BUY, a BUY BELOW that reached
+// its price, or a SELL, scored, off course as last refreshed, and at least
+// BackcheckAge into its call. One already checked comes back RecheckAfter
+// later only where it has gone Clearly further the wrong way since.
+func (s *Scorecard) Misses(now time.Time, max int) []Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Record
+	for _, r := range s.records {
+		st := r.Standing
+		if st == nil || !st.Directed || st.OnCourse || now.Sub(st.At) > 3*24*time.Hour {
+			continue
+		}
+		since := r.At
+		if r.Verdict == model.BuyBelow {
+			since = r.EntryAt
+		}
+		if now.Sub(since) < BackcheckAge {
+			continue
+		}
+		if rv := r.Review; rv != nil && (now.Sub(rv.At) < RecheckAfter || st.Called > rv.Called-Clearly) {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Standing.Called < out[j].Standing.Called })
+	if max > 0 && len(out) > max {
+		out = out[:max]
+	}
+	return out
+}
+
+// SetReview writes down what the back-check found on the record with key,
+// and saves. It reports whether there was such a record.
+func (s *Scorecard) SetReview(key string, rv Review) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.records {
+		if s.records[i].Key() == key {
+			if st := s.records[i].Standing; st != nil {
+				rv.Called = st.Called
+			}
+			s.records[i].Review = &rv
+			return true, s.save()
+		}
+	}
+	return false, nil
+}
+
+// lessonsShown is how many of the back-check's lessons the verdicts are
+// given: the newest, so the record they read moves on as it is learned.
+const lessonsShown = 8
+
+// RecordNote is the scorecard as the verdicts read it: how each kind of
+// call has done, grouped by how the company was found and the way it was
+// called, how each confidence has done, what the back-check found moved
+// the misses, and the lessons it drew where a call was misjudged. Empty
+// until a call has been scored.
+func (s *Scorecard) RecordNote() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type tally struct {
+		n, right int
+		sum      float64
+	}
+	groups, conf := map[string]*tally{}, map[string]*tally{}
+	var order []string
+	add := func(m map[string]*tally, k string, st *Standing) bool {
+		t, seen := m[k]
+		if !seen {
+			t = &tally{}
+			m[k] = t
+		}
+		t.n++
+		t.sum += st.Called
+		if st.OnCourse {
+			t.right++
+		}
+		return !seen
+	}
+	for _, r := range s.records {
+		if r.Standing == nil || !r.Standing.Directed {
+			continue
+		}
+		k := sourceNames[r.source()] + ", " + r.Verdict
+		if add(groups, k, r.Standing) {
+			order = append(order, k)
+		}
+		if r.Confidence != "" {
+			add(conf, r.Confidence, r.Standing)
+		}
+	}
+	if len(order) == 0 {
+		return ""
+	}
+	sort.Strings(order)
+	var b strings.Builder
+	b.WriteString("Your record so far, from the scorecard: calls a week old or more, as last priced. A group of a few calls says little; weigh it by its size.\n")
+	for _, k := range order {
+		t := groups[k]
+		fmt.Fprintf(&b, "- %s: %d of %d on course, on average %s points the way called\n", k, t.right, t.n, tenths(100*t.sum/float64(t.n)))
+	}
+	for _, c := range []string{"high", "medium", "low"} {
+		if t := conf[c]; t != nil {
+			fmt.Fprintf(&b, "- %s confidence: %d of %d on course\n", c, t.right, t.n)
+		}
+	}
+
+	causes := map[string]int{}
+	var lessons []string
+	for i := len(s.records) - 1; i >= 0; i-- {
+		r := s.records[i]
+		if r.Review == nil {
+			continue
+		}
+		causes[r.Review.Cause]++
+		if r.Review.Cause == CauseMisjudged && r.Review.Lesson != "" && len(lessons) < lessonsShown {
+			lessons = append(lessons, fmt.Sprintf("- %s, %s on %s: %s", r.Symbol, r.Verdict, r.At.Format("2 Jan"), r.Review.Lesson))
+		}
+	}
+	if len(causes) > 0 {
+		var parts []string
+		for _, c := range []string{CauseMarket, CauseSector, CauseNews, CauseMisjudged, CauseEarly} {
+			if causes[c] > 0 {
+				parts = append(parts, fmt.Sprintf("%d %s", causes[c], causeWords[c]))
+			}
+		}
+		fmt.Fprintf(&b, "The calls that went the wrong way were checked afterwards: %s.\n", strings.Join(parts, ", "))
+	}
+	if len(lessons) > 0 {
+		b.WriteString("Lessons from the calls that were misjudged, newest first:\n" + strings.Join(lessons, "\n") + "\n")
+	}
+	return b.String()
+}
+
+// CompanyNote is what the scorecard holds on earlier calls on one share:
+// each call, how it stands, and what the back-check found. Empty where there
+// are none.
+func (s *Scorecard) CompanyNote(symbol string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var lines []string
+	for _, r := range s.records {
+		if !strings.EqualFold(r.Symbol, symbol) {
+			continue
+		}
+		line := fmt.Sprintf("- %s on %s (%s", r.Verdict, r.At.Format("2 Jan 2006"), sourceShort[r.source()])
+		if r.Confidence != "" {
+			line += ", " + r.Confidence + " confidence"
+		}
+		line += ")"
+		if st := r.Standing; st != nil {
+			line += fmt.Sprintf(": %s points the way it called as of %s", tenths(100*st.Called), st.At.Format("2 Jan"))
+		}
+		if rv := r.Review; rv != nil {
+			line += fmt.Sprintf(". Checked afterwards: %s. %s", causeWords[rv.Cause], rv.Why)
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "Earlier calls on it, from the scorecard:\n" + strings.Join(lines, "\n") + "\n"
+}
+
+// causeTally says what the back-check found moved the misses it looked at:
+// "Of 9 misses checked: 3 market-wide, 2 its sector, 4 misjudged." Empty
+// where none has been checked.
+func causeTally(calls []call) string {
+	n := map[string]int{}
+	total := 0
+	for _, c := range calls {
+		if c.Review != nil && c.state == callScored {
+			if right, directed := c.right(); directed && !right {
+				n[c.Review.Cause]++
+				total++
+			}
+		}
+	}
+	if total == 0 {
+		return ""
+	}
+	var parts []string
+	for _, k := range []string{CauseMarket, CauseSector, CauseNews, CauseMisjudged, CauseEarly} {
+		if n[k] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n[k], causeWords[k]))
+		}
+	}
+	return fmt.Sprintf("<b>Why the misses missed</b>, of %d checked: %s.", total, strings.Join(parts, ", "))
+}
+
+// Backchecks reads the back-check's findings back for /backcheck, as the
+// messages to send in turn: what moved each call going the wrong way, why,
+// whether it was there to be seen, and the lesson where it was misjudged,
+// the worst first. It is its own command, apart from /scorecard, which
+// tags each miss with its cause and no more. paths, bench and rates are
+// as Summary takes them.
+func (s *Scorecard) Backchecks(now time.Time, paths map[string]Path, bench Path, rates Rates, where *time.Location) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var calls []call
+	for _, r := range s.records {
+		calls = append(calls, assess(r, now, paths[r.Chart], bench, rates))
+	}
+	return backcheckMessages(calls, where)
+}
+
+// backcheckIntro heads /backcheck, and says what it is when there is
+// nothing to show yet.
+const backcheckIntro = "<b>🔍 Back-checks</b>\n<i>Each Monday, before the week's picks, the calls two weeks or more into going the wrong way are looked at again: whether the whole market, the share's sector, news after the call or a misjudged case moved it, and whether that could have been seen when the call was made.</i>"
+
+// backcheckMessages lists each call off course that the back-check has
+// looked at, worst first, under the tally of what moved them, over as many
+// messages as it takes, never splitting an entry.
+func backcheckMessages(calls []call, where *time.Location) []string {
+	var in []call
+	for _, c := range calls {
+		if c.Review == nil || c.state != callScored {
+			continue
+		}
+		if right, directed := c.right(); directed && !right {
+			in = append(in, c)
+		}
+	}
+	if len(in) == 0 {
+		return []string{backcheckIntro + "\n\nNone yet: no call going the wrong way has been checked."}
+	}
+	sort.SliceStable(in, func(i, j int) bool { return in[i].called() < in[j].called() })
+	lines := []string{backcheckIntro + "\n\n" + causeTally(calls)}
+	for _, c := range in {
+		rv := c.Review
+		line := fmt.Sprintf("\n%s · %s %s · <b>%s</b> · <i>%s</i>", shareLabel(c.Symbol, c.Name),
+			c.Verdict, c.At.In(where).Format("2 Jan"), tenths(100*c.called()), causeWords[rv.Cause])
+		if rv.Knowable {
+			line += ", <i>there to be seen</i>"
+		}
+		line += "\n" + telegram.Escape(rv.Why)
+		if rv.Cause == CauseMisjudged && rv.Lesson != "" {
+			line += "\n<i>Lesson:</i> " + telegram.Escape(rv.Lesson)
+		}
+		lines = append(lines, line)
+	}
+	return packLines(lines)
+}
+
+// packLines joins lines into messages that each fit Telegram's limit,
+// starting a new message rather than splitting a line, and dropping the
+// blank line that opened a group at the top of one.
+func packLines(lines []string) []string {
+	var out []string
+	var cur strings.Builder
+	for _, line := range lines {
+		if cur.Len() > 0 && !telegram.Fits(cur.String()+"\n"+line) {
+			out = append(out, cur.String())
+			cur.Reset()
+			line = strings.TrimPrefix(line, "\n")
+		}
+		if cur.Len() > 0 {
+			cur.WriteString("\n")
+		}
+		cur.WriteString(line)
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
 }
 
 // call is one verdict as the list of calls shows it: scored, or why not.
@@ -725,24 +1112,7 @@ func callMessages(calls []call, where *time.Location) []string {
 	group("<b>Not priced today</b>", func(c call) bool { return c.state == callUnpriced }, newest, func(c call) string {
 		return "❔ " + c.who(where) + " · " + c.Verdict
 	})
-
-	var out []string
-	var cur strings.Builder
-	for _, line := range lines {
-		if cur.Len() > 0 && !telegram.Fits(cur.String()+"\n"+line) {
-			out = append(out, cur.String())
-			cur.Reset()
-			line = strings.TrimPrefix(line, "\n")
-		}
-		if cur.Len() > 0 {
-			cur.WriteString("\n")
-		}
-		cur.WriteString(line)
-	}
-	if cur.Len() > 0 {
-		out = append(out, cur.String())
-	}
-	return out
+	return packLines(lines)
 }
 
 // scoredLine is a scored verdict: its mark, who and when, its moves, and the
@@ -759,7 +1129,11 @@ func (c call) scoredLine(where *time.Location) string {
 	if c.Verdict == model.BuyBelow {
 		line += fmt.Sprintf(" · from %s on %s", c.money(c.Entry), c.EntryAt.In(where).Format("2 Jan"))
 	}
-	return line + " · " + c.moves() + " · <b>" + tenths(100*c.called()) + "</b>"
+	line += " · " + c.moves() + " · <b>" + tenths(100*c.called()) + "</b>"
+	if c.Review != nil && mark == "❌" {
+		line += " · <i>" + causeWords[c.Review.Cause] + "</i>"
+	}
+	return line
 }
 
 // tenths writes points to one decimal with their sign, and a figure that
@@ -774,8 +1148,7 @@ func tenths(p float64) string {
 // who is the share and when it was called, and how it was found: "<b>TXG</b>
 // 10x Genomics · 5 Oct, weekly".
 func (c call) who(where *time.Location) string {
-	return fmt.Sprintf("<b>%s</b> %s · %s, %s", telegram.Escape(c.Symbol), telegram.Escape(clipName(c.Name, 24)),
-		c.At.In(where).Format("2 Jan"), sourceShort[c.source()])
+	return fmt.Sprintf("%s · %s, %s", shareLabel(c.Symbol, c.Name), c.At.In(where).Format("2 Jan"), sourceShort[c.source()])
 }
 
 // moves is the share's move and the index's: "-21.8% vs +0.8%", the share's
@@ -811,6 +1184,47 @@ func clipName(name string, n int) string {
 		return string(rs)
 	}
 	return strings.TrimSpace(string(rs[:n-1])) + "…"
+}
+
+// shareLabel is a share as a line of the scorecard names it: its symbol in
+// bold, then its name as a reader would say it, or the symbol alone where
+// the name is only the symbol again ("AAON AAON").
+func shareLabel(symbol, name string) string {
+	name = clipName(plainName(name), 24)
+	if name == "" || strings.EqualFold(name, symbol) {
+		return "<b>" + telegram.Escape(symbol) + "</b>"
+	}
+	return "<b>" + telegram.Escape(symbol) + "</b> " + telegram.Escape(name)
+}
+
+// legalEndings are the parts of a registered name a reader leaves off.
+var legalEndings = []string{", Inc.", ", Inc", " Inc.", " Inc", " Corporation", " Corp.", " Corp", " Holdings Co",
+	" Co.", " plc.", " plc", " Ltd.", " Ltd", " N.V.", " Common Stock", " Ordinary Shares"}
+
+// plainName is a company's name as a reader would say it: "Micron
+// Technology" for the registered "MICRON TECHNOLOGY INC". A name in capitals
+// throughout is put in title case; one with its own capitals keeps them.
+func plainName(name string) string {
+	name = strings.TrimSpace(name)
+	for changed := true; changed; {
+		changed = false
+		for _, end := range legalEndings {
+			if len(name) > len(end) && strings.EqualFold(name[len(name)-len(end):], end) {
+				name, changed = strings.TrimSpace(strings.TrimRight(name[:len(name)-len(end)], ",")), true
+			}
+		}
+	}
+	// A short word in capitals is the company's own spelling: AXT, GRAIL.
+	if name != strings.ToUpper(name) || (!strings.Contains(name, " ") && len([]rune(name)) <= 5) {
+		return name
+	}
+	words := strings.Fields(strings.ToLower(name))
+	for i, w := range words {
+		rs := []rune(w)
+		rs[0] = unicode.ToUpper(rs[0])
+		words[i] = string(rs)
+	}
+	return strings.Join(words, " ")
 }
 
 // sourceNames say how each source found its companies, for the breakdown.
@@ -884,7 +1298,7 @@ func points(f float64) string {
 
 // pointsSigned is a difference in points with its sign: "+2.1 points".
 func pointsSigned(f float64) string {
-	return fmt.Sprintf("%+.1f points", 100*f)
+	return tenths(100*f) + " points"
 }
 
 func plural(n int, one, many string) string {

@@ -485,6 +485,10 @@ func ideaCard(idea model.Idea, cited []model.Article) pages.Card {
 		pages.Field{Label: "Why that price", Body: escape(entryWhy(idea))},
 		pages.Field{Label: "Warning signs", Body: escape(strings.Join(idea.Flags, "; "))},
 		pages.Field{Label: "The case", Body: linkCitations(escape(idea.Case), cited)},
+		pages.Field{Label: "The record", Body: linkCitations(escape(idea.Track), cited)},
+		pages.Field{Label: "Buy now", Body: linkCitations(escape(idea.BuyNow), cited)},
+		pages.Field{Label: "Or wait", Body: linkCitations(escape(idea.Wait), cited)},
+		pages.Field{Label: "Why this one", Body: linkCitations(escape(idea.Chose), cited)},
 		pages.Field{Label: "Catalyst", Body: linkCitations(escape(idea.Catalyst), cited)},
 		pages.Field{Label: "Sensitivity", Body: escape(idea.Sensitivity)},
 	)

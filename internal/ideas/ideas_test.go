@@ -189,7 +189,7 @@ CONFIDENCE: high
 CHANGED: Guide up 10% [1].
 REACTION: Underreacted: the guide rose more.`}
 	got, _, err := (&Judge{Completer: c, Batch: 10, Now: func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) }}).
-		Judge(context.Background(), ideas, []string{"FACTS VRT", "", "", "FACTS MU"}, cited, []string{"Brent $80"})
+		Judge(context.Background(), ideas, []string{"FACTS VRT", "", "", "FACTS MU"}, cited, []string{"Brent $80"}, "RECORD NOTE")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,6 +218,7 @@ REACTION: Underreacted: the guide rose more.`}
 		"Answer CHANGED, MOVE and REACTION, and leave out VALUE.",
 		"[1] Micron raises HBM outlook (CNBC", "    Micron lifted its guide.",
 		"- Brent $80",
+		"RECORD NOTE",
 	} {
 		if !strings.Contains(c.prompt, want) {
 			t.Errorf("the verdict prompt is missing %q:\n%s", want, c.prompt)
@@ -234,7 +235,7 @@ REACTION: Underreacted: the guide rose more.`}
 func TestAFailedBatchCostsItsOwnCompanies(t *testing.T) {
 	ideas := []model.Idea{{Name: "A", Ticker: "A", Exchange: "US"}, {Name: "B", Ticker: "B", Exchange: "US"}}
 	c := &fakeCompleter{err: errors.New("down")}
-	got, _, err := (&Judge{Completer: c, Batch: 1}).Judge(context.Background(), ideas, nil, nil, nil)
+	got, _, err := (&Judge{Completer: c, Batch: 1}).Judge(context.Background(), ideas, nil, nil, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "2 of 2 verdict batches failed") || len(got) != 0 {
 		t.Errorf("got %v, %v", got, err)
 	}
@@ -248,7 +249,7 @@ func TestNewsAfterThePriceIsMarkedAsNotYetTraded(t *testing.T) {
 	idea := model.Idea{Name: "Micron", Ticker: "MU", Exchange: "US", Kind: model.IdeaReaction, Articles: []model.Article{late},
 		Quote: &model.Quote{Symbol: "MU", Price: 120, AsOf: time.Date(2026, 9, 25, 20, 0, 0, 0, time.UTC)}}
 	c := &fakeCompleter{reply: "=== MU\nVERDICT: HOLD\nCONFIDENCE: low"}
-	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), []model.Idea{idea}, []string{""}, []model.Article{late}, nil); err != nil {
+	if _, _, err := (&Judge{Completer: c}).Judge(context.Background(), []model.Idea{idea}, []string{""}, []model.Article{late}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(c.prompt, "Articles [1] came out after that price: the market has not traded on them yet.") {
@@ -355,7 +356,7 @@ CHECKED: One source only: the rally is reported by [259] alone.
 VERDICT: BUY
 CONFIDENCE: high
 CHECKED: Reuters [1] and the company's 8-K agree.`}
-	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), list, []string{"", ""}, nil, nil)
+	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), list, []string{"", ""}, nil, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +403,7 @@ ENTRY: US$45.00, where the multiple meets the theme's
 === BIG
 VERDICT: Buy below US$1,046.20
 CONFIDENCE: medium`}
-	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), ideas, nil, nil, nil)
+	got, _, err := (&Judge{Completer: c, Batch: 10}).Judge(context.Background(), ideas, nil, nil, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

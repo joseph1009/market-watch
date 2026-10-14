@@ -328,6 +328,22 @@ func renderIdea(idea model.Idea, cited []model.Article) string {
 	if idea.Case != "" {
 		parts = append(parts, "<i>The case:</i> "+linkCitations(escape(idea.Case), cited))
 	}
+	if idea.Track != "" {
+		parts = append(parts, "<i>The record:</i> "+linkCitations(escape(idea.Track), cited))
+	}
+	// Buying now and waiting for a lower price were both weighed, and the
+	// verdict says which won: the three read as one thought.
+	var weighed []string
+	for _, part := range []struct{ label, text string }{
+		{"Buy now:", idea.BuyNow}, {"Or wait:", idea.Wait}, {"Why this one:", idea.Chose},
+	} {
+		if part.text != "" {
+			weighed = append(weighed, "<i>"+part.label+"</i> "+linkCitations(escape(part.text), cited))
+		}
+	}
+	if len(weighed) > 0 {
+		parts = append(parts, strings.Join(weighed, "\n"))
+	}
 
 	// What could prove the case soon, and how much a change is worth: two
 	// short lines that read as one paragraph.

@@ -486,7 +486,17 @@ Then it does the following.
    market backdrop shown above them. It checks the claim each case rests on in
    two independent sources, and names them in a CHECKED line. Each company gets
    a BUY, BUY BELOW, HOLD or SELL, with its case, what is coming, the lever it
-   depends on, two to four numbers and the biggest risk. A BUY BELOW is a BUY
+   depends on, two to four numbers and the biggest risk. It works as an
+   analysis would, past, present and future: TRACK says what record the call
+   rests on and whether today fits it, from the accounts and from how the
+   share took its results over two years (`ideas.ResultsFacts`, from the 8-Ks
+   under Item 2.02, `sec.Client.ResultsDates`). A call leaning to buy writes
+   both cases, NOW and WAIT, and says in CHOSE why it took BUY or BUY BELOW.
+   Above the companies it is given the scorecard's record of calls like
+   these, with the back-check's lessons (`Scorecard.RecordNote`), and under
+   each its earlier calls on that company (`CompanyNote`). Confidence weighs
+   the evidence, the business and its industry, the fit with the record, and
+   that record. A BUY BELOW is a BUY
    that waits for a price, with an ENTRY line: the price, in the share's own
    currency, and why that price. A theme pick also gets its price
    against its theme and its own history. A reaction gets what changed, how the
@@ -583,6 +593,7 @@ sender is allowed and then routes on the command:
 | `/analyse` | [`handleAnalyse`](../internal/app/commands.go#L611) | Writes up a company (see below) |
 | `/industry` | [`handleIndustry`](../internal/app/industry.go#L22) | How an industry fits together, where it is heading, and companies to look into (see below) |
 | `/scorecard` | [`handleScorecard`](../internal/app/ideas.go#L469) | How the verdicts have done against the index |
+| `/backcheck` | [`handleBackcheck`](../internal/app/ideas.go) | What the back-check found moved each call going the wrong way, worst first ([`Scorecard.Backchecks`](../internal/ideas/scorecard.go)) |
 | `/stats` | [`handleStats`](../internal/app/commands.go#L867) | What recent runs found and did |
 | `/usage` | [`handleUsage`](../internal/app/usage.go#L51) | What is left of the Claude plan, window by window, and of the month's search credits |
 | `/watchlist` | [`handleWatchlist`](../internal/app/commands.go#L338) | Follow a company or stop following it; list or drop the changes made here |
@@ -1276,7 +1287,14 @@ scored.
 `Summary` measures each one against the S&P 500 in US dollars from that entry.
 It splits the BUYs and SELLs by confidence and by how the company was found
 (`Source`), then lists every call by name (`callMessages`), so what is working
-can be seen ticker by ticker. It returns the messages to send in turn. `Due`
+can be seen ticker by ticker. `Refresh` writes each scored call's `Standing`
+onto its record. The back-check reads the misses from that (`Misses`):
+directed, off course, two weeks in, worst first, and not checked within four
+weeks unless 5 points worse since. **[backcheck.go](../internal/ideas/backcheck.go)**
+asks why each went the wrong way, and `SetReview` writes the `Review` onto the
+record. `/scorecard` tags each miss with its cause and points to `/backcheck`,
+which lists the findings on their own (`Backchecks`).
+The app runs it at the start of the weekly themes ([backcheck.go](../internal/app/backcheck.go)). It returns the messages to send in turn. `Due`
 names every chart, the newest verdicts' too, since the list shows how a call
 under a week old has moved, unscored. `MinAge` is a week. `Clearly` is the margin a BUY or SELL must
 reach: five points a year, scaled to the time passed.

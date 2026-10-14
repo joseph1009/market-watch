@@ -1561,8 +1561,10 @@ func TestABuyBelowSaysItsPrice(t *testing.T) {
 			Verdict: model.BuyBelow, Confidence: "medium", Entry: entry, EntryWhy: "its five-year median multiple",
 			Trading: &model.Trading{Last: 50, Currency: "USD"}}
 	}
+	dip := idea("DIP", 46.5)
+	dip.Track, dip.BuyNow, dip.Wait, dip.Chose = "Six of its last eight results lifted it.", "At $50, 3 points at best.", "At $46.50, 8 points.", "Waiting buys the same growth for less."
 	picks := Picks{
-		Themes: []ThemeView{{Name: "Tankers", Ideas: []model.Idea{idea("DIP", 46.5), idea("FAR", 40)}}},
+		Themes: []ThemeView{{Name: "Tankers", Ideas: []model.Idea{dip, idea("FAR", 40)}}},
 		Passed: []model.Idea{{Name: "Scorpio Tankers", Ticker: "STNG", Exchange: "US"}, {Name: "TORM", Ticker: "TRMD", Exchange: "US"}},
 	}
 	out := strings.Join(RenderPicks(picks, nil, IdeasOptions{}, time.UTC), "\n")
@@ -1571,6 +1573,10 @@ func TestABuyBelowSaysItsPrice(t *testing.T) {
 		"<b>BUY ON A PULLBACK</b> to $46.50, 7% under the last price · medium confidence",
 		"<b>BUY IF IT FALLS</b> to $40.00, 20% under the last price",
 		"<i>Why that price:</i> its five-year median multiple",
+		"<i>The record:</i> Six of its last eight results lifted it.",
+		"<i>Buy now:</i> At $50, 3 points at best.",
+		"<i>Or wait:</i> At $46.50, 8 points.",
+		"<i>Why this one:</i> Waiting buys the same growth for less.",
 		"<i>Also looked at, with no clear edge either way:</i> Scorpio Tankers",
 		"a BUY on a pullback, or if it falls to a price, means the same from that price",
 	} {

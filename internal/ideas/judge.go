@@ -51,14 +51,16 @@ var verdictsPrompt = config.Prompt("verdicts.system")
 // Judge returns the ideas that received a verdict, in the order given. facts
 // is each idea's fact sheet, by position: its trading, and its accounts and
 // expectations where they were read. backdrop is the market's commodities and
-// rates, written once above them all.
+// rates, written once above them all, and record the scorecard's account of
+// how the calls so far have done, with the back-check's lessons, so each
+// verdict is weighed against the record of calls like it.
 //
 // An idea the reply skips, or answers with something other than BUY, BUY
 // BELOW, HOLD or SELL, is dropped rather than shown without one: the section is verdicts, and
 // a company listed without one would read as an oversight. A batch that fails
 // costs its own companies; the error says how many batches that was, and the
 // rest are returned.
-func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, cited []model.Article, backdrop []string) ([]model.Idea, model.Usage, error) {
+func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, cited []model.Article, backdrop []string, record string) ([]model.Idea, model.Usage, error) {
 	if j.Completer == nil || len(ideas) == 0 {
 		return nil, model.Usage{}, nil
 	}
@@ -89,7 +91,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 				return
 			}
 			text, usage, err := j.Completer.Complete(ctx, verdictsPrompt,
-				judgePrompt(ideas[b[0]:b[1]], facts[min(b[0], len(facts)):min(b[1], len(facts))], cited, backdrop, today))
+				judgePrompt(ideas[b[0]:b[1]], facts[min(b[0], len(facts)):min(b[1], len(facts))], cited, backdrop, record, today))
 			outcomes[i] = outcome{blocks: parseVerdicts(text), usage: usage, err: err}
 		}()
 	}
@@ -132,6 +134,7 @@ func (j *Judge) Judge(ctx context.Context, ideas []model.Idea, facts []string, c
 		idea.Catalyst, idea.Sensitivity = v.catalyst, v.sensitivity
 		idea.Checked = v.checked
 		idea.Entry, idea.EntryWhy = v.entry, v.entryWhy
+		idea.Track, idea.BuyNow, idea.Wait, idea.Chose = v.track, v.now, v.wait, v.chose
 		out = append(out, hold(idea))
 	}
 	if failed > 0 {
@@ -200,7 +203,7 @@ func (j *Judge) now() time.Time {
 	return time.Now()
 }
 
-func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string, today time.Time) string {
+func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, backdrop []string, record string, today time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Today is %s.\n", today.Format("Monday 2 January 2006"))
 
@@ -236,6 +239,10 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 		}
 	}
 
+	if strings.TrimSpace(record) != "" {
+		b.WriteString("\n" + strings.TrimSpace(record) + "\n")
+	}
+
 	b.WriteString("\nThe companies:\n")
 	for i, idea := range ideas {
 		fmt.Fprintf(&b, "\n=== %s\n", idea.Symbol())
@@ -259,6 +266,9 @@ func judgePrompt(ideas []model.Idea, facts []string, cited []model.Article, back
 		}
 		if !idea.Accounts {
 			b.WriteString("Its accounts could not be read, so your confidence can be low at most.\n")
+		}
+		if idea.Past != "" {
+			b.WriteString(strings.TrimSpace(idea.Past) + "\n")
 		}
 
 		if q := idea.Quote; q != nil {
@@ -299,6 +309,7 @@ type verdict struct {
 	changed, moved, reaction, value             string
 	catalyst, sensitivity, checked              string
 	entryLine, entryWhy                         string
+	track, now, wait, chose                     string
 	entry                                       float64
 }
 
@@ -335,6 +346,10 @@ func parseVerdicts(text string) map[string]verdict {
 		{"SENSITIVITY:", func(v *verdict) *string { return &v.sensitivity }},
 		{"CHECKED:", func(v *verdict) *string { return &v.checked }},
 		{"ENTRY:", func(v *verdict) *string { return &v.entryLine }},
+		{"TRACK:", func(v *verdict) *string { return &v.track }},
+		{"NOW:", func(v *verdict) *string { return &v.now }},
+		{"WAIT:", func(v *verdict) *string { return &v.wait }},
+		{"CHOSE:", func(v *verdict) *string { return &v.chose }},
 	}
 
 	for _, raw := range strings.Split(text, "\n") {

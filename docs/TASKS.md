@@ -89,16 +89,13 @@ is, what it needs from you, and why it is worth doing.
 
 ## Verdicts
 
-- **Learn from the scorecard.** Put aside on 2 October 2026. Today the
-  scorecard only keeps score. It feeds back in only two ways: a company isn't
-  picked twice within 8 weeks, and a verdict sees the one before it. Three
-  options were offered:
-  - show the judge each company's past outcome;
-  - show the judge the record of each source and each kind of verdict;
-  - add code rules, such as lowering the confidence of a group with a poor
-    record, or showing fewer of it (the one recommended).
-
-  All three need about 30 graded verdicts in a group first.
+- **Learn from the scorecard.** The first two options were built on 14
+  October 2026, with a weekly back-check of the misses: the judge is shown each
+  company's earlier calls and how they did, the record of each source and
+  kind of verdict, and the lessons from the misses the back-check found
+  misjudged. Left: code rules, such as capping the confidence of a group with
+  a poor record, or showing fewer of it. They need about 30 graded verdicts in
+  a group first, so look again in December.
 - **Backtests.** Also put aside on 2 October 2026. The parts of the closer
   look that use no model could be tested on the stored two years of prices.
   That covers the weekly screen's leaders and industries, and whether

@@ -72,6 +72,22 @@ type Idea struct {
 	Entry    float64
 	EntryWhy string
 
+	// Track is the record the call rests on: how the business has moved over
+	// the years and quarters, whether management did what it said, how the
+	// share took past results and news like today's, and whether today fits
+	// that record and the road ahead or breaks from it.
+	Track string
+
+	// BuyNow and Wait are the two cases a call that leans to buying weighs:
+	// buying at today's price, and waiting for a lower one. Chose says why
+	// the verdict took the one it did.
+	BuyNow, Wait, Chose string
+
+	// Past is what the scorecard holds on earlier calls on this company: how
+	// each has done, and what the back-check found where one went wrong. It
+	// is given to the verdict, not shown.
+	Past string
+
 	// Value is a theme pick's price set against its theme and its own
 	// history, as the verdict weighs it.
 	Value string

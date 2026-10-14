@@ -33,18 +33,19 @@ import (
 
 // The stages, named as they appear in the files.
 const (
-	Triage   = "triage"   // rating and placing the day's articles
-	Review   = "review"   // checking where the sorting put them
-	Brief    = "brief"    // writing the brief
-	Names    = "names"    // spotting companies no watchlist tracks
-	Themes   = "themes"   // sorting the market's leaders into themes
-	Scout    = "scout"    // finding industries growing before their shares
-	Research = "research" // researching a theme for companies worth a look
-	Verdicts = "verdicts" // judging each of them
-	Analysis = "analysis" // writing up one company's accounts
-	Industry = "industry" // explaining how an industry fits together
-	Terms    = "terms"    // checking a term before it is linked in every report
-	Release  = "release"  // copying the figures out of a results release
+	Triage    = "triage"    // rating and placing the day's articles
+	Review    = "review"    // checking where the sorting put them
+	Brief     = "brief"     // writing the brief
+	Names     = "names"     // spotting companies no watchlist tracks
+	Themes    = "themes"    // sorting the market's leaders into themes
+	Scout     = "scout"     // finding industries growing before their shares
+	Research  = "research"  // researching a theme for companies worth a look
+	Verdicts  = "verdicts"  // judging each of them
+	Backcheck = "backcheck" // asking why a call went the wrong way
+	Analysis  = "analysis"  // writing up one company's accounts
+	Industry  = "industry"  // explaining how an industry fits together
+	Terms     = "terms"     // checking a term before it is linked in every report
+	Release   = "release"   // copying the figures out of a results release
 )
 
 // DefaultKeep is how many run directories are kept. A month of daily briefs
