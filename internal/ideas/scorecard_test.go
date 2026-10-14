@@ -39,7 +39,7 @@ func TestTheSameVerdictAddedAtOnceIsCountedOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := s.AddOnce(r, 24*time.Hour); err != nil {
+			if _, err := s.AddOnce(r); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -99,7 +99,7 @@ func TestTheScorecardMeasuresEachVerdictAgainstTheIndex(t *testing.T) {
 	bench := Path{day(1, 500, 502), day(30, 548, 550)}
 	text := summaryText(s, now, paths, bench, nil, time.UTC)
 	for _, want := range []string{
-		"4 verdicts since 1 Sep",
+		"4 calls since 1 Sep: 4 live.",
 		"3 are a week old or more",
 		"1 is newer",
 		// +20 and -5 points against the index.

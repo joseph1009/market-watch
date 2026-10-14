@@ -122,7 +122,48 @@ type Record struct {
 	// what the back-check found where it was going the wrong way.
 	Standing *Standing `json:"standing,omitempty"`
 	Review   *Review   `json:"review,omitempty"`
+
+	// OffSince is when the call last went off course, zero while it is on
+	// course. A live call off course for DropAfter straight is dropped.
+	OffSince time.Time `json:"off_since,omitempty"`
+
+	// Closed says when and why the call stopped being the live one on its
+	// company. Nil while it is live.
+	Closed *Closed `json:"closed,omitempty"`
 }
+
+// Closed is when a call stopped being the live one on its company, and why:
+// one of the Closed constants.
+type Closed struct {
+	At     time.Time `json:"at"`
+	Reason string    `json:"reason"`
+}
+
+// Why a call stopped being the live one. A company has one live call at a
+// time (2026-10-14): two verdicts on one share, a HOLD from /analyse and a
+// BUY from the week's picks, only confused the reader. A call is not closed
+// for having run twelve months; twelve months is the yardstick it is judged
+// by, and a call still on course stays on the list.
+const (
+	// ClosedReplaced is a call a different verdict on the same company
+	// replaced. Its result is frozen on that day, and counts.
+	ClosedReplaced = "replaced"
+	// ClosedDropped is a call off course for DropAfter straight. Its result
+	// is frozen on that day, and counts.
+	ClosedDropped = "dropped"
+	// ClosedRepeat is the same verdict given again while the first was live.
+	// The first carries on from its own day, and the repeat is not counted.
+	ClosedRepeat = "repeat"
+)
+
+// DropAfter is how long a live call may stay off course before it is
+// dropped: eight weeks of checks in a row, so a bad week or two does not end
+// a call, and one back on course starts the count again.
+const DropAfter = 8 * 7 * 24 * time.Hour
+
+// recentlyClosed is how long a dropped or replaced call is still listed
+// under /scorecard's calls, after which only the totals carry it.
+const recentlyClosed = 8 * 7 * 24 * time.Hour
 
 // Standing is how a scored call stood on a day: the points it had gone the
 // way it called, as a fraction, and whether that was on course. Directed is
@@ -132,6 +173,13 @@ type Standing struct {
 	Called   float64   `json:"called"`
 	OnCourse bool      `json:"on_course"`
 	Directed bool      `json:"directed"`
+
+	// Gain and Index are the share's move and the index's, and Final marks
+	// a closed call's standing on the day it closed, which no later price
+	// changes.
+	Gain  float64 `json:"gain,omitempty"`
+	Index float64 `json:"index,omitempty"`
+	Final bool    `json:"final,omitempty"`
 }
 
 // Review is what the back-check found when a call was going the wrong way:
@@ -368,46 +416,96 @@ func LoadScorecard(path string) (*Scorecard, error) {
 	if err := json.Unmarshal(data, &s.records); err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
+	// The records from before one live call a company carry its earlier
+	// calls side by side; they are put in order once.
+	if oneLiveCall(s.records) {
+		if err := s.save(); err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
 }
 
-// Add records verdicts and saves.
+// oneLiveCall closes, in the order they were given, every call a later one
+// on the same company replaced or repeated, and reports whether it changed
+// any. It is what Add does as each call comes, applied to a record kept
+// before that rule.
+func oneLiveCall(records []Record) bool {
+	order := make([]int, len(records))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return records[order[a]].At.Before(records[order[b]].At) })
+	live := map[string]int{}
+	changed := false
+	for _, i := range order {
+		r := &records[i]
+		key := strings.ToUpper(r.Symbol)
+		if r.Closed != nil {
+			continue
+		}
+		if j, ok := live[key]; ok && records[j].Closed == nil {
+			if records[j].Verdict == r.Verdict {
+				r.Closed = &Closed{At: r.At, Reason: ClosedRepeat}
+				changed = true
+				continue
+			}
+			records[j].Closed = &Closed{At: r.At, Reason: ClosedReplaced}
+			changed = true
+		}
+		live[key] = i
+	}
+	return changed
+}
+
+// place adds r as its company's live call, unless it repeats the live call's
+// verdict, and reports whether it was added. A different verdict replaces
+// the live call, which closes on r's day.
+func (s *Scorecard) place(r Record) bool {
+	for i := len(s.records) - 1; i >= 0; i-- {
+		old := &s.records[i]
+		if old.Closed != nil || !strings.EqualFold(old.Symbol, r.Symbol) {
+			continue
+		}
+		if old.Verdict == r.Verdict {
+			return false
+		}
+		old.Closed = &Closed{At: r.At, Reason: ClosedReplaced}
+		break
+	}
+	s.records = append(s.records, r)
+	return true
+}
+
+// Add records verdicts, each as its company's live call, and saves. One that
+// repeats the live call's verdict is not recorded: the live call carries on
+// from its own day.
 func (s *Scorecard) Add(records ...Record) error {
 	if len(records) == 0 {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.records = append(s.records, records...)
+	changed := false
+	for _, r := range records {
+		changed = s.place(r) || changed
+	}
+	if !changed {
+		return nil
+	}
 	return s.save()
 }
 
-// AddOnce records r and saves, unless the same verdict on the same share,
-// from the same source, was recorded within window before it: the same call
-// made twice, which should count once. It checks and adds in one step, so
-// two analyses of one share finishing together are not both counted.
-func (s *Scorecard) AddOnce(r Record, window time.Duration) (added bool, err error) {
+// AddOnce records r as Add does, and reports whether it was recorded. It
+// checks and adds in one step, so two analyses of one share finishing
+// together are not both counted.
+func (s *Scorecard) AddOnce(r Record) (added bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.repeats(r, window) {
+	if !s.place(r) {
 		return false, nil
 	}
-	s.records = append(s.records, r)
 	return true, s.save()
-}
-
-// repeats reports whether r was recorded within window before it.
-func (s *Scorecard) repeats(r Record, window time.Duration) bool {
-	for i := len(s.records) - 1; i >= 0; i-- {
-		old := s.records[i]
-		if r.At.Sub(old.At) > window {
-			break
-		}
-		if old.Symbol == r.Symbol && old.Verdict == r.Verdict && old.source() == r.source() {
-			return true
-		}
-	}
-	return false
 }
 
 // All returns every record, oldest first.
@@ -428,7 +526,7 @@ func (s *Scorecard) Due(now time.Time, limit int) []string {
 	seen := map[string]bool{}
 	for i := len(s.records) - 1; i >= 0; i-- {
 		r := s.records[i]
-		if seen[r.Chart] {
+		if seen[r.Chart] || (r.Closed != nil && (r.Closed.Reason == ClosedRepeat || (r.Standing != nil && r.Standing.Final))) {
 			continue
 		}
 		seen[r.Chart] = true
@@ -564,21 +662,27 @@ func (s scored) right() (bool, bool) {
 	return false, false
 }
 
+// onCourse says whether a call is where it should be by now: a BUY, BUY
+// BELOW or SELL that is right, and a HOLD within Clearly of the index either
+// way. It decides the mark beside each call and whether a live one is
+// counting towards being dropped.
+func (s scored) onCourse() bool {
+	if right, directed := s.right(); directed {
+		return right
+	}
+	return math.Abs(s.ahead()) <= Clearly
+}
+
 // Called is how far a verdict has gone the way it said against the index
 // since its entry, as a fraction -- ahead of it for a BUY, behind it for a
-// SELL, and plain ahead for a HOLD -- and whether it could be priced yet.
+// SELL, and plain ahead for a HOLD -- and whether it could be priced yet. A
+// closed call's is frozen on the day it closed.
 func Called(r Record, path, bench Path, rates Rates) (float64, bool) {
-	entry, ok := settle(r, path, bench, rates)
-	current, have := path.last()
-	index, indexOK := bench.last()
-	if !ok || !have || !indexOK || entry.Entry <= 0 || entry.EntryBenchmark <= 0 {
+	c := assess(r, time.Now(), path, bench, rates)
+	if !c.priced {
 		return 0, false
 	}
-	gain, ok := r.gain(entry, current.Close, rates)
-	if !ok {
-		return 0, false
-	}
-	return scored{Record: entry, gain: gain, index: index.Close/entry.EntryBenchmark - 1}.called(), true
+	return c.called(), true
 }
 
 // Since returns the records from one source given since a time, oldest
@@ -588,12 +692,16 @@ func (s *Scorecard) Since(source string, since time.Time) []Record {
 	defer s.mu.Unlock()
 	var out []Record
 	for _, r := range s.records {
-		if r.source() == source && !r.At.Before(since) {
+		if r.source() == source && !r.At.Before(since) && !r.repeat() {
 			out = append(out, r)
 		}
 	}
 	return out
 }
+
+// repeat reports whether the record repeats a live call, and so is not
+// counted.
+func (r Record) repeat() bool { return r.Closed != nil && r.Closed.Reason == ClosedRepeat }
 
 // Summary reads the record back for /scorecard, as the messages to send in
 // turn. The first gives the totals: how each kind of verdict has done, and
@@ -616,8 +724,21 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 	var judged []scored
 	var calls []call
 	young, unpriced, waiting, lapsed := 0, 0, 0, 0
+	counted, live, dropped, replaced := 0, 0, 0, 0
 	for _, r := range s.records {
 		c := assess(r, now, paths[r.Chart], bench, rates)
+		if c.state == callRepeat {
+			continue
+		}
+		counted++
+		switch {
+		case r.Closed == nil:
+			live++
+		case r.Closed.Reason == ClosedDropped:
+			dropped++
+		default:
+			replaced++
+		}
 		switch c.state {
 		case callLapsed:
 			lapsed++
@@ -627,13 +748,21 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 			young++
 		case callUnpriced:
 			unpriced++
+		case callBrief:
 		default:
 			judged = append(judged, c.scored)
 		}
 		calls = append(calls, c)
 	}
 
-	fmt.Fprintf(&b, "%d verdicts since %s. ", len(s.records), s.records[0].At.In(where).Format("2 Jan"))
+	fmt.Fprintf(&b, "%d calls since %s: %d live", counted, s.records[0].At.In(where).Format("2 Jan"), live)
+	if dropped > 0 {
+		fmt.Fprintf(&b, ", %d dropped", dropped)
+	}
+	if replaced > 0 {
+		fmt.Fprintf(&b, ", %d replaced by a newer call", replaced)
+	}
+	b.WriteString(". ")
 	switch {
 	case len(judged) == 0 && young > 0:
 		b.WriteString("None is a week old yet, so there is nothing to score: a verdict is judged once it has had a week. How each has moved so far is below.\n")
@@ -682,6 +811,14 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 			fmt.Fprintf(&b, "%d on course to beat the S&amp;P 500 by %s since reaching %s price (%d%%), ", rights, clearly(), plural(len(group), "its", "their"), percentOf(rights, len(group)))
 		case model.Sell:
 			fmt.Fprintf(&b, "%d on course to trail it by %s (%d%%), ", rights, clearly(), percentOf(rights, len(group)))
+		case model.Hold:
+			within := 0
+			for _, g := range group {
+				if g.onCourse() {
+					within++
+				}
+			}
+			fmt.Fprintf(&b, "%d within %s of it (%d%%), ", within, clearly(), percentOf(within, len(group)))
 		}
 		fmt.Fprintf(&b, "on average %s", points(avg))
 	}
@@ -699,19 +836,48 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 		b.WriteString("\n\n" + line + " Send /backcheck for each one.")
 	}
 
-	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name.</i>",
+	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name. A company has one live call: a newer verdict replaces the old. A call stays on the list while it keeps on course, and is dropped after eight weeks off course in a row; both still count here with their final results.</i>",
 		clearly(), Clearly*100/12)
 
-	return append([]string{b.String()}, callMessages(calls, where)...)
+	return append([]string{b.String()}, callMessages(calls, now, where)...)
 }
 
 // assess is one record set against its prices: its entry, its moves since
 // and whether, and why not, it is scored. A BUY BELOW is a call from the day
 // its price came, and is scored from then, once that is a week ago.
 func assess(r Record, now time.Time, path, bench Path, rates Rates) call {
+	if r.repeat() {
+		return call{scored: scored{Record: r}, state: callRepeat}
+	}
+	// A closed call is measured to the day it closed, and once its standing
+	// on that day is written down, from that alone.
+	end := now
+	if r.Closed != nil {
+		end = r.Closed.At
+		if st := r.Standing; st != nil && st.Final {
+			since := r.At
+			if r.Verdict == model.BuyBelow && !r.EntryAt.IsZero() {
+				since = r.EntryAt
+			}
+			c := call{scored: scored{Record: r, gain: st.Gain, index: st.Index, age: end.Sub(since)}, priced: true, state: callScored}
+			if c.age < MinAge {
+				c.state = callBrief
+			}
+			return c
+		}
+	}
+	// A live call is measured to the latest close, a closed one to the last
+	// close by the day it closed.
 	index, indexOK := bench.last()
-	entry, settled := settle(r, path, bench, rates)
 	current, have := path.last()
+	if r.Closed != nil {
+		index, indexOK = bench.upTo(end)
+		current, have = path.upTo(end)
+	}
+	entry, settled := settle(r, path, bench, rates)
+	if settled && r.Closed != nil && entry.EntryAt.After(end) {
+		settled = false // closed before its first price
+	}
 	c := call{scored: scored{Record: entry}, last: current.Close}
 	if settled && have && indexOK && entry.Entry > 0 && entry.EntryBenchmark > 0 {
 		if gain, ok := r.gain(entry, current.Close, rates); ok {
@@ -722,8 +888,13 @@ func assess(r Record, now time.Time, path, bench Path, rates Rates) call {
 	if r.Verdict == model.BuyBelow && settled {
 		since = entry.EntryAt
 	}
-	c.age = now.Sub(since)
+	c.age = end.Sub(since)
+	if r.Closed == nil && !r.OffSince.IsZero() {
+		c.off = now.Sub(r.OffSince)
+	}
 	switch {
+	case r.Closed != nil && (!settled || c.age < MinAge):
+		c.state = callBrief
 	case r.Verdict == model.BuyBelow && !settled && now.Sub(r.At) > TriggerWindow:
 		c.state = callLapsed
 	case r.Verdict == model.BuyBelow && !settled:
@@ -747,6 +918,9 @@ func (s *Scorecard) Refresh(now time.Time, paths map[string]Path, bench Path, ra
 	defer s.mu.Unlock()
 	changed := false
 	for i, r := range s.records {
+		if r.repeat() || (r.Closed != nil && r.Standing != nil && r.Standing.Final) {
+			continue
+		}
 		path, ok := paths[r.Chart]
 		if !ok {
 			continue
@@ -755,8 +929,21 @@ func (s *Scorecard) Refresh(now time.Time, paths map[string]Path, bench Path, ra
 		if c.state != callScored {
 			continue
 		}
-		right, directed := c.right()
-		s.records[i].Standing = &Standing{At: now, Called: c.called(), OnCourse: right && directed, Directed: directed}
+		_, directed := c.right()
+		on := c.onCourse()
+		st := &Standing{At: now, Called: c.called(), Gain: c.gain, Index: c.index, OnCourse: on, Directed: directed}
+		switch {
+		case r.Closed != nil:
+			st.At, st.Final = r.Closed.At, true
+		case on:
+			s.records[i].OffSince = time.Time{}
+		case r.OffSince.IsZero():
+			s.records[i].OffSince = now
+		case now.Sub(r.OffSince) >= DropAfter:
+			s.records[i].Closed = &Closed{At: now, Reason: ClosedDropped}
+			st.Final = true
+		}
+		s.records[i].Standing = st
 		if r.Verdict == model.BuyBelow && r.Entry == 0 {
 			s.records[i].Entry, s.records[i].EntryAt, s.records[i].EntryBenchmark, s.records[i].EntryFX = c.Entry, c.EntryAt, c.EntryBenchmark, c.EntryFX
 		}
@@ -779,7 +966,7 @@ func (s *Scorecard) Misses(now time.Time, max int) []Record {
 	var out []Record
 	for _, r := range s.records {
 		st := r.Standing
-		if st == nil || !st.Directed || st.OnCourse || now.Sub(st.At) > 3*24*time.Hour {
+		if r.Closed != nil || st == nil || !st.Directed || st.OnCourse || now.Sub(st.At) > 3*24*time.Hour {
 			continue
 		}
 		since := r.At
@@ -850,7 +1037,7 @@ func (s *Scorecard) RecordNote() string {
 		return !seen
 	}
 	for _, r := range s.records {
-		if r.Standing == nil || !r.Standing.Directed {
+		if r.Standing == nil || !r.Standing.Directed || r.repeat() {
 			continue
 		}
 		k := sourceNames[r.source()] + ", " + r.Verdict
@@ -912,7 +1099,7 @@ func (s *Scorecard) CompanyNote(symbol string) string {
 	defer s.mu.Unlock()
 	var lines []string
 	for _, r := range s.records {
-		if !strings.EqualFold(r.Symbol, symbol) {
+		if !strings.EqualFold(r.Symbol, symbol) || r.repeat() {
 			continue
 		}
 		line := fmt.Sprintf("- %s on %s (%s", r.Verdict, r.At.Format("2 Jan 2006"), sourceShort[r.source()])
@@ -925,6 +1112,11 @@ func (s *Scorecard) CompanyNote(symbol string) string {
 		}
 		if rv := r.Review; rv != nil {
 			line += fmt.Sprintf(". Checked afterwards: %s. %s", causeWords[rv.Cause], rv.Why)
+		}
+		if r.Closed != nil {
+			line += fmt.Sprintf(". %s on %s", closedWords[r.Closed.Reason], r.Closed.At.Format("2 Jan"))
+		} else {
+			line += ". The live call"
 		}
 		lines = append(lines, line)
 	}
@@ -1042,7 +1234,8 @@ type call struct {
 	scored
 	state  int
 	priced bool
-	last   float64 // the share's latest close, in its own currency
+	last   float64       // the share's latest close, in its own currency
+	off    time.Duration // how long a live call has been off course
 }
 
 // Why a verdict is or is not scored.
@@ -1052,14 +1245,23 @@ const (
 	callWaiting
 	callLapsed
 	callUnpriced
+	callRepeat // repeats the live call: not counted
+	callBrief  // closed within a week of its first price: not scored
 )
 
-// callMessages lists every verdict on a line of its own: those scored by
-// verdict, best first, then those too new to score, the BUY BELOWs waiting
-// for their price or lapsed, and those that could not be priced. A line is
-// never split across two messages.
-func callMessages(calls []call, where *time.Location) []string {
-	lines := []string{"<b>📋 Each call</b>\n<i>Its share's move since the call, against the S&amp;P 500's, then the points it has gone the way it called: ✅ on course to the 5-point mark, ❌ not.</i>"}
+// closedWords say why a call closed, as /scorecard and the verdicts read it.
+var closedWords = map[string]string{
+	ClosedReplaced: "Replaced by a newer call",
+	ClosedDropped:  "Dropped after eight weeks off course",
+}
+
+// callMessages lists each company's live call on a line of its own: those
+// scored by verdict, best first, then those too new to score, the BUY BELOWs
+// waiting for their price or lapsed, and those that could not be priced;
+// then the calls dropped or replaced in the last weeks, with their final
+// results. A line is never split across two messages.
+func callMessages(calls []call, now time.Time, where *time.Location) []string {
+	lines := []string{"<b>📋 Each call</b>\n<i>The live call on each company: its share's move since the call, against the S&amp;P 500's, then the points it has gone the way it called. ✅ on course to the 5-point mark, or for a HOLD within 5 points of the index; ❌ not. A call off course eight weeks in a row is dropped.</i>"}
 	group := func(title string, keep func(call) bool, order func(a, b call) bool, line func(call) string) {
 		var in []call
 		for _, c := range calls {
@@ -1081,49 +1283,72 @@ func callMessages(calls []call, where *time.Location) []string {
 	best := func(a, b call) bool { return a.called() > b.called() }
 	newest := func(a, b call) bool { return a.At.After(b.At) }
 	scoredAs := func(v string) func(call) bool {
-		return func(c call) bool { return c.state == callScored && c.Verdict == v }
+		return func(c call) bool { return c.Closed == nil && c.state == callScored && c.Verdict == v }
 	}
+	liveIn := func(state int) func(call) bool {
+		return func(c call) bool { return c.Closed == nil && c.state == state }
+	}
+	closedAs := func(reason string) func(call) bool {
+		return func(c call) bool {
+			return c.Closed != nil && c.Closed.Reason == reason && now.Sub(c.Closed.At) <= recentlyClosed
+		}
+	}
+	lastClosed := func(a, b call) bool { return a.Closed.At.After(b.Closed.At) }
 
 	group("<b>BUY</b>", scoredAs(model.Buy), best, func(c call) string { return c.scoredLine(where) })
 	group("<b>BUY BELOW</b>, from the day it reached its price", scoredAs(model.BuyBelow), best, func(c call) string { return c.scoredLine(where) })
 	group("<b>SELL</b>", scoredAs(model.Sell), best, func(c call) string { return c.scoredLine(where) })
 	group("<b>HOLD</b>, points against the index", scoredAs(model.Hold), best, func(c call) string { return c.scoredLine(where) })
-	group("<b>Under a week old</b>, not scored yet", func(c call) bool { return c.state == callYoung }, newest, func(c call) string {
+	group("<b>Under a week old</b>, not scored yet", liveIn(callYoung), newest, func(c call) string {
 		line := "🆕 " + c.who(where) + " · " + c.Verdict
 		if c.priced {
 			line += " · " + c.moves()
 		}
 		return line
 	})
-	group("<b>BUY BELOW, waiting for its price</b>", func(c call) bool { return c.state == callWaiting }, newest, func(c call) string {
+	group("<b>BUY BELOW, waiting for its price</b>", liveIn(callWaiting), newest, func(c call) string {
 		line := "🟡 " + c.who(where) + " · at " + c.money(c.Trigger)
 		if c.last > 0 {
 			line += fmt.Sprintf(", last %s", c.money(c.last))
 		}
 		return line
 	})
-	group("<b>BUY BELOW, lapsed</b>: not reached in three months", func(c call) bool { return c.state == callLapsed }, newest, func(c call) string {
+	group("<b>BUY BELOW, lapsed</b>: not reached in three months", liveIn(callLapsed), newest, func(c call) string {
 		line := "⚫ " + c.who(where) + " · at " + c.money(c.Trigger)
 		if c.last > 0 {
 			line += fmt.Sprintf(", last %s", c.money(c.last))
 		}
 		return line
 	})
-	group("<b>Not priced today</b>", func(c call) bool { return c.state == callUnpriced }, newest, func(c call) string {
+	group("<b>Not priced today</b>", liveIn(callUnpriced), newest, func(c call) string {
 		return "❔ " + c.who(where) + " · " + c.Verdict
 	})
+	group("<b>Dropped</b>, after eight weeks off course: the final result", closedAs(ClosedDropped), lastClosed, func(c call) string {
+		return c.closedLine("⛔", where)
+	})
+	group("<b>Replaced</b> by a newer call on the company: the result until then", closedAs(ClosedReplaced), lastClosed, func(c call) string {
+		return c.closedLine("↪️", where)
+	})
 	return packLines(lines)
+}
+
+// closedLine is a dropped or replaced call: who and when, its verdict, the
+// day it closed, and its result to that day, where it lasted long enough to
+// have one.
+func (c call) closedLine(mark string, where *time.Location) string {
+	line := fmt.Sprintf("%s %s · %s · until %s", mark, c.who(where), c.Verdict, c.Closed.At.In(where).Format("2 Jan"))
+	if c.state == callBrief || !c.priced {
+		return line + " · too soon to score"
+	}
+	return line + " · " + c.moves() + " · <b>" + tenths(100*c.called()) + "</b>"
 }
 
 // scoredLine is a scored verdict: its mark, who and when, its moves, and the
 // points it has gone the way it called, or for a HOLD, against the index.
 func (c call) scoredLine(where *time.Location) string {
-	mark := "⚪"
-	if right, directed := c.right(); directed {
+	mark := "✅"
+	if !c.onCourse() {
 		mark = "❌"
-		if right {
-			mark = "✅"
-		}
 	}
 	line := mark + " " + c.who(where)
 	if c.Verdict == model.BuyBelow {
@@ -1132,6 +1357,10 @@ func (c call) scoredLine(where *time.Location) string {
 	line += " · " + c.moves() + " · <b>" + tenths(100*c.called()) + "</b>"
 	if c.Review != nil && mark == "❌" {
 		line += " · <i>" + causeWords[c.Review.Cause] + "</i>"
+	}
+	// Four weeks or more off course, the reader sees the drop coming.
+	if weeks := int(c.off / (7 * 24 * time.Hour)); mark == "❌" && weeks >= 4 {
+		line += fmt.Sprintf(" · <i>off course %d weeks</i>", weeks)
 	}
 	return line
 }

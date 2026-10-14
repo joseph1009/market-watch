@@ -297,7 +297,8 @@ What passes between the functions:
 ## 5. Scorecard
 
 **What it does:**
-- Records every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict.
+- Records every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict, as its company's **one live call**: a different verdict on the company replaces the live call (closed that day, its result frozen and still counted); the same verdict again is not recorded, and the live call carries on from its own day.
+- A live call is **dropped** after eight weeks off course in a row (`DropAfter`), checked each Monday and at each `/scorecard`, its result frozen and still counted. One back on course starts the count again. There is no end at twelve months: twelve months is the yardstick, and a call on course stays on the list. A HOLD is on course within 5 points of the index either way.
 - Grades each against the S&P 500 (SPY) in US dollars once it is a week old. Both the share and SPY are measured from the first open after the verdict.
 - A BUY BELOW is measured from the first close at or under its price, against SPY's close that day, and graded once that is a week old. Until then it is waiting; after 90 days without it, lapsed. Neither is graded.
 - **The back-check**, once a week before the week's verdicts: up to nine calls going the wrong way (two weeks in or more, worst first) are given to Opus with web search, which says what moved each: the whole market, its sector, news after the call, a misjudged case, or too early to say, and whether it was there to be seen. Each finding goes on the record, tags its miss in `/scorecard`, is set out in full by `/backcheck` (its own command, so the scorecard stays short), and goes back to the verdicts: the record of calls like theirs, the lessons from the misjudged ones, and each company's earlier calls.

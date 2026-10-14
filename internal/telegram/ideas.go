@@ -63,6 +63,10 @@ type EarlierPick struct {
 	Trigger  float64
 	Currency string
 
+	// Closed is "dropped" or "replaced" where the pick is no longer the live
+	// call on its company, and empty while it is.
+	Closed string
+
 	// Ahead is how far it has gone the way its verdict said, against the
 	// index, in percentage points, where Priced.
 	Ahead  float64
@@ -168,6 +172,8 @@ func RenderPicks(p Picks, cited []model.Article, opts IdeasOptions, where *time.
 		for _, e := range p.Earlier {
 			line := fmt.Sprintf("• %s %s · %s on %s", escape(e.Name), flaggedSymbol(e.Symbol), escape(e.label()), e.At.In(where).Format("2 Jan"))
 			switch {
+			case e.Priced && e.Closed != "":
+				line += fmt.Sprintf(" · %s, %+.1f points the way called", e.Closed, e.Ahead)
 			case e.Priced:
 				line += fmt.Sprintf(" · %+.1f points the way called", e.Ahead)
 			case e.Verdict == model.BuyBelow:

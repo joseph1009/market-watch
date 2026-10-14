@@ -108,12 +108,22 @@ func TestAnAnalysisVerdictGoesOnTheScorecard(t *testing.T) {
 		t.Errorf("record = %+v", r)
 	}
 
-	// A day on, it is a call made again.
+	// A day on, the same verdict is the live call carrying on, not a new
+	// one: a company has one live call.
 	later := a.now().Add(25 * time.Hour)
 	a.Now = func() time.Time { return later }
 	a.recordAnalysis(snap, verdict)
-	if len(card.All()) != 2 {
-		t.Errorf("a verdict given again the next day was not recorded")
+	if len(card.All()) != 1 {
+		t.Errorf("the same verdict a day on was recorded again: %d records", len(card.All()))
+	}
+
+	// A different verdict replaces it.
+	hold := verdict
+	hold.Verdict = model.Hold
+	a.recordAnalysis(snap, hold)
+	all = card.All()
+	if len(all) != 2 || all[0].Closed == nil || all[0].Closed.Reason != ideas.ClosedReplaced || all[1].Closed != nil || all[1].Verdict != model.Hold {
+		t.Errorf("a new verdict did not replace the live call: %+v", all)
 	}
 }
 

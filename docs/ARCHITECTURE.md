@@ -1284,6 +1284,12 @@ BUY BELOW's entry is instead the first close at or under its `Trigger`, and
 the index's close that day; the chart sources give no day's low. One not
 reached within `TriggerWindow` (90 days) has lapsed, and is counted but never
 scored.
+`Add` and `AddOnce` keep one live call a company (`place`): a different
+verdict closes the live one as replaced (`Closed`), the same one is not
+recorded. `LoadScorecard` puts older records in that order once
+(`oneLiveCall`), closing repeats, which are not counted. `Refresh` drops a
+live call off course for `DropAfter` (eight weeks, tracked in `OffSince`) and
+writes a closed call's final `Standing`, so it needs no price again.
 `Summary` measures each one against the S&P 500 in US dollars from that entry.
 It splits the BUYs and SELLs by confidence and by how the company was found
 (`Source`), then lists every call by name (`callMessages`), so what is working

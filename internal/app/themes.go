@@ -531,6 +531,15 @@ func (a *App) pastMultiples(ctx context.Context, chart string, snap *fundamental
 	return snap.PastMultiples(marketCap, now, priceAt, usd)
 }
 
+// closedReason is why a pick is no longer its company's live call, or
+// empty while it is.
+func closedReason(r ideas.Record) string {
+	if r.Closed == nil {
+		return ""
+	}
+	return r.Closed.Reason
+}
+
 // earlierPicks are the theme picks of the last weeks, and how each has done
 // the way it was called since its first open, against the index.
 func (a *App) earlierPicks(ctx context.Context, panel *market.Panel, recent []ideas.Record) []telegram.EarlierPick {
@@ -555,7 +564,7 @@ func (a *App) earlierPicks(ctx context.Context, panel *market.Panel, recent []id
 		called, ok := ideas.Called(r, path, bench, rates)
 		out = append(out, telegram.EarlierPick{
 			Name: r.Name, Symbol: r.Symbol, Verdict: r.Verdict, Theme: r.Theme, At: r.At,
-			Trigger: r.Trigger, Currency: r.Currency,
+			Trigger: r.Trigger, Currency: r.Currency, Closed: closedReason(r),
 			Ahead: 100 * called, Priced: ok,
 		})
 	}

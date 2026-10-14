@@ -112,7 +112,7 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 - case: the argument;
 - risk: the single biggest risk.
 
-**Scorecard.** Every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict, with how each has done against SPY ([scorecard.go](../internal/ideas/scorecard.go)). It is kept in `scorecard.json`. It was wiped clean on 27 September 2026, so it starts from the run of 28 September.
+**Scorecard.** Every BUY, BUY BELOW and SELL shown, and every `/analyse` verdict, one live call a company (a newer verdict replaces the old; a call off course eight weeks in a row is dropped), with how each has done against SPY ([scorecard.go](../internal/ideas/scorecard.go)). It is kept in `scorecard.json`. It was wiped clean on 27 September 2026, so it starts from the run of 28 September.
 
 **Entry.** The price a verdict is measured from. It is the opening price of the next session after the verdict, for the share and for SPY alike. Using a later price would let the verdict see the future.
 

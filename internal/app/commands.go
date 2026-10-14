@@ -848,7 +848,7 @@ func (a *App) recordAnalysis(snapshot fundamentals.Snapshot, verdict fundamental
 		return
 	}
 	r.Source = ideas.SourceAnalysis
-	added, err := a.Scorecard.AddOnce(r, 24*time.Hour)
+	added, err := a.Scorecard.AddOnce(r)
 	if err != nil {
 		a.Log.Warn("could not record the analysis verdict", "error", err)
 		return
