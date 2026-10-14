@@ -42,6 +42,7 @@ const (
 	Research  = "research"  // researching a theme for companies worth a look
 	Verdicts  = "verdicts"  // judging each of them
 	Backcheck = "backcheck" // asking why a call went the wrong way
+	Recheck   = "recheck"   // asking whether a live call still stands
 	Analysis  = "analysis"  // writing up one company's accounts
 	Industry  = "industry"  // explaining how an industry fits together
 	Terms     = "terms"     // checking a term before it is linked in every report

@@ -96,6 +96,11 @@ is, what it needs from you, and why it is worth doing.
   misjudged. Left: code rules, such as capping the confidence of a group with
   a poor record, or showing fewer of it. They need about 30 graded verdicts in
   a group first, so look again in December.
+- **Where closed calls sit.** The monthly re-check, built on 15 October
+  2026, lists a call it closes with the replaced calls in `/scorecard`, marked
+  ✋. The owner chose that for now and asked to be asked again: once a few
+  months of re-checks have run, ask whether closed calls should get their own
+  section.
 - **Backtests.** Also put aside on 2 October 2026. The parts of the closer
   look that use no model could be tested on the stored two years of prices.
   That covers the weekly screen's leaders and industries, and whether

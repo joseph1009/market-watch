@@ -553,13 +553,19 @@ func (a *App) handleBackcheck(ctx context.Context, msg telegram.Message) error {
 // verdicts with, saying so in the chat first since it takes a moment, and
 // writes down each verdict's entry and how it stands.
 func (a *App) priceVerdicts(ctx context.Context, chat int64) (map[string]ideas.Path, ideas.Path, ideas.Rates, error) {
-	due := a.Scorecard.Due(a.now(), scorecardSymbols)
-	if len(due) > 0 {
+	if len(a.Scorecard.Due(a.now(), scorecardSymbols)) > 0 {
 		if err := a.Bot.SendMessage(ctx, chat, "Pricing past verdicts — a moment."); err != nil {
 			return nil, nil, nil, err
 		}
 	}
+	paths, bench, rates := a.priceCalls(ctx)
+	return paths, bench, rates, nil
+}
 
+// priceCalls reads the prices the verdicts are measured with, from the chart
+// source, and writes down each verdict's entry and how it stands.
+func (a *App) priceCalls(ctx context.Context) (map[string]ideas.Path, ideas.Path, ideas.Rates) {
+	due := a.Scorecard.Due(a.now(), scorecardSymbols)
 	paths := map[string]ideas.Path{}
 	for _, chart := range due {
 		if p := a.pathFor(ctx, chart); len(p) > 0 {
@@ -582,7 +588,7 @@ func (a *App) priceVerdicts(ctx context.Context, chat int64) (map[string]ideas.P
 			a.Log.Warn("could not save how the verdicts stand", "error", err)
 		}
 	}
-	return paths, bench, rates, nil
+	return paths, bench, rates
 }
 
 // dollarRates reads what each currency is worth in US dollars, day by day over

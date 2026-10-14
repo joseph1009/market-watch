@@ -58,12 +58,14 @@ const TriggerWindow = 90 * 24 * time.Hour
 
 // Where a verdict came from: the closer look that started from the day's
 // news (every verdict before the weekly themes), the weekly themes found from
-// the market's numbers, the daily reactions to news, and /analyse.
+// the market's numbers, the daily reactions to news, /analyse, and the
+// monthly re-check, which changes a live call it no longer agrees with.
 const (
 	SourceNews     = "news"
 	SourceTheme    = "theme"
 	SourceReaction = "reaction"
 	SourceAnalysis = "analysis"
+	SourceRecheck  = "recheck"
 )
 
 // Record is one verdict as it was given.
@@ -118,10 +120,12 @@ type Record struct {
 	Risk     string `json:"risk,omitempty"`
 	Catalyst string `json:"catalyst,omitempty"`
 
-	// Standing is how the call stood when it was last priced, and Review
-	// what the back-check found where it was going the wrong way.
-	Standing *Standing `json:"standing,omitempty"`
-	Review   *Review   `json:"review,omitempty"`
+	// Standing is how the call stood when it was last priced, Review what
+	// the back-check found where it was going the wrong way, and Rechecked
+	// what the monthly re-check last decided for it.
+	Standing  *Standing  `json:"standing,omitempty"`
+	Review    *Review    `json:"review,omitempty"`
+	Rechecked *Rechecked `json:"rechecked,omitempty"`
 
 	// OffSince is when the call last went off course, zero while it is on
 	// course. A live call off course for DropAfter straight is dropped.
@@ -154,6 +158,11 @@ const (
 	// ClosedRepeat is the same verdict given again while the first was live.
 	// The first carries on from its own day, and the repeat is not counted.
 	ClosedRepeat = "repeat"
+	// ClosedRechecked is a call the monthly re-check closed, with no view
+	// to take its place: its case played out or broke. Its result is frozen
+	// on that day, and counts. /scorecard lists it with the replaced calls,
+	// as the owner chose (2026-10-15).
+	ClosedRechecked = "rechecked"
 )
 
 // DropAfter is how long a live call may stay off course before it is
@@ -161,8 +170,8 @@ const (
 // a call, and one back on course starts the count again.
 const DropAfter = 8 * 7 * 24 * time.Hour
 
-// recentlyClosed is how long a dropped or replaced call is still listed
-// under /scorecard's calls, after which only the totals carry it.
+// recentlyClosed is how long a dropped, replaced or closed call is still
+// listed under /scorecard's calls, after which only the totals carry it.
 const recentlyClosed = 8 * 7 * 24 * time.Hour
 
 // Standing is how a scored call stood on a day: the points it had gone the
@@ -724,7 +733,7 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 	var judged []scored
 	var calls []call
 	young, unpriced, waiting, lapsed := 0, 0, 0, 0
-	counted, live, dropped, replaced := 0, 0, 0, 0
+	counted, live, dropped, replaced, closed := 0, 0, 0, 0, 0
 	for _, r := range s.records {
 		c := assess(r, now, paths[r.Chart], bench, rates)
 		if c.state == callRepeat {
@@ -736,6 +745,8 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 			live++
 		case r.Closed.Reason == ClosedDropped:
 			dropped++
+		case r.Closed.Reason == ClosedRechecked:
+			closed++
 		default:
 			replaced++
 		}
@@ -761,6 +772,9 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 	}
 	if replaced > 0 {
 		fmt.Fprintf(&b, ", %d replaced by a newer call", replaced)
+	}
+	if closed > 0 {
+		fmt.Fprintf(&b, ", %d closed on a re-check", closed)
 	}
 	b.WriteString(". ")
 	switch {
@@ -830,13 +844,13 @@ func (s *Scorecard) Summary(now time.Time, paths map[string]Path, bench Path, ra
 	b.WriteString(breakdown("By confidence", judged, func(j scored) string { return j.Confidence },
 		[]string{"high", "medium", "low"}, nil))
 	b.WriteString(breakdown("By how the company was found", judged, func(j scored) string { return j.source() },
-		[]string{SourceTheme, SourceReaction, SourceAnalysis, SourceNews}, sourceNames))
+		[]string{SourceTheme, SourceReaction, SourceAnalysis, SourceRecheck, SourceNews}, sourceNames))
 	// What moved the misses is /backcheck's to say; here, where to find it.
 	if line := causeTally(calls); line != "" {
 		b.WriteString("\n\n" + line + " Send /backcheck for each one.")
 	}
 
-	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name. A company has one live call: a newer verdict replaces the old. A call stays on the list while it keeps on course, and is dropped after eight weeks off course in a row; both still count here with their final results.</i>",
+	fmt.Fprintf(&b, "\n\n<i>A BUY promises to beat the S&amp;P 500 by %s over twelve months, and a SELL to trail it by as much. Each is measured from the first price after it was given, the next session's open, for the share and the index alike. A BUY BELOW is a BUY that waits for a lower price: it is measured from the first close at or under that price, against the index's close that day, and lapses if the price does not come within three months. Scored early, each is held to that pace: about %.1f points a month. Shares listed abroad are counted in US dollars. Each verdict is a twelve-month call, so a few weeks say little. Read this for a pattern once there are dozens of each, not for any one name. A company has one live call: a newer verdict replaces the old. A call stays on the list while it keeps on course, and is dropped after eight weeks off course in a row. Once a month each live call is looked at again, and may be changed or closed. All of these still count here with their final results.</i>",
 		clearly(), Clearly*100/12)
 
 	return append([]string{b.String()}, callMessages(calls, now, where)...)
@@ -1113,6 +1127,9 @@ func (s *Scorecard) CompanyNote(symbol string) string {
 		if rv := r.Review; rv != nil {
 			line += fmt.Sprintf(". Checked afterwards: %s. %s", causeWords[rv.Cause], rv.Why)
 		}
+		if rc := r.Rechecked; rc != nil {
+			line += fmt.Sprintf(". Looked at again on %s (%s): %s", rc.At.Format("2 Jan"), rechecks[rc.Action], rc.Why)
+		}
 		if r.Closed != nil {
 			line += fmt.Sprintf(". %s on %s", closedWords[r.Closed.Reason], r.Closed.At.Format("2 Jan"))
 		} else {
@@ -1251,8 +1268,17 @@ const (
 
 // closedWords say why a call closed, as /scorecard and the verdicts read it.
 var closedWords = map[string]string{
-	ClosedReplaced: "Replaced by a newer call",
-	ClosedDropped:  "Dropped after eight weeks off course",
+	ClosedReplaced:  "Replaced by a newer call",
+	ClosedDropped:   "Dropped after eight weeks off course",
+	ClosedRechecked: "Closed on the monthly re-check",
+}
+
+// rechecks say what the monthly re-check did with a call, as the verdicts
+// read it.
+var rechecks = map[string]string{
+	RecheckKeep:   "kept",
+	RecheckChange: "changed",
+	RecheckClose:  "closed",
 }
 
 // callMessages lists each company's live call on a line of its own: those
@@ -1326,15 +1352,19 @@ func callMessages(calls []call, now time.Time, where *time.Location) []string {
 	group("<b>Dropped</b>, after eight weeks off course: the final result", closedAs(ClosedDropped), lastClosed, func(c call) string {
 		return c.closedLine("⛔", where)
 	})
-	group("<b>Replaced</b> by a newer call on the company: the result until then", closedAs(ClosedReplaced), lastClosed, func(c call) string {
+	replacedOrClosed := func(c call) bool { return closedAs(ClosedReplaced)(c) || closedAs(ClosedRechecked)(c) }
+	group("<b>Replaced</b> by a newer call, or ✋ closed on the monthly re-check: the result until then", replacedOrClosed, lastClosed, func(c call) string {
+		if c.Closed.Reason == ClosedRechecked {
+			return c.closedLine("✋", where)
+		}
 		return c.closedLine("↪️", where)
 	})
 	return packLines(lines)
 }
 
-// closedLine is a dropped or replaced call: who and when, its verdict, the
-// day it closed, and its result to that day, where it lasted long enough to
-// have one.
+// closedLine is a dropped, replaced or closed call: who and when, its
+// verdict, the day it closed, and its result to that day, where it lasted
+// long enough to have one.
 func (c call) closedLine(mark string, where *time.Location) string {
 	line := fmt.Sprintf("%s %s · %s · until %s", mark, c.who(where), c.Verdict, c.Closed.At.In(where).Format("2 Jan"))
 	if c.state == callBrief || !c.priced {
@@ -1404,6 +1434,7 @@ var sourceShort = map[string]string{
 	SourceReaction: "reaction",
 	SourceAnalysis: "/analyse",
 	SourceNews:     "old look",
+	SourceRecheck:  "re-check",
 }
 
 // clipName cuts a company's name to n runes, where it is longer.
@@ -1462,6 +1493,7 @@ var sourceNames = map[string]string{
 	SourceReaction: "reactions to the news",
 	SourceAnalysis: "/analyse",
 	SourceNews:     "the old closer look, from the news",
+	SourceRecheck:  "changed on the monthly re-check",
 }
 
 // breakdown pools the BUYs and SELLs by one attribute, in the order given,

@@ -127,13 +127,15 @@ type App struct {
 	// Sorter, Scout and Researcher find the week's themes and the companies
 	// in them, Judge gives each company a verdict, and Themes remembers the
 	// weeks. Scorecard records every verdict so /scorecard can say how they
-	// have done. Nil Judge disables the closer look; nil Sorter or Researcher
-	// leaves it to the day's reactions.
+	// have done; Backcheck asks each week why the misses missed, and Recheck
+	// each month whether the live calls still stand. Nil Judge disables the
+	// closer look; nil Sorter or Researcher leaves it to the day's reactions.
 	Sorter     *ideas.Sorter
 	Scout      *ideas.Scout
 	Researcher *ideas.Researcher
 	Judge      *ideas.Judge
 	Backcheck  *ideas.Backcheck
+	Recheck    *ideas.Recheck
 	Themes     *ideas.ThemeLog
 	Scorecard  *ideas.Scorecard
 
@@ -373,6 +375,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		}
 		a.Judge = &ideas.Judge{Completer: rel.Plain(relay.Verdicts), Now: a.now}
 		a.Backcheck = &ideas.Backcheck{Completer: rel.Plain(relay.Backcheck)}
+		a.Recheck = &ideas.Recheck{Completer: rel.Plain(relay.Recheck)}
 		themes, err := ideas.LoadThemeLog(filepath.Join(cfg.DataDir, "themes.json"))
 		if err != nil {
 			return nil, err
@@ -485,6 +488,9 @@ func (a *App) brief(ctx context.Context, to int64, share, scheduled bool) (err e
 	look := a.sendIdeas(ctx, lookFrom(done.rep, scheduled))
 	if share {
 		a.shareBrief(ctx, done.sent, look)
+	}
+	if scheduled {
+		a.monthlyRecheck(ctx)
 	}
 	return nil
 }

@@ -33,6 +33,7 @@ var DefaultModels = map[string]string{
 	Research:  Opus,
 	Verdicts:  Opus,
 	Backcheck: Opus,
+	Recheck:   Opus,
 	Analysis:  Opus,
 	Industry:  Opus,
 	Terms:     Opus,
@@ -65,8 +66,9 @@ const noThinking = `{"alwaysThinkingEnabled":false}`
 // source; and an analysis looks for the last fortnight's news itself, so
 // nothing important is missed. /industry searches for an industry's shape,
 // which no feed carries. The back-check searches for what moved a share
-// after a call (2026-10-14).
-var webStages = map[string]bool{Scout: true, Research: true, Review: true, Verdicts: true, Backcheck: true, Analysis: true, Industry: true}
+// after a call (2026-10-14), and the monthly re-check for what has happened
+// to a live call's company since (2026-10-15).
+var webStages = map[string]bool{Scout: true, Research: true, Review: true, Verdicts: true, Backcheck: true, Recheck: true, Analysis: true, Industry: true}
 
 // webTools are the tools a web stage is given, and pre-approved for, since a
 // headless call has nobody to ask.

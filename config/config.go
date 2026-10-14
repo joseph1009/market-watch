@@ -356,6 +356,7 @@ var stageModelVars = map[string]string{
 	"research":  "MODEL_RESEARCH",
 	"verdicts":  "MODEL_VERDICTS",
 	"backcheck": "MODEL_BACKCHECK",
+	"recheck":   "MODEL_RECHECK",
 	"analysis":  "MODEL_ANALYSIS",
 	"industry":  "MODEL_INDUSTRY",
 	"terms":     "MODEL_TERMS",

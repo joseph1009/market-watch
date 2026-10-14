@@ -91,6 +91,7 @@ var readerFacing = map[string]bool{
 	"research.system":  true,
 	"verdicts.system":  true,
 	"backcheck.system": true,
+	"recheck.system":   true,
 	"analysis.system":  true,
 	"industry.system":  true,
 }
@@ -123,6 +124,7 @@ var required = map[string][]string{
 	"research.system":  {"{{.Max}}", "DRIVING:", "PRICED IN:", "THE VALUE:", "name|ticker|exchange|buy or sell|"},
 	"verdicts.system":  {"=== <the symbol exactly as given>", "VERDICT:", "CONFIDENCE:", "ENTRY:", "TRACK:", "NOW:", "WAIT:", "CHOSE:", "VALUE:", "CHANGED:", "MOVE:", "REACTION:", "CASE:", "NUMBERS:", "RISK:"},
 	"backcheck.system": {"=== <the key exactly as given>", "CAUSE:", "KNOWABLE:", "WHY:", "LESSON:", "market, sector, news after, misjudged or too early"},
+	"recheck.system":   {"=== <the key exactly as given>", "ACTION:", "keep, change or close", "WHY:", "VERDICT:", "CONFIDENCE:", "ENTRY:", "CASE:", "CATALYST:", "RISK:"},
 	"analysis.system":  {"THE CASE FOR IT", "THE CASE AGAINST IT", "### In the business", "### In the numbers", "THE VERDICT", "VERDICT:", "CONFIDENCE:", "IN SHORT", "SOURCES"},
 	"analysis.related": {"{{.Marker}}", "name|ticker|exchange|what it would show"},
 	"analysis.tools":   {"find_concepts", "read_concept", "compute", "{{.Lookups}}"},

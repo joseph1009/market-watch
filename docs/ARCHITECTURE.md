@@ -1300,7 +1300,23 @@ weeks unless 5 points worse since. **[backcheck.go](../internal/ideas/backcheck.
 asks why each went the wrong way, and `SetReview` writes the `Review` onto the
 record. `/scorecard` tags each miss with its cause and points to `/backcheck`,
 which lists the findings on their own (`Backchecks`).
-The app runs it at the start of the weekly themes ([backcheck.go](../internal/app/backcheck.go)). It returns the messages to send in turn. `Due`
+The app runs it at the start of the weekly themes ([backcheck.go](../internal/app/backcheck.go)).
+**[recheck.go](../internal/ideas/recheck.go)** is the monthly re-check. `Live`
+picks the live calls a month old or more (`RecheckAge`), not looked at in the
+last three weeks, the longest unlooked first. `Recheck.Check` asks Opus, with
+web search, whether each still stands: keep, change or close. `ApplyRecheck`
+writes the answer on the record (`Rechecked`). A change is a new call
+(`Live.Changed`, `Source` `recheck`, BUY BELOW rules kept by `buyBelowRule`),
+placed as any newer verdict is, so the old one closes as replaced. A close
+ends the call as `ClosedRechecked`, frozen like a replaced one, and listed with
+them in `/scorecard`, as the owner chose. `RecheckMessages` is the owner's
+message. The app runs it after the scheduled brief on the first Friday of the
+month ([recheck.go](../internal/app/recheck.go)); `Prefs.LastRecheck` says it
+ran. Calls with no answer are tried again 10 minutes, an hour and three hours
+later the same day (`recheckRetries`), each try holding the jobs as a brief
+does; the owner gets one message after the last. A Friday with no answers at
+all is left to the next Friday.
+`Summary` returns the messages to send in turn. `Due`
 names every chart, the newest verdicts' too, since the list shows how a call
 under a week old has moved, unscored. `MinAge` is a week. `Clearly` is the margin a BUY or SELL must
 reach: five points a year, scaled to the time passed.

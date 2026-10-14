@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -28,6 +29,9 @@ type Prefs struct {
 	// LastBrief holds the message ids of the most recent brief, so the next
 	// one can clear it when ReplacePrevious is set.
 	LastBrief []int64 `yaml:"last_brief,omitempty"`
+
+	// LastRecheck is when the monthly re-check of the live calls last ran.
+	LastRecheck time.Time `yaml:"last_recheck,omitempty"`
 
 	// Edits are the companies added and removed with /watchlist, and
 	// FeedSwitches the feeds switched on or off with /sources, by id.

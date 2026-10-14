@@ -118,6 +118,8 @@ Skim this page once. Then keep it open beside the other pages, and come back whe
 
 **Back-check.** A second look, once a week, at the calls going the wrong way: what moved the share (the market, its sector, news after the call, a misjudged case, or too early to say), and whether it was there to be seen when the call was made. `/backcheck` shows the findings. The lessons from misjudged calls are given to the next verdicts ([backcheck.go](../internal/ideas/backcheck.go)).
 
+**Re-check.** A look again, once a month on the first Friday, at every live call a month old or more: keep it, change it to a new verdict, or close it with no view from here. A changed or closed call keeps its result to that day and still counts ([recheck.go](../internal/ideas/recheck.go)).
+
 **Clearly.** The bar a verdict must clear to count as right. It is 5 points a year against SPY, scaled to the time passed, so about 0.4 points after a month (`Clearly` in [scorecard.go](../internal/ideas/scorecard.go)). A verdict is graded once it is 7 days old (`MinAge`).
 
 **Checked, one source only.** The line in a verdict that names the independent sources its case was checked in. A verdict must find the claim it rests on in two sources. If it finds only one, it says "one source only", and the code holds it to low confidence ([`hold`](../internal/ideas/judge.go#L139)).

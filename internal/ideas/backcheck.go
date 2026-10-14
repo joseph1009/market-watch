@@ -117,34 +117,7 @@ func backcheckRequest(misses []Miss, today time.Time) string {
 	for _, m := range misses {
 		r := m.Record
 		fmt.Fprintf(&b, "\n=== %s\n", r.Key())
-		fmt.Fprintf(&b, "%s, %s, called %s on %s", r.Name, r.Symbol, r.Verdict, r.At.Format("2 January 2006"))
-		if r.Confidence != "" {
-			fmt.Fprintf(&b, " at %s confidence", r.Confidence)
-		}
-		switch r.source() {
-		case SourceTheme:
-			fmt.Fprintf(&b, ", a weekly theme pick under %q", r.Theme)
-		case SourceReaction:
-			b.WriteString(", a reaction to a large move on news")
-		case SourceAnalysis:
-			b.WriteString(", from an analysis of its accounts")
-		}
-		b.WriteString(".\n")
-		if r.Verdict == model.BuyBelow {
-			fmt.Fprintf(&b, "It was a BUY BELOW %.2f, reached on %s.\n", r.Trigger, r.EntryAt.Format("2 January"))
-		}
-		if r.Case != "" {
-			fmt.Fprintf(&b, "Its case: %s\n", r.Case)
-		}
-		if r.Catalyst != "" {
-			fmt.Fprintf(&b, "The event it named: %s\n", r.Catalyst)
-		}
-		if r.Risk != "" {
-			fmt.Fprintf(&b, "The risk it named: %s\n", r.Risk)
-		}
-		if r.Case == "" {
-			b.WriteString("Its case was not kept: find from the news of the time what the call most likely rested on.\n")
-		}
+		describeCall(&b, r)
 		unit := r.Currency
 		if unit == "" {
 			unit = "USD"
