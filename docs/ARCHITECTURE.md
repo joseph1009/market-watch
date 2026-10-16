@@ -600,7 +600,7 @@ sender is allowed and then routes on the command:
 | `/sources` | [`handleSources`](../internal/app/commands.go#L421) | Turn a feed on or off |
 | `/schedule` | [`handleSchedule`](../internal/app/commands.go#L327) | When the next brief is due |
 | `/clear` | [`handleClear`](../internal/app/commands.go#L284) | Delete the bot's earlier messages |
-| `/code` | [`handleCode`](../internal/app/code.go) | Turns Remote Control on the Sprite on or off, through the Sprites API ([sprites](../internal/sprites/sprites.go)), so the code can be worked on from the Claude app. `/code update` updates Claude Code there. The owner's chat only |
+| `/activate_sprite`, `/deactivate_sprite` | [`handleCode`](../internal/app/code.go) | Turn Remote Control on the Sprite on or off (the old `/code` and `/code stop` still work), through the Sprites API ([sprites](../internal/sprites/sprites.go)), so the code can be worked on from the Claude app. `/code update` updates Claude Code there. The owner's chat only |
 
 Most commands answer at once, so they are handled in turn. `/analyse` and
 `/industry` take minutes, so once they know what to look at they run in the
@@ -1649,7 +1649,7 @@ run.
   outside the US are still priced for the analysis, because the chart source
   needs no key.
 - No `MASSIVE_API_KEY` means no market history, and so no closer look at all.
-- No `SPRITES_TOKEN` means no `/code`, so Remote Control on the Sprite has to
+- No `SPRITES_TOKEN` means no `/activate_sprite`, so Remote Control on the Sprite has to
   be started from the PC (see "The Sprite" in [RUNBOOK.md](RUNBOOK.md)).
 - `CONSENSUS=false` stops asking Nasdaq. The verdicts and analyses then go
   without what analysts expect.

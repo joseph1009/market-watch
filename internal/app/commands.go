@@ -41,7 +41,8 @@ const helpText = `<b>📊 Market Watch</b>
 /scorecard — how past buy, hold and sell verdicts have done
 /backcheck — why the calls going the wrong way went that way
 /clear — remove the bot's earlier messages from this chat
-/code — turn on Remote Control on the Sprite, to work on the code from the Claude app (/code stop turns it off, /code update updates Claude Code there)
+/activate_sprite — turn on Remote Control on the Sprite, to work on the code from the Claude app
+/deactivate_sprite — turn it off again (/code update updates Claude Code there)
 /help — this message
 
 The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
@@ -63,7 +64,8 @@ func BotCommands() []telegram.Command {
 		{Command: "scorecard", Description: "How past buy, hold and sell verdicts have done"},
 		{Command: "backcheck", Description: "Why the calls going the wrong way went that way"},
 		{Command: "clear", Description: "Remove my earlier messages from this chat"},
-		{Command: "code", Description: "Remote Control on the Sprite: /code, /code stop, /code update"},
+		{Command: "activate_sprite", Description: "Turn on Remote Control on the Sprite, to work from the Claude app"},
+		{Command: "deactivate_sprite", Description: "Turn off Remote Control on the Sprite"},
 		{Command: "help", Description: "What I can do"},
 	}
 }
@@ -155,9 +157,17 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleBackcheck(ctx, msg)
 	case "clear":
 		err = a.handleClear(ctx, msg)
-	case "code":
+	case "code", "activate_sprite", "deactivate_sprite":
 		// Waking the Sprite and waiting for Remote Control takes up to a
-		// minute, so the bot keeps reading meanwhile.
+		// minute, so the bot keeps reading meanwhile. /activate_sprite and
+		// /deactivate_sprite are the owner's names for /code and /code stop
+		// (2026-10-16); the old ones still work.
+		switch command {
+		case "activate_sprite":
+			args = nil
+		case "deactivate_sprite":
+			args = []string{"stop"}
+		}
 		a.detach(ctx, msg, command, func(ctx context.Context) error { return a.handleCode(ctx, msg, args) })
 		return
 	default:
@@ -211,7 +221,7 @@ func (a *App) accessOf(chat int64) access {
 // everyone reads.
 func needs(command string) access {
 	switch command {
-	case "start", "clear", "share", "code":
+	case "start", "clear", "share", "code", "activate_sprite", "deactivate_sprite":
 		return ownerAccess
 	case "now", "watchlist", "sources":
 		return controlAccess

@@ -858,7 +858,7 @@ It runs on the Sprite as a service named `remote-control`, which runs
 [scripts/remote-control.sh](../scripts/remote-control.sh). `scripts/sprite.sh
 setup` installs it.
 
-**To start it,** send `/code` to the bot. The bot wakes the Sprite, starts the
+**To start it,** send `/activate_sprite` to the bot (the old `/code` still works). The bot wakes the Sprite, starts the
 service and waits until Remote Control is connected, which takes a few
 seconds. It then says "Remote Control is on". Open the Code tab in the Claude
 app, pick market-watch, and start a new session there. Remote Control does not
@@ -866,7 +866,7 @@ make a session in advance (`--no-create-session-in-dir`): the one it made by
 itself from 2.1.296 on took no messages, on 13 and 16 October 2026. Claude
 Code's debug log is at `~/.claude/remote-control-debug.log` on the Sprite.
 
-**To stop it,** send `/code stop`, and the Sprite goes back to sleep about 30
+**To stop it,** send `/deactivate_sprite` (or the old `/code stop`), and the Sprite goes back to sleep about 30
 seconds later. The bot first runs `remote-control.sh stop`, which asks Remote
 Control to stop and gives it up to 30 seconds to close its sessions and take
 itself off the Claude app's list. Stopped by the service manager alone, it was
@@ -875,10 +875,10 @@ app. If you forget, it stops itself after two hours with no session
 activity. A running service keeps the Sprite awake, and billed, so it is off
 unless you start it.
 
-`/code` works in the owner's chat only, since a session on the Sprite can
+Both work in the owner's chat only, since a session on the Sprite can
 change the code and deploy it.
 
-**What `/code` needs:** a Sprites token in `SPRITES_TOKEN` on Fly, which lets
+**What they need:** a Sprites token in `SPRITES_TOKEN` on Fly, which lets
 the bot start and stop the service through the Sprites API.
 
 1. Make a token at [sprites.dev/account](https://sprites.dev/account).
@@ -908,7 +908,7 @@ To change the two hours, set `IDLE_MINUTES` in the service's environment.
 model comes out. The bot runs `claude update` on the Sprite and tells you
 when it's done, from which version to which. A Remote Control already running
 keeps the version it started with. If it's on, the bot says so: send
-`/code stop` and then `/code` to restart it, which ends any open session.
+`/deactivate_sprite` and then `/activate_sprite` to restart it, which ends any open session.
 Asking Claude to update itself in a session works too, but needs the same
 restart.
 

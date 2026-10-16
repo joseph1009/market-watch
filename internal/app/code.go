@@ -34,7 +34,7 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	chat := msg.Chat.ID
 	if !a.Code.Enabled() {
 		return a.Bot.SendMessage(ctx, chat,
-			"/code needs SPRITES_TOKEN, a token from sprites.dev, set on Fly. See \"The Sprite\" in docs/RUNBOOK.md.")
+			"/activate_sprite needs SPRITES_TOKEN, a token from sprites.dev, set on Fly. See \"The Sprite\" in docs/RUNBOOK.md.")
 	}
 
 	switch strings.ToLower(strings.Join(args, " ")) {
@@ -53,7 +53,7 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	case "update":
 		return a.updateClaude(ctx, chat)
 	default:
-		return a.Bot.SendMessage(ctx, chat, "Send /code to turn on Remote Control on the Sprite, /code stop to turn it off, or /code update to update Claude Code there.")
+		return a.Bot.SendMessage(ctx, chat, "Send /activate_sprite to turn on Remote Control on the Sprite, /deactivate_sprite to turn it off, or /code update to update Claude Code there.")
 	}
 
 	state, err := a.Code.State(ctx)
@@ -63,7 +63,7 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	if state.Running {
 		since := state.Since.In(a.Cfg.DisplayLocation).Format("15:04")
 		return a.Bot.SendMessage(ctx, chat, fmt.Sprintf(
-			"Remote Control is already on, since %s. %s\n\nSend /code stop to turn it off.", since, openTheApp))
+			"Remote Control is already on, since %s. %s\n\nSend /deactivate_sprite to turn it off.", since, openTheApp))
 	}
 
 	if err := a.Bot.SendMessage(ctx, chat, "Waking the Sprite and starting Remote Control…"); err != nil {
@@ -79,10 +79,10 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	a.Log.Info("remote control started", "ready", ready)
 	if !ready {
 		return a.Bot.SendMessage(ctx, chat,
-			"Remote Control started but hasn't said it's connected yet. Look in the Claude app in a minute, or send /code again to check.")
+			"Remote Control started but hasn't said it's connected yet. Look in the Claude app in a minute, or send /activate_sprite again to check.")
 	}
 	return a.Bot.SendMessage(ctx, chat, "Remote Control is on. "+openTheApp+
-		"\n\nIt turns itself off after two quiet hours, or send /code stop.")
+		"\n\nIt turns itself off after two quiet hours, or send /deactivate_sprite.")
 }
 
 // updateClaude updates Claude Code on the Sprite and says when it is done,
@@ -120,11 +120,11 @@ func (a *App) updateClaude(ctx context.Context, chat int64) error {
 	state, err := a.Code.State(ctx)
 	switch {
 	case err != nil:
-		reply += " If Remote Control is on, send /code stop and then /code to start it on the new version."
+		reply += " If Remote Control is on, send /deactivate_sprite and then /activate_sprite to start it on the new version."
 	case state.Running:
-		reply += fmt.Sprintf(" Remote Control is still running %s. Send /code stop and then /code to start it on %s. That ends any session open in the app.", before, after)
+		reply += fmt.Sprintf(" Remote Control is still running %s. Send /deactivate_sprite and then /activate_sprite to start it on %s. That ends any session open in the app.", before, after)
 	default:
-		reply += " The next /code starts on it."
+		reply += " The next /activate_sprite starts on it."
 	}
 	return a.Bot.SendMessage(ctx, chat, reply)
 }

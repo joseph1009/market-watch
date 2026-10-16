@@ -80,12 +80,14 @@ func lastText(sent *[]sentMessage) string {
 	return (*sent)[len(*sent)-1].Text
 }
 
+// /activate_sprite and /deactivate_sprite are the names; /code and /code stop
+// still work.
 func TestCodeTurnsRemoteControlOnAndOff(t *testing.T) {
 	a, sent := newTestApp(t)
 	owned(t, a)
 	asked := sprite(t, a)
 
-	handle(a, message("/code"))
+	handle(a, message("/activate_sprite"))
 	if got := lastText(sent); !strings.Contains(got, "Remote Control is on") || !strings.Contains(got, "market-watch") {
 		t.Errorf("after /code: %q", got)
 	}
@@ -95,7 +97,7 @@ func TestCodeTurnsRemoteControlOnAndOff(t *testing.T) {
 		t.Errorf("after a second /code: %q, want it already on since 19:30 Singapore time", got)
 	}
 
-	handle(a, message("/code stop"))
+	handle(a, message("/deactivate_sprite"))
 	if got := lastText(sent); !strings.Contains(got, "Remote Control is off") {
 		t.Errorf("after /code stop: %q", got)
 	}
@@ -165,7 +167,7 @@ func TestCodeUpdateSaysWhatChanged(t *testing.T) {
 	handle(a, message("/code"))
 	handle(a, message("/code update"))
 	got := lastText(sent)
-	for _, want := range []string{"from 2.1.296 to 2.1.300", "still running 2.1.296", "/code stop and then /code"} {
+	for _, want := range []string{"from 2.1.296 to 2.1.300", "still running 2.1.296", "/deactivate_sprite and then /activate_sprite"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("after /code update: %q, want %q in it", got, want)
 		}
