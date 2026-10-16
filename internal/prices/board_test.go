@@ -65,8 +65,8 @@ func TestANarrowDayStandsOut(t *testing.T) {
 	if !g.Unusual || g.Window != "" || !strings.HasPrefix(g.Reading, "Narrow") {
 		t.Errorf("gap = %+v, want an unusual narrow day", g)
 	}
-	if session, _ := board.Lines(4); session != "the giants carried the index" {
-		t.Errorf("session line = %q, want the giants carried the index", session)
+	if session, _ := board.Lines(4); session != "the biggest shares carried the index" {
+		t.Errorf("session line = %q, want the biggest shares carried the index", session)
 	}
 }
 

@@ -113,8 +113,8 @@ func either(aheadLong, aheadShort, behindLong, behindShort string) func(moves) (
 // bond market agree.
 var pairs = []pair{
 	{"Equal weight vs the S&P 500", "RSP", "SPY", either(
-		"Broad: the typical company did better than the giants that dominate the index.", "the typical share beat the giants",
-		"Narrow: the biggest companies carried the index, and the typical one did worse.", "the giants carried the index")},
+		"Broad: the typical company did better than the giants that dominate the index.", "most shares beat the biggest",
+		"Narrow: the biggest companies carried the index, and the typical one did worse.", "the biggest shares carried the index")},
 	{"Small vs large companies", "IWM", "SPY", either(
 		"Appetite for risk: small companies, more tied to the US economy and to borrowing costs, did better.", "small companies led",
 		"Caution: money stayed with the largest companies.", "large companies led")},
@@ -122,8 +122,8 @@ var pairs = []pair{
 		"Big technology companies led the market.", "big tech led",
 		"Big technology companies lagged the market.", "big tech lagged")},
 	{"Cyclical vs defensive", "XLY", "XLP", either(
-		"Wants over needs: shops, carmakers and travel beat household staples, a bet that growth holds up.", "cyclicals over defensives",
-		"Needs over wants: household staples beat shops, carmakers and travel, as when growth worries.", "defensives over cyclicals")},
+		"Wants over needs: shops, carmakers and travel beat household staples, a bet that growth holds up.", "carmakers and shops beat staples",
+		"Needs over wants: household staples beat shops, carmakers and travel, as when growth worries.", "staples beat carmakers and shops")},
 	{"Chips vs software", "SMH", "IGV", either(
 		"Money went to chipmakers over software companies.", "chips over software",
 		"Money went to software companies over chipmakers.", "software over chips")},
@@ -136,13 +136,13 @@ var pairs = []pair{
 	{"Energy shares vs oil", "XLE", "USO", func(m moves) (string, string) {
 		switch {
 		case m.B < 0 && m.Gap >= 0:
-			return "Energy shares did better than oil as it fell: investors expect the fall not to last.", "energy shares shrugged off oil's fall"
+			return "Energy shares did better than oil as it fell: investors expect the fall not to last.", "energy shares held up as oil fell"
 		case m.B < 0:
 			return "Energy shares did worse than oil as it fell: investors expect lower oil to last.", "energy shares fell further than oil"
 		case m.Gap >= 0:
-			return "Energy shares did better than oil as it rose: investors expect higher oil to last.", "energy shares outran oil"
+			return "Energy shares did better than oil as it rose: investors expect higher oil to last.", "energy shares rose more than oil"
 		default:
-			return "Energy shares did worse than oil as it rose: investors doubt the rise will last.", "energy shares doubted oil's rise"
+			return "Energy shares did worse than oil as it rose: investors doubt the rise will last.", "energy shares lagged rising oil"
 		}
 	}},
 	{"Copper vs gold", "CPER", "GLD", func(m moves) (string, string) {

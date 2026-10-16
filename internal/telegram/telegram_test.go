@@ -1316,7 +1316,7 @@ func TestTheMarketInItsPartsIsShown(t *testing.T) {
 		},
 		Gaps: []model.Gap{
 			{Name: "Equal weight vs the S&P 500", A: "RSP", B: "SPY", Day: -2.5, Month: 3, UsualDay: 0.5, UsualMonth: 2,
-				Unusual: true, Reading: "Narrow: the biggest companies carried the index.", Short: "the giants carried the index"},
+				Unusual: true, Reading: "Narrow: the biggest companies carried the index.", Short: "the biggest shares carried the index"},
 			{Name: "Copper vs gold", A: "CPER", B: "GLD", Day: 3, Month: 9, UsualDay: 1, UsualMonth: 3,
 				Unusual: true, Window: "month", Reading: "Copper over gold.", Short: "copper over gold"},
 			{Name: "Chips vs software", A: "SMH", B: "IGV", Day: 0.2, UsualDay: 1, UsualMonth: 3,
@@ -1325,7 +1325,7 @@ func TestTheMarketInItsPartsIsShown(t *testing.T) {
 	}
 
 	out := strings.Join(Render(rep, time.UTC), "\n")
-	if want := "<i>Stood out on the last session: the giants carried the index</i>\n<i>Stood out over the past month: copper over gold</i>"; !strings.Contains(out, want) {
+	if want := "<i>Stood out on the last session: the biggest shares carried the index</i>\n<i>Stood out over the past month: copper over gold</i>"; !strings.Contains(out, want) {
 		t.Errorf("rendered brief lacks %q:\n%s", want, out)
 	}
 	page := render(BriefDoc(rep, Market{}, Options{Display: time.UTC}))

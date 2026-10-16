@@ -95,7 +95,7 @@ func (b Board) Standouts(n int) []Gap {
 
 // Lines are the standouts in a few words each, for the lines under the
 // overview: those of the last session, then those of the past month, as
-// "big tech led · the giants carried the index". Either is empty where
+// "big tech led · the biggest shares carried the index". Either is empty where
 // nothing stood out over it.
 func (b Board) Lines(n int) (session, month string) {
 	var day, past []string
