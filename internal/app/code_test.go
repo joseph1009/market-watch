@@ -45,6 +45,8 @@ func sprite(t *testing.T, a *App) *[]string {
 			case "bash -lc claude update":
 				version = "2.1.300"
 				_, _ = w.Write([]byte("\x01Successfully updated\n\x03\x00"))
+			case "bash -lc bash ~/market-watch/scripts/remote-control.sh stop":
+				_, _ = w.Write([]byte("\x03\x00"))
 			default:
 				http.Error(w, "unexpected command "+cmd, http.StatusBadRequest)
 			}
@@ -102,7 +104,8 @@ func TestCodeTurnsRemoteControlOnAndOff(t *testing.T) {
 		t.Errorf("after a second /code stop: %q", got)
 	}
 
-	want := []string{"GET ", "POST /start", "GET ", "POST /stop", "POST /stop"}
+	// The clean stop runs only while it is running.
+	want := []string{"GET ", "POST /start", "GET ", "GET ", "POST /v1/sprites/dev/exec", "POST /stop", "GET ", "POST /stop"}
 	if strings.Join(*asked, ",") != strings.Join(want, ",") {
 		t.Errorf("asked the API %q, want %q", *asked, want)
 	}

@@ -867,7 +867,11 @@ itself from 2.1.296 on took no messages, on 13 and 16 October 2026. Claude
 Code's debug log is at `~/.claude/remote-control-debug.log` on the Sprite.
 
 **To stop it,** send `/code stop`, and the Sprite goes back to sleep about 30
-seconds later. If you forget, it stops itself after two hours with no session
+seconds later. The bot first runs `remote-control.sh stop`, which asks Remote
+Control to stop and gives it up to 30 seconds to close its sessions and take
+itself off the Claude app's list. Stopped by the service manager alone, it was
+killed after a second, and each run left a "market-watch" entry behind in the
+app. If you forget, it stops itself after two hours with no session
 activity. A running service keeps the Sprite awake, and billed, so it is off
 unless you start it.
 

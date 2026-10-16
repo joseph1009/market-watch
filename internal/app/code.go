@@ -40,6 +40,7 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	switch strings.ToLower(strings.Join(args, " ")) {
 	case "":
 	case "stop", "off":
+		a.stopRemoteCleanly(ctx)
 		was, err := a.Code.Stop(ctx)
 		if err != nil {
 			return err
@@ -158,6 +159,29 @@ func (a *App) connectedSince(ctx context.Context) bool {
 			return false
 		case <-time.After(3 * time.Second):
 		}
+	}
+}
+
+// remoteScript is the service's script on the Sprite.
+const remoteScript = "~/market-watch/scripts/remote-control.sh"
+
+// stopWait bounds the clean stop: the script gives Remote Control 30 seconds.
+const stopWait = 45 * time.Second
+
+// stopRemoteCleanly asks Remote Control to stop and waits for it, before the
+// service is stopped. The service manager kills it about a second after its
+// own stop, before it has taken itself off the Claude app's list, so every
+// run left a "market-watch" entry behind there (16 Oct 2026). A Sprite that
+// is not running it is not woken for this.
+func (a *App) stopRemoteCleanly(ctx context.Context) {
+	state, err := a.Code.State(ctx)
+	if err != nil || !state.Running {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, stopWait)
+	defer cancel()
+	if out, code, err := a.Code.Exec(ctx, "bash", "-lc", "bash "+remoteScript+" stop"); err != nil || code != 0 {
+		a.Log.Warn("remote control: the clean stop failed; stopping the service anyway", "error", err, "status", code, "output", lastLine(out))
 	}
 }
 
