@@ -19,11 +19,20 @@ SPRITE_ENV=/.sprite/bin/sprite-env
 # Claude Code writes every session's transcript under here, so the newest
 # write is the last time a session did anything.
 TRANSCRIPTS="$HOME/.claude/projects"
+# Claude Code's own debug log, kept on the Sprite only, with the run before's
+# beside it. Twice a session opened from the app sat with no reply and left
+# an empty transcript (13 and 16 Oct 2026), and nothing else said why.
+DEBUG_LOG="$HOME/.claude/remote-control-debug.log"
 
 log() { echo "remote-control: $*"; }
 
 cd "$REPO" || exit 1
-"$CLAUDE" remote-control --name market-watch </dev/null &
+[ -f "$DEBUG_LOG" ] && mv -f "$DEBUG_LOG" "$DEBUG_LOG.1"
+# No session made in advance. Since 2.1.296 Remote Control opens one as it
+# starts, and both times the owner used it (13 and 16 Oct 2026) it took no
+# message and left an empty transcript. A session started from the app, as
+# before 2.1.296, is made when it is asked for.
+"$CLAUDE" remote-control --name market-watch --no-create-session-in-dir --debug-file "$DEBUG_LOG" </dev/null &
 rc=$!
 log "started, stopping after $IDLE_MINUTES quiet minutes"
 

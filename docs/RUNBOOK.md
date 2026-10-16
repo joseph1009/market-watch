@@ -861,7 +861,10 @@ setup` installs it.
 **To start it,** send `/code` to the bot. The bot wakes the Sprite, starts the
 service and waits until Remote Control is connected, which takes a few
 seconds. It then says "Remote Control is on". Open the Code tab in the Claude
-app, pick market-watch, and start a session there.
+app, pick market-watch, and start a new session there. Remote Control does not
+make a session in advance (`--no-create-session-in-dir`): the one it made by
+itself from 2.1.296 on took no messages, on 13 and 16 October 2026. Claude
+Code's debug log is at `~/.claude/remote-control-debug.log` on the Sprite.
 
 **To stop it,** send `/code stop`, and the Sprite goes back to sleep about 30
 seconds later. If you forget, it stops itself after two hours with no session

@@ -173,3 +173,47 @@ func TestCodeUpdateSaysWhatChanged(t *testing.T) {
 		t.Errorf("after a second /code update: %q", got)
 	}
 }
+
+// The Sprites API can end the start's output before Remote Control has
+// connected. /code then reads the service's log for the tick, and only says
+// it has not connected once the log has gone on without one.
+func TestCodeLooksInTheLogWhenTheStartEndsEarly(t *testing.T) {
+	saved := connectedWait
+	connectedWait = 0
+	t.Cleanup(func() { connectedWait = saved })
+
+	for _, tc := range []struct {
+		count string
+		want  string
+	}{
+		{"1\n", "Remote Control is on"},
+		{"0\n", "hasn't said it's connected yet"},
+	} {
+		a, sent := newTestApp(t)
+		owned(t, a)
+		const service = "/v1/sprites/dev/services/remote-control"
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method + " " + r.URL.Path {
+			case "GET " + service:
+				_, _ = w.Write([]byte(`{"state":{"status":"stopped"}}`))
+			case "POST " + service + "/start":
+				_, _ = w.Write([]byte(`{"type":"started"}` + "\n" + `{"type":"stdout","data":"·|· Connecting · market-watch · main\n"}` + "\n" + `{"type":"complete"}` + "\n"))
+			case "POST /v1/sprites/dev/exec":
+				if cmd := strings.Join(r.URL.Query()["cmd"], " "); !strings.Contains(cmd, "sed '/remote-control: started/q'") {
+					http.Error(w, "unexpected command "+cmd, http.StatusBadRequest)
+					return
+				}
+				_, _ = w.Write([]byte("\x01" + tc.count + "\x03\x00"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		a.Code = &sprites.Client{Token: "tok", Sprite: "dev", Service: "remote-control", BaseURL: srv.URL, HTTP: srv.Client()}
+
+		handle(a, message("/code"))
+		if got := lastText(sent); !strings.Contains(got, tc.want) {
+			t.Errorf("with %q ticks in the log: %q, want %q", strings.TrimSpace(tc.count), got, tc.want)
+		}
+	}
+}

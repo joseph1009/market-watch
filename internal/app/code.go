@@ -19,8 +19,10 @@ const remoteReady = "✔"
 // download of about 250 MB.
 const claudeUpdateWait = 4 * time.Minute
 
-// openTheApp says where the session is found once Remote Control is on.
-const openTheApp = "Open the Code tab in the Claude app and pick market-watch."
+// openTheApp says how to start a session once Remote Control is on. No
+// session is made in advance (scripts/remote-control.sh): the one Remote
+// Control made by itself took no messages.
+const openTheApp = "Open the Code tab in the Claude app, pick market-watch, and start a new session there."
 
 // handleCode answers /code: it starts Remote Control on the Sprite the code is
 // worked on from, so a session can be started from the Claude app on a phone,
@@ -69,6 +71,9 @@ func (a *App) handleCode(ctx context.Context, msg telegram.Message, args []strin
 	ready, err := a.Code.Start(ctx, remoteReady)
 	if err != nil {
 		return err
+	}
+	if !ready {
+		ready = a.connectedSince(ctx)
 	}
 	a.Log.Info("remote control started", "ready", ready)
 	if !ready {
@@ -121,6 +126,39 @@ func (a *App) updateClaude(ctx context.Context, chat int64) error {
 		reply += " The next /code starts on it."
 	}
 	return a.Bot.SendMessage(ctx, chat, reply)
+}
+
+// remoteLog is the remote-control service's output on the Sprite.
+const remoteLog = "/.sprite/logs/services/remote-control.log"
+
+// connectedWait is how much longer /code looks for the tick once the start's
+// own output has ended. The Sprites API can end it a few seconds after the
+// service starts, before Remote Control has connected: on 16 Oct 2026 it
+// ended at 4 seconds, and the tick came 2 seconds later, so the owner was
+// told it had not connected when it had.
+var connectedWait = 45 * time.Second
+
+// connectedSince reports whether Remote Control has printed its tick since
+// the service last started, reading the service's log every few seconds for
+// up to connectedWait.
+func (a *App) connectedSince(ctx context.Context) bool {
+	// The log keeps every run: only the lines after the newest start count.
+	cmd := "tac " + remoteLog + " | sed '/remote-control: started/q' | grep -c '" + remoteReady + "'"
+	deadline := time.Now().Add(connectedWait)
+	for {
+		out, _, err := a.Code.Exec(ctx, "bash", "-lc", cmd)
+		if err == nil && strings.TrimSpace(out) != "0" && strings.TrimSpace(out) != "" {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 
 // claudeVersion is the version of Claude Code on the Sprite, as "2.1.296".
