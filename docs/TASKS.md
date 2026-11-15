@@ -238,6 +238,9 @@ is, what it needs from you, and why it is worth doing.
   - Mainland China listings are checked under OpenFIGI's China code.
 - 15 November 2026, at the owner's request: every stage runs at medium effort
   (`EFFORT`, default medium).
+- 15 November 2026, at the owner's request: a second brief each weekday, after
+  the close, at 18:30 New York (`CLOSE_AT`). A recap of the session, with no
+  closer look, sent to the owner and the channel.
 - 1 October 2026, at the owner's request: every stage moved to Opus 5.5. The
   brief became plainer, with about twice the room, emoji, highlighted figures
   and linked finance words. It added a look ahead at the week's economic

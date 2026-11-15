@@ -168,6 +168,31 @@ Chips followed.`}
 	}
 }
 
+// The brief after the close opens with its own framing, the session just
+// ended, and says which it is, so the chat and the page can label it. The
+// rules after the opening are the same for both.
+func TestTheBriefAfterTheCloseHasItsOwnOpening(t *testing.T) {
+	for _, close := range []bool{false, true} {
+		fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips."}
+		g := &Generator{Completer: fake, Now: testTime, Close: close}
+		rep, err := g.Generate(context.Background(), testArticles(), reportGroups())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.AfterClose() != close {
+			t.Errorf("Close %v: the report's edition is %q", close, rep.Edition)
+		}
+		after := strings.Contains(fake.system, "after the US market has closed")
+		before := strings.Contains(fake.system, "before the US market opens")
+		if after != close || before == close {
+			t.Errorf("Close %v: the system prompt is the wrong one (after the close %v, before the open %v)", close, after, before)
+		}
+		if !strings.Contains(fake.system, "Cite your source") {
+			t.Errorf("Close %v: the brief's rules are missing", close)
+		}
+	}
+}
+
 func TestGenerateAttachesTheArticlesBehindEachSection(t *testing.T) {
 	fake := &fakeCompleter{reply: "## OVERVIEW\nBody.\n## SECTION: semis-ai\nChips.\n## SECTION: macro-rates\nRates."}
 
@@ -650,7 +675,7 @@ func TestSystemPromptDemandsPlainLanguage(t *testing.T) {
 		"double asterisks",
 		"### 🔭 What to watch",
 	} {
-		if !strings.Contains(systemPrompt, want) {
+		if !strings.Contains(morningPrompt, want) {
 			t.Errorf("the system prompt no longer carries %q", want)
 		}
 	}
@@ -688,7 +713,7 @@ func TestSystemPromptAsksForCitationsAndSkipsRepeats(t *testing.T) {
 		"never invent one",
 		"Leave it out unless something has moved since",
 	} {
-		if !strings.Contains(systemPrompt, want) {
+		if !strings.Contains(morningPrompt, want) {
 			t.Errorf("the system prompt no longer carries %q", want)
 		}
 	}

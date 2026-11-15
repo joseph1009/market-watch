@@ -68,6 +68,10 @@ type Generator struct {
 	// between pairs of funds that say what kind of day it was.
 	Board model.Board
 
+	// Close writes the brief after the close, on the session just ended,
+	// rather than the one before the open.
+	Close bool
+
 	// Now is injected for tests.
 	Now func() time.Time
 }
@@ -90,7 +94,11 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	m := market{levels: g.Levels, quotes: g.Quotes, trends: g.Trends, since: g.MovesSince, calendar: g.Calendar, moves: g.MarketMoves, board: g.Board}
 	prompt := buildPrompt(articles, active, m, now, g.display())
 
-	completion, err := g.Completer.Complete(ctx, systemPrompt, prompt)
+	system := morningPrompt
+	if g.Close {
+		system = closePrompt
+	}
+	completion, err := g.Completer.Complete(ctx, system, prompt)
 	if err != nil {
 		return model.Report{}, fmt.Errorf("summarize %d articles: %w", len(articles), err)
 	}
@@ -98,6 +106,7 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 	got := parseResponse(completion.Text)
 	rep := model.Report{
 		GeneratedAt:  now,
+		Edition:      edition(g.Close),
 		Summary:      got.Summary,
 		Overview:     got.Overview,
 		Terms:        model.ParseTerms(got.Terms),
@@ -144,6 +153,13 @@ func (g *Generator) Generate(ctx context.Context, articles []model.Article, grou
 		return model.Report{}, fmt.Errorf("report: model returned no usable prose for %v", sortedGroupIDs(groups))
 	}
 	return rep, nil
+}
+
+func edition(close bool) string {
+	if close {
+		return model.EditionClose
+	}
+	return ""
 }
 
 func (g *Generator) display() *time.Location {

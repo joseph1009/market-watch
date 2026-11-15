@@ -51,6 +51,15 @@ func at(t time.Time, display *time.Location) string {
 	return t.In(display).Format("15:04") + " " + placeName(display) + " time, " + t.In(display).Format("Mon 2 Jan")
 }
 
+// briefName is what a brief is called at its top: the brief after the close
+// says so, since the reader gets two a day.
+func briefName(rep model.Report) string {
+	if rep.AfterClose() {
+		return "Market Watch · after the close"
+	}
+	return "Market Watch"
+}
+
 // BriefSummary is the brief on one screen: the day in a line, the writer's
 // few bullets, what lands in the next day, and what the page holds.
 func BriefSummary(rep model.Report, opts Options) Summary {
@@ -58,7 +67,7 @@ func BriefSummary(rep model.Report, opts Options) Summary {
 	if display == nil {
 		display = time.UTC
 	}
-	parts := []string{"📊 <b>Market Watch</b> @ " + escape(at(rep.GeneratedAt, display))}
+	parts := []string{"📊 <b>" + briefName(rep) + "</b> @ " + escape(at(rep.GeneratedAt, display))}
 
 	if line := headline(rep.Overview); line != "" {
 		parts = append(parts, "<b>"+line+"</b>")

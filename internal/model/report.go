@@ -6,10 +6,22 @@ import (
 	"time"
 )
 
+// EditionClose marks the brief written after the US market has closed, on
+// the session just ended. The one before the open has no edition.
+const EditionClose = "close"
+
+// AfterClose reports whether this is the brief written after the close.
+func (r Report) AfterClose() bool { return r.Edition == EditionClose }
+
 // Report is one generated market brief, ready to be rendered and sent.
 type Report struct {
 	GeneratedAt time.Time `json:"generated_at"`
-	Overview    string    `json:"overview"`
+
+	// Edition is EditionClose for the brief written after the US close, and
+	// empty for the one before the open.
+	Edition string `json:"edition,omitempty"`
+
+	Overview string `json:"overview"`
 
 	// Summary is the brief in three to five short bullets, which the chat is
 	// sent when the whole brief is a page.

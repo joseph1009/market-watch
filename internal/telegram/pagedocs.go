@@ -46,7 +46,7 @@ func BriefDoc(rep model.Report, market Market, opts Options) pages.Doc {
 		display = time.UTC
 	}
 	doc := pages.Doc{
-		Kicker: "Market Watch",
+		Kicker: briefName(rep),
 		Title:  pages.Plain(headline(rep.Overview)),
 		Dek: []string{
 			escape(rep.GeneratedAt.In(display).Format("Monday 2 January 2006") + " @ " +

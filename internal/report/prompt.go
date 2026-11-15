@@ -22,8 +22,13 @@ const (
 	termsMarker    = "## TERMS"
 )
 
-// systemPrompt governs the brief. Its text lives in config/prompts.md.
-var systemPrompt = config.Prompt("brief.system")
+// The system prompts of the two briefs: the one before the open and the one
+// after the close, which differ only in their opening. Their text lives in
+// config/prompts.md.
+var (
+	morningPrompt = config.Prompt("brief.morning") + "\n\n" + config.Prompt("brief.system")
+	closePrompt   = config.Prompt("brief.close") + "\n\n" + config.Prompt("brief.system")
+)
 
 // MinSectionArticles is how much news a watchlist needs before it earns a
 // section. Below this the model has nothing to work with and writes around the

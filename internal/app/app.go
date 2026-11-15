@@ -485,6 +485,14 @@ func (a *App) brief(ctx context.Context, to int64, share, scheduled bool) (err e
 	if done == nil || done.elsewhere {
 		return nil // a day with no news, or another chat's: nothing to share or look into
 	}
+	// The brief after the close has no closer look: its calls come with the
+	// brief before the open, once a day, and the scorecard counts them so.
+	if done.rep.AfterClose() {
+		if share {
+			a.shareBrief(ctx, done.sent, nil)
+		}
+		return nil
+	}
 	look := a.sendIdeas(ctx, lookFrom(done.rep, scheduled))
 	if share {
 		a.shareBrief(ctx, done.sent, look)
@@ -551,6 +559,8 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 
 	started := a.now()
 	watched := watchedTickers(prefs.Groups)
+	// After the close, the brief is a recap of the session just ended.
+	afterClose := a.Cfg.AfterClose(started)
 
 	// Prices are read first and alongside the rest: the free tier's pace makes
 	// them the slowest thing gathered, and the shares that moved furthest
@@ -579,8 +589,14 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	// footing: deduped, matched and scored with everything else rather than
 	// bolted on afterwards.
 	filings := a.collectFilings(ctx, prefs)
-	// Search results join the same way, and for the same reason.
-	found := a.collectSearch(ctx, prefs)
+	// Search results join the same way, and for the same reason. Not after
+	// the close: the free plan's thousand credits a month cover one brief a
+	// weekday at about twenty, and the session's news is in the feeds by
+	// then. That brief keeps the searches for why a share moved, below.
+	var found search.Result
+	if !afterClose {
+		found = a.collectSearch(ctx, prefs)
+	}
 
 	// A share that moved well beyond the market gets a search of its own for
 	// why, so the reason reaches the brief whether or not a feed carried it.
@@ -702,6 +718,7 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	a.Generator.Quotes = quotes
 	a.Generator.Trends = a.trendsFor(ctx, moved)
 	a.Generator.MovesSince = since
+	a.Generator.Close = afterClose
 	a.Generator.Calendar = <-due
 	a.Generator.MarketMoves = <-widely
 	a.Generator.Board = <-parts
@@ -767,8 +784,12 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	}
 	messages := telegram.RenderWith(rep, layout)
 	day := rep.GeneratedAt.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan")
+	title := "Market Watch · " + day
+	if afterClose {
+		title = "Market Watch · after the close · " + day
+	}
 	doc := telegram.BriefDoc(rep, pageMarket(a.Generator.Levels, quotes), layout)
-	out := outgoing{title: "Market Watch · " + day, messages: messages, summary: telegram.BriefSummary(rep, layout), doc: &doc}
+	out := outgoing{title: title, messages: messages, summary: telegram.BriefSummary(rep, layout), doc: &doc}
 	cached.Save("report", rep)
 	a.learnTerms(briefTerms, "the brief of "+day)
 	cached.Text("messages.html", joinMessages(messages))
@@ -816,6 +837,7 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	if a.Runs != nil {
 		run := history.Run{
 			At:           a.now(),
+			Edition:      rep.Edition,
 			Fetched:      collected.Fetched,
 			Deduped:      collected.Deduped,
 			Kept:         len(collected.Articles),
@@ -839,7 +861,9 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 		for _, e := range collected.Errors {
 			run.Failed = append(run.Failed, e.SourceID)
 		}
-		if a.Search.Enabled() {
+		// The comparison of search with the feeds is of the brief before the
+		// open, the one that runs every search.
+		if a.Search.Enabled() && !afterClose {
 			recordSearch(&run, found, collected.Articles, rep.Referenced())
 		}
 		if err := a.Runs.Add(run); err != nil {
@@ -851,12 +875,13 @@ func (a *App) sendReport(ctx context.Context, to int64) (*briefDone, error) {
 	return &briefDone{sent: sent, rep: rep}, nil
 }
 
-// RunScheduler fires the daily brief. It recomputes the next run each time
+// RunScheduler fires the daily briefs, before the open and after the close.
+// Which one a run writes is decided by the clock (Config.AfterClose). It recomputes the next run each time
 // rather than ticking on a fixed interval, so the schedule stays anchored to
 // the wall clock in the configured timezone across a DST transition.
 func (a *App) RunScheduler(ctx context.Context) error {
 	for {
-		next := a.Cfg.NextRun(a.now())
+		next := a.Cfg.NextBrief(a.now())
 		wait := next.Sub(a.now())
 		a.Log.Info("next brief scheduled",
 			"at", next.In(a.Cfg.DisplayLocation).Format(time.RFC1123),
@@ -1123,7 +1148,7 @@ func (a *App) reportFailure(ctx context.Context, cause error) {
 	// The error is the other route a credential can take out of the process, so
 	// it is scrubbed exactly as the log is.
 	clean := logging.Scrub(cause.Error(), a.Cfg.Secrets()...)
-	next := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
+	next := a.Cfg.NextBrief(a.now()).In(a.Cfg.DisplayLocation)
 
 	text := fmt.Sprintf(
 		"<b>📊 Market Watch</b>\n\nToday's brief failed and was not sent.\n\n<i>%s</i>\n\nNothing is retried automatically. The next scheduled brief is %s; send /now to try again sooner.",

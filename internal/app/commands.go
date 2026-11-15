@@ -260,9 +260,9 @@ func (a *App) handleStart(ctx context.Context, msg telegram.Message) error {
 	}
 
 	a.Log.Info("chat registered", "chat", msg.Chat.ID)
-	when := a.Cfg.NextRun(a.now()).In(a.Cfg.DisplayLocation)
+	when := a.Cfg.NextBrief(a.now()).In(a.Cfg.DisplayLocation)
 	return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
-		"<b>📊 Market Watch</b>\n\nSet up. The daily brief will arrive here, next at %s.\n\nSend /now for one immediately, or /help for everything else.",
+		"<b>📊 Market Watch</b>\n\nSet up. The daily briefs will arrive here, next at %s.\n\nSend /now for one immediately, or /help for everything else.",
 		escape(when.Format("Mon 2 Jan at 15:04 MST"))))
 }
 
@@ -339,14 +339,21 @@ func (a *App) ClearChat(ctx context.Context, chatID int64) error {
 }
 
 func (a *App) handleSchedule(ctx context.Context, msg telegram.Message) error {
-	next := a.Cfg.NextRun(a.now())
-	return a.Bot.SendMessage(ctx, msg.Chat.ID, fmt.Sprintf(
-		"<b>Schedule</b>\nDaily at %s %s, which is %s where you are.\n\nNext: %s, in %s.",
-		escape(a.Cfg.ReportAt.String()),
-		escape(a.Cfg.ScheduleLocation.String()),
-		escape(next.In(a.Cfg.DisplayLocation).Format("15:04 MST")),
+	now := a.now()
+	// Each brief's time is shown as it falls where the reader is, on the
+	// next day it runs, so a change of clocks in either place is right.
+	where := func(at time.Time) string { return at.In(a.Cfg.DisplayLocation).Format("15:04 MST") }
+	text := fmt.Sprintf("<b>Schedule</b>\nBefore the open: each weekday at %s %s, which is %s where you are.",
+		escape(a.Cfg.ReportAt.String()), escape(a.Cfg.ScheduleLocation.String()), escape(where(a.Cfg.NextRun(now))))
+	if after := a.Cfg.NextClose(now); !after.IsZero() {
+		text += fmt.Sprintf("\nAfter the close: each weekday at %s %s, which is %s where you are.",
+			escape(a.Cfg.CloseAt.String()), escape(a.Cfg.ScheduleLocation.String()), escape(where(after)))
+	}
+	next := a.Cfg.NextBrief(now)
+	text += fmt.Sprintf("\n\nNext: %s, in %s.",
 		escape(next.In(a.Cfg.DisplayLocation).Format("Mon 2 Jan, 15:04")),
-		escape(next.Sub(a.now()).Round(time.Minute).String())))
+		escape(next.Sub(now).Round(time.Minute).String()))
+	return a.Bot.SendMessage(ctx, msg.Chat.ID, text)
 }
 
 func (a *App) handleWatchlist(ctx context.Context, msg telegram.Message, args []string) error {

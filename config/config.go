@@ -25,6 +25,7 @@ const (
 	// transition and needs no special handling here.
 	DefaultScheduleTZ = "America/New_York"
 	DefaultReportAt   = "07:30"
+	DefaultCloseAt    = "18:30"
 	DefaultDisplayTZ  = "Asia/Singapore"
 
 	// RELAY_ANSWER values. Claude is the service as deployed: each model call
@@ -171,6 +172,12 @@ type Config struct {
 	ReportAt         ClockTime
 	DisplayLocation  *time.Location
 
+	// CloseAt is when the brief after the close fires, in ScheduleLocation,
+	// on each weekday: a recap of the session just ended, with the results
+	// released after it (since 2026-11-15, at the owner's request). Nil, from
+	// CLOSE_AT=off, means only the brief before the open.
+	CloseAt *ClockTime
+
 	// Discover adds the "new names in the news" section: companies the day's
 	// stories were about that no watchlist tracks, with every ticker checked
 	// against the exchange before it is shown.
@@ -289,6 +296,18 @@ func Load() (*Config, error) {
 	}
 	if cfg.ReportAt, err = ParseClockTime(envOr("REPORT_AT", DefaultReportAt)); err != nil {
 		return nil, fmt.Errorf("parse REPORT_AT: %w", err)
+	}
+	if v := envOr("CLOSE_AT", DefaultCloseAt); !strings.EqualFold(v, "off") {
+		at, err := ParseClockTime(v)
+		if err != nil {
+			return nil, fmt.Errorf("parse CLOSE_AT: %w", err)
+		}
+		// A brief is the after-close one by the clock (AfterClose), so one
+		// set to fire before the close would be written as a morning brief.
+		if at.Hour < MarketClose {
+			return nil, fmt.Errorf("CLOSE_AT: %s is before the US close at %d:00; want %d:00 or later, or off", at, MarketClose, MarketClose)
+		}
+		cfg.CloseAt = &at
 	}
 	// TELEGRAM_CHAT_ID is the earlier name, still read so a machine whose
 	// secrets predate the rename keeps its owner.
@@ -426,6 +445,45 @@ func (c *Config) NextRun(from time.Time) time.Time {
 		next = c.ReportAt.Next(next, c.ScheduleLocation)
 	}
 	return next
+}
+
+// MarketClose is the hour the US market closes, in New York.
+const MarketClose = 16
+
+// NextClose returns the next brief after the close, after from, or the zero
+// time when there is none. Weekends are skipped whatever SkipWeekends says:
+// no session ended on a Saturday or a Sunday.
+func (c *Config) NextClose(from time.Time) time.Time {
+	if c.CloseAt == nil {
+		return time.Time{}
+	}
+	next := c.CloseAt.Next(from, c.ScheduleLocation)
+	for i := 0; i < 2 && isWeekend(next); i++ {
+		next = c.CloseAt.Next(next, c.ScheduleLocation)
+	}
+	return next
+}
+
+// NextBrief returns whichever scheduled brief comes next, before the open or
+// after the close.
+func (c *Config) NextBrief(from time.Time) time.Time {
+	next := c.NextRun(from)
+	if after := c.NextClose(from); !after.IsZero() && after.Before(next) {
+		return after
+	}
+	return next
+}
+
+// AfterClose reports whether a brief written at t is the one after the
+// close: on a weekday, between the close and midnight in New York, with the
+// brief after the close switched on. A /now in those hours gets the same
+// brief the schedule would send.
+func (c *Config) AfterClose(t time.Time) bool {
+	if c.CloseAt == nil || c.ScheduleLocation == nil {
+		return false
+	}
+	local := t.In(c.ScheduleLocation)
+	return !isWeekend(local) && local.Hour() >= MarketClose
 }
 
 // isWeekend reports whether the brief would come before a day the US market is

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joseph1009/market-watch/config"
 	"github.com/joseph1009/market-watch/internal/feed"
 	"github.com/joseph1009/market-watch/internal/fundamentals"
 	"github.com/joseph1009/market-watch/internal/history"
@@ -206,5 +207,58 @@ func TestTheAnalysisSearchesForTheCompanysNews(t *testing.T) {
 	all := strings.Join(asked, "\n")
 	if len(asked) != 2 || !strings.Contains(all, "Micron (MU) news") || !strings.Contains(all, "2026-08-11") {
 		t.Errorf("searched %d times:\n%s\nwant two searches by name, from a month back", len(asked), all)
+	}
+}
+
+// The brief after the close runs none of the broad searches, which the free
+// plan's credits cover once a weekday, says which brief it is, and is
+// recorded as the brief after the close.
+func TestTheBriefAfterTheCloseSkipsTheBroadSearches(t *testing.T) {
+	a, sent := newTestApp(t)
+	a.prefs.ChatID = 4242
+	at := config.ClockTime{Hour: 18, Minute: 30}
+	a.Cfg.CloseAt = &at
+	// Thursday 10 September 2026, 18:30 in New York.
+	a.Now = func() time.Time { return time.Date(2026, 9, 10, 22, 30, 0, 0, time.UTC) }
+
+	feedSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel><title>Stub</title>
+<item><title>Fed holds rates steady in September</title><link>https://feed.example/fed</link>
+<description>The Fed held.</description><pubDate>Thu, 10 Sep 2026 20:00:00 GMT</pubDate></item>
+</channel></rss>`))
+	}))
+	defer feedSrv.Close()
+	var searches atomic.Int32
+	searchSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		searches.Add(1)
+		w.Write([]byte(`{"results":[],"usage":{"credits":1}}`))
+	}))
+	defer searchSrv.Close()
+
+	a.prefs.Sources = []model.Source{{ID: "stub-feed", Name: "Stub", URL: feedSrv.URL, Weight: 8, Enabled: true}}
+	a.Fetcher = &feed.Fetcher{Client: feedSrv.Client(), Now: a.Now}
+	a.Search = &search.Client{APIKey: "tvly-test", URL: searchSrv.URL, Now: a.Now}
+	a.Generator = &report.Generator{Completer: briefStub{reply: "## OVERVIEW\nThe Fed held [1].\n"}}
+	runs, err := history.LoadRuns(filepath.Join(t.TempDir(), "runs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Runs = runs
+
+	done, err := a.sendReport(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("sendReport: %v", err)
+	}
+	if !done.rep.AfterClose() {
+		t.Errorf("a brief at 18:30 in New York on a Thursday is not the one after the close")
+	}
+	if n := searches.Load(); n != 0 {
+		t.Errorf("ran %d searches, want none", n)
+	}
+	if got := lastText(sent); !strings.Contains(got, "after the close") {
+		t.Errorf("the brief does not say it is the one after the close: %q", got)
+	}
+	if got := a.Runs.All(); len(got) != 1 || got[0].Edition != model.EditionClose {
+		t.Errorf("runs recorded %+v, want one, after the close", got)
 	}
 }

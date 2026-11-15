@@ -315,7 +315,7 @@ func runCheck(ctx context.Context, service *app.App, cfg *config.Config, log *sl
 		}
 	}
 
-	log.Info("next brief due", "at", cfg.NextRun(time.Now()).In(cfg.DisplayLocation).Format(time.RFC1123))
+	log.Info("next brief due", "at", cfg.NextBrief(time.Now()).In(cfg.DisplayLocation).Format(time.RFC1123))
 
 	if cfg.RelayAnswer == config.AnswerClaude {
 		version, err := relay.Claude{Bin: cfg.ClaudeBin}.Version(ctx)

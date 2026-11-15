@@ -172,3 +172,55 @@ func TestTheMasterChatKeepsItsEarlierName(t *testing.T) {
 		t.Errorf("TelegramMasterChatID = %d, want 777 from TELEGRAM_MASTER_CHAT_ID", cfg.TelegramMasterChatID)
 	}
 }
+
+// The brief after the close comes each weekday at its own time, and the
+// schedule's next brief is whichever of the two comes first. Friday's is
+// followed by Monday's brief before the open.
+func TestTheBriefAfterTheCloseIsOnWeekdays(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	close := ClockTime{Hour: 18, Minute: 30}
+	cfg := &Config{ScheduleLocation: ny, ReportAt: ClockTime{Hour: 7, Minute: 30}, CloseAt: &close, SkipWeekends: true}
+	at := func(day, hour, min int) time.Time { return time.Date(2026, 11, day, hour, min, 0, 0, ny) }
+
+	for _, tc := range []struct {
+		from, want time.Time
+	}{
+		{at(13, 7, 0), at(13, 7, 30)},   // Friday morning: the brief before the open
+		{at(13, 10, 0), at(13, 18, 30)}, // Friday daytime: the brief after the close
+		{at(13, 19, 0), at(16, 7, 30)},  // Friday night: Monday's before the open
+		{at(14, 19, 0), at(16, 7, 30)},  // Saturday: no brief after a close
+	} {
+		if got := cfg.NextBrief(tc.from); !got.Equal(tc.want) {
+			t.Errorf("from %s: next brief %s, want %s", tc.from.Format("Mon 15:04"), got.Format("Mon 15:04"), tc.want.Format("Mon 15:04"))
+		}
+	}
+	for when, want := range map[time.Time]bool{at(13, 18, 30): true, at(13, 16, 5): true, at(13, 7, 30): false, at(14, 18, 30): false} {
+		if got := cfg.AfterClose(when); got != want {
+			t.Errorf("AfterClose(%s) = %v, want %v", when.Format("Mon 15:04"), got, want)
+		}
+	}
+	cfg.CloseAt = nil
+	if cfg.AfterClose(at(13, 18, 30)) || !cfg.NextClose(at(13, 10, 0)).IsZero() {
+		t.Error("with the brief after the close off, there still is one")
+	}
+}
+
+// CLOSE_AT is a time after the close, or off.
+func TestCloseAtIsAfterTheClose(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "123456:token")
+	t.Setenv("CLOSE_AT", "")
+	if cfg, err := Load(); err != nil || cfg.CloseAt == nil || cfg.CloseAt.String() != "18:30" {
+		t.Errorf("by default: %v, %v; want 18:30", cfg.CloseAt, err)
+	}
+	t.Setenv("CLOSE_AT", "off")
+	if cfg, err := Load(); err != nil || cfg.CloseAt != nil {
+		t.Errorf("CLOSE_AT=off: %v, %v; want none", cfg.CloseAt, err)
+	}
+	t.Setenv("CLOSE_AT", "15:00")
+	if _, err := Load(); err == nil {
+		t.Error("Load accepted a brief after the close at 15:00, before the close")
+	}
+}

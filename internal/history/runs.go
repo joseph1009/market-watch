@@ -28,6 +28,9 @@ const RunsKept = 30
 type Run struct {
 	At time.Time `json:"at"`
 
+	// Edition is model.EditionClose for the brief after the close.
+	Edition string `json:"edition,omitempty"`
+
 	Fetched  int `json:"fetched"`
 	Deduped  int `json:"deduped"`
 	Kept     int `json:"kept"`

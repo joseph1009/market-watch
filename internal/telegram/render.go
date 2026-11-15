@@ -99,7 +99,7 @@ func RenderWith(rep model.Report, opts Options) []string {
 	}
 
 	segs := []segment{{blocks: []string{
-		fmt.Sprintf("<b>📊 Market Watch</b>\n<i>%s</i>",
+		fmt.Sprintf("<b>📊 %s</b>\n<i>%s</i>", briefName(rep),
 			escape(rep.GeneratedAt.In(display).Format("Monday, 2 January 2006 · 15:04 MST"))),
 	}}}
 

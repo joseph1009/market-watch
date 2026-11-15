@@ -881,7 +881,12 @@ off one feature rather than the whole run. `New` builds it. `Prefs` and
 `UpdatePrefs` guard the preferences behind a lock. `SendReport`, `Publish`,
 `publishScheduled` and `brief` are the ways into a run: the brief, then its
 closer look, then both to the channel. `sendReport` is the pipeline itself.
-`RunScheduler` fires the daily brief. `Serve` runs it alongside the market sync
+`RunScheduler` fires the two daily briefs, before the open and after the
+close (`Config.NextBrief`). `Config.AfterClose` says by the clock which a run
+writes: on a weekday after 16:00 New York it is the one after the close, which
+opens its prompt with `brief.close` instead of `brief.morning`, runs only the
+searches for why a share moved, has no closer look, and is labelled "after the
+close". `Serve` runs it alongside the market sync
 and the bot poller, and returns when any of them fails. `reportFailure` tells
 the owner when a brief has failed. The helpers are `sourceMode`,
 `watchedNames`, `companyNames`, `newRelay`, `placedExamples`, `movedExamples`,

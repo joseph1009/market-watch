@@ -129,6 +129,8 @@ What passes between the functions:
 
 **Starts from:** [`RunScheduler`](../internal/app/app.go#L840) at `REPORT_AT` (07:30) in `SCHEDULE_TZ` (America/New_York), weekdays only. [`config.NextRun`](../config/config.go#L406) works out the next time afresh each round, so daylight saving never shifts it. In Singapore that is 19:30 until 1 November.
 
+Since 15 November 2026 there is a second brief each weekday, after the close, at `CLOSE_AT` (18:30 New York, 07:30 in Singapore in winter). [`config.NextBrief`](../config/config.go) picks whichever is next, and [`config.AfterClose`](../config/config.go) decides by the clock which one a run writes, so a /now in the New York evening gets it too. It is a recap of the session just ended: its prompt opens with `brief.close`, it runs only the searches for why a share moved (about 5 credits, not 20), it has no closer look and no monthly re-check, and it goes to the channel on its own.
+
 **Entry point:** [`publishScheduled`](../internal/app/app.go#L428) → [`brief`](../internal/app/app.go#L438)`(share=true, scheduled=true)` → [`sendReport`](../internal/app/app.go#L525)
 
 **What it does:** gathers the day's prices, SEC filings, news searches and about forty feeds. Opus 5.5 rates and files every article, and a second pass reviews where each one landed. Opus writes the brief, including what is coming up today and this week. It also spots new company names, and each one is checked against its exchange. The brief goes to the owner and the closer look follows at once. Then both go to the channel as one post.

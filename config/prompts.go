@@ -116,6 +116,8 @@ func RenderPrompt(id string, data any) (string, error) {
 var required = map[string][]string{
 	"writing":          {"HOW TO WRITE"},
 	"brief.system":     {"## OVERVIEW", "## SECTION:", "### "},
+	"brief.morning":    {"before the US market opens"},
+	"brief.close":      {"after the US market has closed"},
 	"triage.system":    {"{{.Watchlists}}", "number|rating|watchlist ids"},
 	"review.system":    {"{{.Watchlists}}", "number|section ids", "(added to fill a thin section)"},
 	"discover.system":  {"name|ticker|exchange|article numbers separated by commas|what happened"},
