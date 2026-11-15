@@ -33,6 +33,9 @@ type Prefs struct {
 	// LastRecheck is when the monthly re-check of the live calls last ran.
 	LastRecheck time.Time `yaml:"last_recheck,omitempty"`
 
+	// AlertsOff pauses the alerts between briefs, from /alerts off.
+	AlertsOff bool `yaml:"alerts_off,omitempty"`
+
 	// Edits are the companies added and removed with /watchlist, and
 	// FeedSwitches the feeds switched on or off with /sources, by id.
 	Edits        Edits           `yaml:"watchlist_edits,omitempty"`

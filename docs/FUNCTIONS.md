@@ -52,6 +52,7 @@ Companion documents:
 | 15 | [Command-line modes](#15-command-line-modes) | `--check`, `--once`, `--once --share`, `--clear`, `--fold` | [`main`](../cmd/market-watch/main.go#L33) |
 | 16 | [Deploy and sync scripts](#16-deploy-and-sync-scripts) | By hand | [scripts/](../scripts/) |
 | 17 | [Live tests](#17-live-tests) | By hand, with an environment switch | `*_test.go` |
+| 18 | [Alerts between the briefs](#18-alerts-between-the-briefs) | Every 15 minutes, day and night | [`RunAlerts`](../internal/app/alerts.go) → [`checkAlerts`](../internal/app/alerts.go) |
 
 ---
 
@@ -119,7 +120,7 @@ What passes between the functions:
 | 5 | [`app.New`](../internal/app/app.go#L195) | Builds the `App`. It loads `prefs.yaml`, `covered.json`, `runs.json`, `candidates.json`, `themes.json` and `scorecard.json` from the data folder. It creates the Telegram, Finnhub, chart, FRED, Tavily, SEC, Massive and Nasdaq clients, and connects each model stage to the relay. A feature that is switched off leaves its field nil (`TRIAGE`, `REVIEW`, `DISCOVER`, `IDEAS`, `CONSENSUS`). |
 | 6 | `signal.NotifyContext` in [`run`](../cmd/market-watch/main.go#L73) | SIGTERM cancels the context, so a brief that is being sent finishes its delivery. |
 | 7 | [`Serve`](../internal/app/app.go#L871) | Publishes the command menu ([`BotCommands`](../internal/app/commands.go#L51) → [`SetMyCommands`](../internal/telegram/updates.go#L125)). It throws away commands sent while it was down ([`DrainUpdates`](../internal/telegram/updates.go#L131)). |
-| 8 | [`Serve`](../internal/app/app.go#L871) | Starts three goroutines: **[`RunScheduler`](../internal/app/app.go#L840)** (2, and 3 after each brief), **[`RunMarket`](../internal/app/marketdata.go#L54)** and **[`Bot.Poll`](../internal/telegram/updates.go#L77)** → [`HandleMessage`](../internal/app/commands.go#L72) (6–10). With `PAGES_URL` set, there is a fourth, the page server **[`pages.Store.Serve`](../internal/pages/pages.go#L146)** (8b). The first one to fail stops the others. |
+| 8 | [`Serve`](../internal/app/app.go#L871) | Starts four goroutines: **[`RunScheduler`](../internal/app/app.go#L840)** (2, and 3 after each brief), **[`RunMarket`](../internal/app/marketdata.go#L54)**, **[`RunAlerts`](../internal/app/alerts.go)** (18) and **[`Bot.Poll`](../internal/telegram/updates.go#L77)** → [`HandleMessage`](../internal/app/commands.go#L72) (6–10). With `PAGES_URL` set, there is a fourth, the page server **[`pages.Store.Serve`](../internal/pages/pages.go#L146)** (8b). The first one to fail stops the others. |
 
 **Links:** everything else runs from these three loops. The `App` struct holds a lock called `running`, which lets only one brief or closer look run at a time.
 
@@ -596,3 +597,11 @@ These tests talk to real services. They are skipped unless their environment swi
 **Start here:** [1 README](../README.md) → [2 Glossary](GLOSSARY.md) → [3 How it works](ARCHITECTURE.md) → **4 Function by function** → [5 Reviewing the code](REVIEW.md) → [6 Running it](RUNBOOK.md) → [7 Backlog](TASKS.md)
 
 **Next:** [5 Reviewing the code](REVIEW.md), how to review it, from seeing real output to the rules that must hold.
+
+---
+
+## 18. Alerts between the briefs
+
+**Starts from:** [`RunAlerts`](../internal/app/alerts.go), one of `Serve`'s loops, every `ALERT_EVERY` (15 minutes), with `ALERTS` on and not paused with `/alerts off`.
+
+**What it does:** [`checkAlerts`](../internal/app/alerts.go) reads every enabled feed ([`Fetcher.Fetch`](../internal/feed/fetch.go)), keeps the stories from the last three hours ([`DropStale`](../internal/feed/collect.go)), removes duplicates ([`Dedupe`](../internal/feed/collect.go)) and the stories looked at before ([`alerts.Log.Unseen`](../internal/alerts/alerts.go)), and tags the followed companies ([`Match`](../internal/feed/collect.go)). [`alerts.Picker.Pick`](../internal/alerts/alerts.go) asks **Opus** (stage `alert`, no thinking) which are big enough to send now, with the reader's companies and today's alerts beside them. Each one goes to the owner's chat as a "🚨" message ([`alertText`](../internal/app/alerts.go)), at most eight a day in Singapore time. The stories are marked seen only once the model has answered, so a failed check is looked at again next time. The very first check only takes note. [`handleAlerts`](../internal/app/alerts.go) answers `/alerts`.

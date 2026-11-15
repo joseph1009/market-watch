@@ -1582,6 +1582,17 @@ runs are kept. `searchSummary` is the news-search block of `/stats`. It shows
 articles and credits for each brief, stories only search found, and the cited
 stories it missed, by source, most missed first.
 
+### internal/alerts
+
+**[alerts.go](../internal/alerts/alerts.go)** is the watch between the briefs.
+`Log` keeps the stories looked at and the alerts sent, in `alerts.json`:
+`Unseen`, `MarkSeen`, `Record` and `SentSince`, with `Started` false until the
+first check, which only takes note. `Picker.Pick` asks the `alert` stage which
+new stories to send, and `parse` reads its `ALERT:` blocks. `Window` (three
+hours) and `PerDay` (eight) bound what is looked at and sent. The app's side is
+[alerts.go](../internal/app/alerts.go): `RunAlerts` is the loop, `checkAlerts`
+one check, `alertText` the message, and `handleAlerts` answers `/alerts`.
+
 ### internal/runcache
 
 **[runcache.go](../internal/runcache/runcache.go)** keeps the latest run of

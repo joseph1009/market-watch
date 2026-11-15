@@ -38,6 +38,7 @@ var DefaultModels = map[string]string{
 	Industry:  Opus,
 	Terms:     Opus,
 	Release:   Opus,
+	Alert:     Opus,
 }
 
 // DefaultEffort is how hard every stage works at its answer: medium, the
@@ -52,7 +53,7 @@ const DefaultEffort = "medium"
 // client turned thinking off for the same reason. The brief and the analysis
 // keep it: deciding what a day meant, or what a set of accounts says, is the
 // judgment it is for.
-var quickStages = map[string]bool{Triage: true, Names: true, Review: true, Terms: true, Release: true}
+var quickStages = map[string]bool{Triage: true, Names: true, Review: true, Terms: true, Release: true, Alert: true}
 
 // noThinking is the settings override that turns thinking off for one call.
 const noThinking = `{"alwaysThinkingEnabled":false}`

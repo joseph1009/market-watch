@@ -34,7 +34,8 @@ const helpText = `<b>📊 Market Watch</b>
 /watchlist edits — the changes made here that config/companies.yaml does not have yet
 /sources — show the news feeds
 /sources on|off &lt;id&gt; — enable or disable a feed
-/schedule — when the next brief is due
+/schedule — when the next briefs are due, before the open and after the close
+/alerts — the big news sent between briefs today; /alerts off pauses them, /alerts on starts them again
 /stats — what recent briefs found and did
 /usage — how much of the Claude plan and the search credits is left
 /share — post the latest brief or analysis to the channel
@@ -45,7 +46,7 @@ const helpText = `<b>📊 Market Watch</b>
 /deactivate_sprite — turn it off again (/code update updates Claude Code there)
 /help — this message
 
-The daily brief arrives on its own; these are for when you want one early, or want to change what it covers.`
+The daily briefs and the alerts arrive on their own; these are for when you want one early, or want to change what it covers.`
 
 // BotCommands is the menu Telegram shows when someone types "/". It mirrors
 // helpText, and both have to be updated together -- the menu is how anyone
@@ -57,7 +58,8 @@ func BotCommands() []telegram.Command {
 		{Command: "analyse", Description: "Analyse a company from its filings; I ask which one"},
 		{Command: "industry", Description: "How an industry fits together, and companies to look into; I ask which one"},
 		{Command: "sources", Description: "Show or toggle the news feeds"},
-		{Command: "schedule", Description: "When the next brief is due"},
+		{Command: "schedule", Description: "When the next briefs are due"},
+		{Command: "alerts", Description: "Today's big-news alerts, or pause them"},
 		{Command: "stats", Description: "What recent briefs found and did"},
 		{Command: "usage", Description: "How much of the Claude plan and the search credits is left"},
 		{Command: "share", Description: "Post the latest brief or analysis to the channel"},
@@ -145,6 +147,8 @@ func (a *App) HandleMessage(ctx context.Context, msg telegram.Message) {
 		err = a.handleSources(ctx, msg, args)
 	case "schedule":
 		err = a.handleSchedule(ctx, msg)
+	case "alerts":
+		err = a.handleAlerts(ctx, msg, args)
 	case "stats":
 		err = a.handleStats(ctx, msg)
 	case "usage", "credits":
@@ -216,12 +220,13 @@ func (a *App) accessOf(chat int64) access {
 }
 
 // needs is the least access a command takes. /start would move the daily
-// brief, /clear and /share act on the owner's deliveries, /code opens the
+// brief, /clear and /share act on the owner's deliveries, /alerts on the
+// owner's alerts, /code opens the
 // code to change, and the control commands spend the most or change what
 // everyone reads.
 func needs(command string) access {
 	switch command {
-	case "start", "clear", "share", "code", "activate_sprite", "deactivate_sprite":
+	case "start", "clear", "share", "alerts", "code", "activate_sprite", "deactivate_sprite":
 		return ownerAccess
 	case "now", "watchlist", "sources":
 		return controlAccess

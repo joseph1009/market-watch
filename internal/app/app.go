@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/joseph1009/market-watch/config"
+	"github.com/joseph1009/market-watch/internal/alerts"
 	"github.com/joseph1009/market-watch/internal/calendar"
 	"github.com/joseph1009/market-watch/internal/consensus"
 	"github.com/joseph1009/market-watch/internal/discover"
@@ -138,6 +139,11 @@ type App struct {
 	Recheck    *ideas.Recheck
 	Themes     *ideas.ThemeLog
 	Scorecard  *ideas.Scorecard
+
+	// Alerts picks, every AlertEvery, the news big enough to send at once,
+	// and AlertLog keeps what it has looked at and sent. Nil turns them off.
+	Alerts   *alerts.Picker
+	AlertLog *alerts.Log
 
 	// Accounts and Analyzer answer /accounts: reported figures from EDGAR, and
 	// the writing up of them. Nil on either disables the command.
@@ -389,8 +395,25 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	a.Scorecard = scorecard
+
+	if cfg.Alerts {
+		sent, err := alerts.Load(filepath.Join(cfg.DataDir, "alerts.json"))
+		if err != nil {
+			return nil, err
+		}
+		a.AlertLog = sent
+		// The checks' calls are kept apart from the briefs': ninety-six a
+		// day would otherwise push every brief's run out of the relay's
+		// last forty within a day.
+		checks := &relay.Relay{Root: filepath.Join(cfg.DataDir, "relay-alerts"), Answer: rel.Answer, Log: rel.Log, Keep: alertRunsKept}
+		a.Alerts = &alerts.Picker{Completer: checks.Plain(relay.Alert)}
+	}
 	return a, nil
 }
+
+// alertRunsKept is how many alert checks' calls stay on disk: a little over
+// half a day of them.
+const alertRunsKept = 60
 
 // Prefs returns a snapshot safe to read without holding the lock.
 func (a *App) Prefs() config.Prefs {
@@ -928,9 +951,9 @@ func (a *App) Serve(ctx context.Context) error {
 		a.Log.Info("discarded updates queued while offline", "count", n)
 	}
 
-	errs := make(chan error, 5)
+	errs := make(chan error, 6)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 	if a.pageStore != nil {
 		wg.Add(1)
 		go func() {
@@ -947,6 +970,10 @@ func (a *App) Serve(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		errs <- a.RunMarket(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		errs <- a.RunAlerts(ctx)
 	}()
 	go func() {
 		defer wg.Done()

@@ -26,6 +26,11 @@ const (
 	DefaultScheduleTZ = "America/New_York"
 	DefaultReportAt   = "07:30"
 	DefaultCloseAt    = "18:30"
+
+	// DefaultAlertEvery is how often the alerts look at the feeds, and
+	// MinAlertEvery the most often they may.
+	DefaultAlertEvery = 15 * time.Minute
+	MinAlertEvery     = 5 * time.Minute
 	DefaultDisplayTZ  = "Asia/Singapore"
 
 	// RELAY_ANSWER values. Claude is the service as deployed: each model call
@@ -188,6 +193,13 @@ type Config struct {
 	// or sell verdict and the facts behind it. It is the slowest and costliest
 	// part of a run, which is why it can be turned off.
 	Ideas bool
+
+	// Alerts watches the feeds every AlertEvery, around the clock, and sends
+	// the owner what is big enough not to wait for the next brief (since
+	// 2026-11-15, at the owner's request). /alerts off pauses it from the
+	// chat; ALERTS=false turns it off altogether.
+	Alerts     bool
+	AlertEvery time.Duration
 
 	// SkipWeekends suppresses the Saturday and Sunday briefs, which would cover
 	// days the US market was shut.
@@ -362,6 +374,16 @@ func Load() (*Config, error) {
 	if cfg.Ideas, err = envBool("IDEAS", true); err != nil {
 		return nil, err
 	}
+	if cfg.Alerts, err = envBool("ALERTS", true); err != nil {
+		return nil, err
+	}
+	if cfg.AlertEvery, err = envDuration("ALERT_EVERY", DefaultAlertEvery); err != nil {
+		return nil, err
+	}
+	// Each check fetches every feed: more often than this is unkind to them.
+	if cfg.AlertEvery < MinAlertEvery {
+		return nil, fmt.Errorf("ALERT_EVERY: %s is too often; want %s or more", cfg.AlertEvery, MinAlertEvery)
+	}
 	if cfg.MaxArticles, err = envInt("MAX_ARTICLES", DefaultMaxArticles); err != nil {
 		return nil, err
 	}
@@ -391,6 +413,7 @@ var stageModelVars = map[string]string{
 	"industry":  "MODEL_INDUSTRY",
 	"terms":     "MODEL_TERMS",
 	"release":   "MODEL_RELEASE",
+	"alert":     "MODEL_ALERT",
 }
 
 // secretVars are the environment variables that hold credentials. Any of them

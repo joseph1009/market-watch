@@ -41,6 +41,7 @@ analysis makes one, and so does `/industry`.
 | `analysis` | Writes up one company for `/analyse`. It searches for the last fortnight's news and the company's plans itself, **with web search** | `analysis.system`, the method, and `analysis.related` | Opus | `MODEL_ANALYSIS` | Plain text with headings in capitals |
 | `industry` | Explains an industry for `/industry`: how it fits together, where it is heading, and companies to look into, **with web search** | `industry.system` | Opus | `MODEL_INDUSTRY` | `### ` sub-headings over bullets, then `COMPANIES BY PART` and `part\|name\|ticker\|exchange\|why` |
 | `terms` | Checks a term the brief or an analysis listed twice before it is linked in every report: a real term, with search words that find the right meaning | `terms.check` | Opus | `MODEL_TERMS` | Lines of `- term \| search words`, only those that pass |
+| `alert` | Every 15 minutes, day and night, picks out of the stories that came in since the last check the ones big enough to send at once: market-moving news, or major news about a followed company. Most checks pick none | `alert.system` | Opus | `MODEL_ALERT` | `NONE`, or blocks of `ALERT:` (story numbers), `HEADLINE:`, `WHAT:` |
 | `release` | Copies the GAAP figures out of a results release for `/analyse`, when the filings don't reach its quarter yet. The code checks them against the filings before using them | `release.figures` | Opus | `MODEL_RELEASE` | One JSON object: currency, scales, periods and balance sheets |
 
 The sorting sends the day's articles in batches of 60, two at a time
@@ -615,6 +616,28 @@ To run that comparison again on your machine, which spends about fifteen
 credits and sends nothing:
 
     SEARCH_LIVE=1 go test ./internal/search -run TestLive -v -timeout 5m
+
+## Alerts between the briefs
+
+Since 15 November 2026, at the owner's request, the service also watches the
+news around the clock. Every `ALERT_EVERY` (15 minutes) it reads the enabled
+feeds, drops anything older than three hours and anything it has looked at
+before (`data/alerts.json`), and asks Opus, in one short call with no thinking,
+which of the rest are big enough to send now. Those go to the owner's chat with
+sound, as "🚨" messages with their sources. At most eight a day, counted in
+Singapore time. Search credits are not used.
+
+- The first check after the log is created only takes note of what is already
+  in the feeds.
+- A check that fails (the plan's limit, a timeout) marks nothing as seen, so
+  the next one looks at the same stories again. So does a check made while a
+  brief is being written, which asks nothing: a third Claude process beside
+  the brief's two would crowd the machine's 1 GB.
+- `/alerts` lists today's, `/alerts off` pauses them and `/alerts on` starts
+  them again. `ALERTS=false` turns them off on the server.
+- The checks' calls are kept in `data/relay-alerts/`, the last sixty, apart from
+  the briefs' `data/relay/`.
+- Each check costs a little of the plan: about 96 short calls a day.
 
 ## A channel for other readers
 

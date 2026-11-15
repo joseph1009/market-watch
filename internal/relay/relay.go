@@ -47,6 +47,7 @@ const (
 	Industry  = "industry"  // explaining how an industry fits together
 	Terms     = "terms"     // checking a term before it is linked in every report
 	Release   = "release"   // copying the figures out of a results release
+	Alert     = "alert"     // picking the news big enough to alert on
 )
 
 // DefaultKeep is how many run directories are kept. A month of daily briefs
