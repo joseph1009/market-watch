@@ -123,6 +123,7 @@ func run(once, share, check, clear bool) error {
 	log.Info("market-watch starting",
 		"answer", cfg.RelayAnswer,
 		"models", stageModels(cfg),
+		"effort", relay.Claude{Effort: cfg.Effort}.EffortLevel(),
 		"relay_dir", cfg.RelayDir,
 		"schedule", cfg.ReportAt.String()+" "+cfg.ScheduleLocation.String(),
 		"display_tz", cfg.DisplayLocation.String(),

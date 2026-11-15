@@ -1547,7 +1547,8 @@ to the `Completer` interfaces the other packages expect.
 
 **[answer.go](../internal/relay/answer.go)** is who answers. `Claude.Answer`
 runs `claude -p`. `DefaultModels` maps every stage to Opus 5.5
-(`claude-opus-5-5`). `webStages` are the stages with web search. `childEnv`
+(`claude-opus-5-5`), and every call runs at `DefaultEffort`, medium, or
+`EFFORT`. `webStages` are the stages with web search. `childEnv`
 removes the API key. `parseStream` reads the result and the plan's `Limits`
 from the stream. `CheckLimits` takes a reading for `/usage`. `Session.Answer`
 waits for a person.

@@ -33,10 +33,11 @@ FROM debian:bookworm-slim
 # it is trusted, and the build stops if they differ.
 #
 # Opus 5.5, which answers every stage, is refused by Claude Code before
-# 2.1.280, so the build also stops below that rather than deploying a service
+# 2.1.280, and every call passes --effort, which 2.1.300 is the first version
+# known to take. So the build stops below that rather than deploying a service
 # whose every model call fails.
 ARG CLAUDE_REPO_FINGERPRINT=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
-ARG CLAUDE_MIN_VERSION=2.1.280
+ARG CLAUDE_MIN_VERSION=2.1.300
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg; \

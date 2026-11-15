@@ -304,6 +304,9 @@ func TestClaudeRunsHeadlessWithTheStagesModelAndNoTools(t *testing.T) {
 			t.Errorf("args are missing %q: %v", want, got.Args)
 		}
 	}
+	if !strings.Contains(joined, "--effort medium") {
+		t.Errorf("args are missing --effort medium, the owner's level for every stage: %v", got.Args)
+	}
 	if !strings.Contains(joined, `--settings {"alwaysThinkingEnabled":false}`) {
 		t.Errorf("sorting ran with thinking on, which took it from five seconds to sixty-five: %v", got.Args)
 	}

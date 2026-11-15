@@ -236,6 +236,8 @@ is, what it needs from you, and why it is worth doing.
   - `/industry` lists more companies from more countries, and every ticker
     shows its country's flag.
   - Mainland China listings are checked under OpenFIGI's China code.
+- 15 November 2026, at the owner's request: every stage runs at medium effort
+  (`EFFORT`, default medium).
 - 1 October 2026, at the owner's request: every stage moved to Opus 5.5. The
   brief became plainer, with about twice the room, emoji, highlighted figures
   and linked finance words. It added a look ahead at the week's economic

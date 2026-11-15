@@ -82,3 +82,26 @@ func TestStageModelsCarryOnlyWhatWasSet(t *testing.T) {
 		t.Error("an unset stage was given a model, which would mask the relay's default")
 	}
 }
+
+// EFFORT sets how hard every stage works, in any case, and a level Claude
+// Code would refuse stops the service rather than failing every call.
+func TestEffortIsOneOfClaudeCodesLevels(t *testing.T) {
+	withRequiredEnv(t)
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("EFFORT", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Effort != "" {
+		t.Errorf("Effort = %q unset, want empty, for the relay's medium", cfg.Effort)
+	}
+	t.Setenv("EFFORT", "High")
+	if cfg, err = Load(); err != nil || cfg.Effort != "high" {
+		t.Errorf("EFFORT=High: %q, %v", cfg.Effort, err)
+	}
+	t.Setenv("EFFORT", "medum")
+	if _, err := Load(); err == nil {
+		t.Error("Load accepted EFFORT=medum")
+	}
+}

@@ -40,6 +40,11 @@ var DefaultModels = map[string]string{
 	Release:   Opus,
 }
 
+// DefaultEffort is how hard every stage works at its answer: medium, the
+// owner's choice (2026-11-15), for all of them alike. EFFORT puts the service
+// on another level.
+const DefaultEffort = "medium"
+
 // quickStages answer without extended thinking. Rating a headline or naming the
 // company it is about is a mechanical judgment, and left to think, Haiku once spent
 // sixty-five seconds and 5,900 tokens reasoning its way to fourteen one-line
@@ -94,6 +99,9 @@ type Claude struct {
 	// falls back to DefaultModels.
 	Models map[string]string
 
+	// Effort is the level every stage answers at. Empty means DefaultEffort.
+	Effort string
+
 	// Timeout bounds one call. Zero means DefaultCallTimeout.
 	Timeout time.Duration
 
@@ -135,6 +143,7 @@ func (c Claude) Answer(ctx context.Context, q Question) (Reply, error) {
 	args := []string{
 		"-p",
 		"--model", modelName,
+		"--effort", c.EffortLevel(),
 		"--system-prompt-file", sys.Name(),
 		// Nothing written to the session history: each call stands alone, and
 		// a year of them would otherwise pile up under ~/.claude.
@@ -380,6 +389,14 @@ func (c Claude) model(stage string) string {
 		return m
 	}
 	return Opus
+}
+
+// EffortLevel is the level every stage answers at.
+func (c Claude) EffortLevel() string {
+	if e := strings.TrimSpace(c.Effort); e != "" {
+		return e
+	}
+	return DefaultEffort
 }
 
 func (c Claude) bin() string {

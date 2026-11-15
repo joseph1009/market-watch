@@ -91,6 +91,11 @@ type Config struct {
 	// Opus 5.5 for every stage.
 	StageModels map[string]string
 
+	// Effort is how hard every stage works at its answer, from EFFORT: low,
+	// medium, high, xhigh or max. Empty leaves it to the relay, which uses
+	// medium.
+	Effort string
+
 	// RelayConcurrency bounds how many sorting batches are answered at once,
 	// and CallTimeout how long one call may take.
 	RelayConcurrency int
@@ -257,6 +262,12 @@ func Load() (*Config, error) {
 		if v := envOr(key, ""); v != "" {
 			cfg.StageModels[stage] = v
 		}
+	}
+	cfg.Effort = strings.ToLower(envOr("EFFORT", ""))
+	switch cfg.Effort {
+	case "", "low", "medium", "high", "xhigh", "max":
+	default:
+		return nil, fmt.Errorf("EFFORT: want low, medium, high, xhigh or max, got %q", cfg.Effort)
 	}
 	if cfg.RelayConcurrency, err = envInt("RELAY_CONCURRENCY", DefaultRelayConcurrency); err != nil {
 		return nil, err

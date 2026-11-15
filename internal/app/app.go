@@ -997,6 +997,7 @@ func newRelay(cfg *config.Config, log *slog.Logger, onLimits func(relay.Limits))
 	var answer relay.Answerer = relay.Claude{
 		Bin:      cfg.ClaudeBin,
 		Models:   cfg.StageModels,
+		Effort:   cfg.Effort,
 		Timeout:  cfg.CallTimeout,
 		OnLimits: onLimits,
 	}

@@ -49,7 +49,10 @@ so there are fewer files to deal with.
 
 Every stage has used Opus 5.5 (`claude-opus-5-5`) since 1 October 2026, at the
 owner's request. You can still move one stage to another model with its
-`MODEL_` variable. The review is the check on the sorting's reading.
+`MODEL_` variable. Since 15 November 2026 every stage runs at medium effort,
+also at the owner's request. `EFFORT` puts them all on another level (low,
+medium, high, xhigh or max). The sorting, the review, the names, the terms and
+the release figures still answer without thinking. The review is the check on the sorting's reading.
 `REVIEW=false` turns the review off.
 
 Only six stages have tools: `scout`, `research`, `review`, `verdicts`,
